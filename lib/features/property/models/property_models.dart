@@ -1,4 +1,11 @@
 class Property {
+  static const List<String> taxFrequencies = [
+    'Annual',
+    'Semi-Annual',
+    'Quarterly',
+    'Monthly',
+  ];
+
   final String id;
   final String title; // "Green Glen Apartment 302"
   final String propertyType; // "Apartment", "Villa", "Commercial", "Plot"
@@ -6,6 +13,7 @@ class Property {
   final double purchasePrice;
   final DateTime purchaseDate;
   final double propertyTaxAmount;
+  final String propertyTaxFrequency;
   final DateTime taxDueDate;
   final double? monthlyRentIncome;
 
@@ -17,6 +25,7 @@ class Property {
     required this.purchasePrice,
     required this.purchaseDate,
     required this.propertyTaxAmount,
+    this.propertyTaxFrequency = 'Annual',
     required this.taxDueDate,
     this.monthlyRentIncome,
   });
@@ -29,6 +38,7 @@ class Property {
         'purchasePrice': purchasePrice,
         'purchaseDate': purchaseDate.toIso8601String(),
         'propertyTaxAmount': propertyTaxAmount,
+        'propertyTaxFrequency': propertyTaxFrequency,
         'taxDueDate': taxDueDate.toIso8601String(),
         'monthlyRentIncome': monthlyRentIncome,
       };
@@ -41,9 +51,36 @@ class Property {
         purchasePrice: (json['purchasePrice'] as num).toDouble(),
         purchaseDate: DateTime.parse(json['purchaseDate'] as String),
         propertyTaxAmount: (json['propertyTaxAmount'] as num).toDouble(),
+        propertyTaxFrequency: json['propertyTaxFrequency'] as String? ?? 'Annual',
         taxDueDate: DateTime.parse(json['taxDueDate'] as String),
         monthlyRentIncome: (json['monthlyRentIncome'] as num?)?.toDouble(),
       );
+
+  Property copyWith({
+    String? id,
+    String? title,
+    String? propertyType,
+    String? address,
+    double? purchasePrice,
+    DateTime? purchaseDate,
+    double? propertyTaxAmount,
+    String? propertyTaxFrequency,
+    DateTime? taxDueDate,
+    double? monthlyRentIncome,
+  }) {
+    return Property(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      propertyType: propertyType ?? this.propertyType,
+      address: address ?? this.address,
+      purchasePrice: purchasePrice ?? this.purchasePrice,
+      purchaseDate: purchaseDate ?? this.purchaseDate,
+      propertyTaxAmount: propertyTaxAmount ?? this.propertyTaxAmount,
+      propertyTaxFrequency: propertyTaxFrequency ?? this.propertyTaxFrequency,
+      taxDueDate: taxDueDate ?? this.taxDueDate,
+      monthlyRentIncome: monthlyRentIncome ?? this.monthlyRentIncome,
+    );
+  }
 }
 
 class PropertyMaintenance {

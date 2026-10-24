@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/auth/repositories/auth_repository.dart';
 import '../../features/auth/models/user_profile.dart';
@@ -26,7 +27,7 @@ import '../../features/property/models/property_models.dart';
 import '../../features/personal/repositories/personal_repository.dart';
 import '../../features/personal/models/personal_models.dart';
 
-// Singletons
+// Repositories
 final authRepositoryProvider = Provider<AuthRepository>((ref) => AuthRepository());
 final productRepositoryProvider = Provider<ProductRepository>((ref) => ProductRepository());
 final schoolFeesRepositoryProvider = Provider<SchoolFeesRepository>((ref) => SchoolFeesRepository());
@@ -40,9 +41,6 @@ final householdRepositoryProvider = Provider<HouseholdRepository>((ref) => House
 final propertyRepositoryProvider = Provider<PropertyRepository>((ref) => PropertyRepository());
 final personalRepositoryProvider = Provider<PersonalRepository>((ref) => PersonalRepository());
 
-// Global Demo Mode state
-final isDemoModeProvider = StateProvider<bool>((ref) => true);
-
 // Auth State Provider
 final userProfileProvider = StateNotifierProvider<UserNotifier, UserProfile?>((ref) {
   return UserNotifier(ref);
@@ -50,36 +48,46 @@ final userProfileProvider = StateNotifierProvider<UserNotifier, UserProfile?>((r
 
 class UserNotifier extends StateNotifier<UserProfile?> {
   final Ref ref;
+  StreamSubscription<UserProfile?>? _authSubscription;
 
   UserNotifier(this.ref) : super(null) {
-    loadUser();
+    _initAuthListener();
   }
 
-  Future<void> loadUser() async {
+  void _initAuthListener() {
     final repo = ref.read(authRepositoryProvider);
-    final isDemo = ref.read(isDemoModeProvider);
-    repo.setDemoMode(isDemo);
+    _authSubscription = repo.authStateChanges.listen((profile) {
+      state = profile;
+    });
+  }
 
-    if (isDemo) {
-      state = await repo.getUserProfile('demo_user_123');
-    } else {
-      final fbUser = repo.currentFirebaseUser;
-      if (fbUser != null) {
-        state = await repo.getUserProfile(fbUser.uid);
-      } else {
-        state = null;
-      }
+  Future<void> login(String identifier, String password) async {
+    final repo = ref.read(authRepositoryProvider);
+    state = await repo.signInWithUsernameOrEmail(identifier, password);
+  }
+
+  Future<UserProfile?> loginWithGoogle() async {
+    final repo = ref.read(authRepositoryProvider);
+    final profile = await repo.signInWithGoogle();
+    if (profile != null) {
+      state = profile;
     }
+    return profile;
   }
 
-  Future<void> login(String email, String password) async {
+  Future<void> register({
+    required String email,
+    required String password,
+    required String displayName,
+    String? username,
+  }) async {
     final repo = ref.read(authRepositoryProvider);
-    state = await repo.signInWithEmail(email, password);
-  }
-
-  Future<void> register(String email, String password, String displayName) async {
-    final repo = ref.read(authRepositoryProvider);
-    state = await repo.registerWithEmail(email, password, displayName);
+    state = await repo.registerWithEmail(
+      email: email,
+      password: password,
+      displayName: displayName,
+      username: username,
+    );
   }
 
   Future<void> logout() async {
@@ -88,147 +96,148 @@ class UserNotifier extends StateNotifier<UserProfile?> {
     state = null;
   }
 
-  void toggleDemoMode(bool isDemo) {
-    ref.read(isDemoModeProvider.notifier).state = isDemo;
-    loadUser();
-  }
-
   Future<void> updateProfile(UserProfile updated) async {
     final repo = ref.read(authRepositoryProvider);
     await repo.updateUserProfile(updated);
     state = updated;
   }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    super.dispose();
+  }
 }
 
 // Products Provider
 final productsProvider = FutureProvider<List<Product>>((ref) async {
-  final repo = ref.read(productRepositoryProvider);
-  final isDemo = ref.watch(isDemoModeProvider);
   final user = ref.watch(userProfileProvider);
-  return repo.getProducts(user?.uid ?? 'demo_user', isDemo: isDemo);
+  if (user == null) return const [];
+  final repo = ref.read(productRepositoryProvider);
+  return repo.getProducts(user.uid);
 });
 
 // Children Provider
 final childrenProvider = FutureProvider<List<Child>>((ref) async {
-  final repo = ref.read(schoolFeesRepositoryProvider);
-  final isDemo = ref.watch(isDemoModeProvider);
   final user = ref.watch(userProfileProvider);
-  return repo.getChildren(user?.uid ?? 'demo_user', isDemo: isDemo);
+  if (user == null) return const [];
+  final repo = ref.read(schoolFeesRepositoryProvider);
+  return repo.getChildren(user.uid);
 });
 
 // Fee Installments Provider
 final feeInstallmentsProvider = FutureProvider<List<FeeInstallment>>((ref) async {
-  final repo = ref.read(schoolFeesRepositoryProvider);
-  final isDemo = ref.watch(isDemoModeProvider);
   final user = ref.watch(userProfileProvider);
-  return repo.getInstallments(user?.uid ?? 'demo_user', isDemo: isDemo);
+  if (user == null) return const [];
+  final repo = ref.read(schoolFeesRepositoryProvider);
+  return repo.getInstallments(user.uid);
 });
 
 // Bill Accounts Provider
 final billAccountsProvider = FutureProvider<List<BillAccount>>((ref) async {
-  final repo = ref.read(billsRepositoryProvider);
-  final isDemo = ref.watch(isDemoModeProvider);
   final user = ref.watch(userProfileProvider);
-  return repo.getBillAccounts(user?.uid ?? 'demo_user', isDemo: isDemo);
+  if (user == null) return const [];
+  final repo = ref.read(billsRepositoryProvider);
+  return repo.getBillAccounts(user.uid);
 });
 
 // Bills Provider
 final billsProvider = FutureProvider<List<Bill>>((ref) async {
-  final repo = ref.read(billsRepositoryProvider);
-  final isDemo = ref.watch(isDemoModeProvider);
   final user = ref.watch(userProfileProvider);
-  return repo.getBills(user?.uid ?? 'demo_user', isDemo: isDemo);
+  if (user == null) return const [];
+  final repo = ref.read(billsRepositoryProvider);
+  return repo.getBills(user.uid);
 });
 
 // Documents Provider
 final documentsProvider = FutureProvider<List<DocumentRecord>>((ref) async {
-  final repo = ref.read(documentRepositoryProvider);
-  final isDemo = ref.watch(isDemoModeProvider);
   final user = ref.watch(userProfileProvider);
-  return repo.getDocuments(user?.uid ?? 'demo_user', isDemo: isDemo);
+  if (user == null) return const [];
+  final repo = ref.read(documentRepositoryProvider);
+  return repo.getDocuments(user.uid);
 });
 
 // Reminders Provider
 final remindersProvider = FutureProvider<List<Reminder>>((ref) async {
-  final repo = ref.read(reminderRepositoryProvider);
-  final isDemo = ref.watch(isDemoModeProvider);
   final user = ref.watch(userProfileProvider);
-  return repo.getReminders(user?.uid ?? 'demo_user', isDemo: isDemo);
+  if (user == null) return const [];
+  final repo = ref.read(reminderRepositoryProvider);
+  return repo.getReminders(user.uid);
 });
 
 // Vehicles Providers
 final vehiclesProvider = FutureProvider<List<Vehicle>>((ref) async {
-  final repo = ref.read(vehicleRepositoryProvider);
-  final isDemo = ref.watch(isDemoModeProvider);
   final user = ref.watch(userProfileProvider);
-  return repo.getVehicles(user?.uid ?? 'demo_user', isDemo: isDemo);
+  if (user == null) return const [];
+  final repo = ref.read(vehicleRepositoryProvider);
+  return repo.getVehicles(user.uid);
 });
 
 final vehicleServicesProvider = FutureProvider<List<ServiceRecord>>((ref) async {
-  final repo = ref.read(vehicleRepositoryProvider);
-  final isDemo = ref.watch(isDemoModeProvider);
   final user = ref.watch(userProfileProvider);
-  return repo.getServices(user?.uid ?? 'demo_user', isDemo: isDemo);
+  if (user == null) return const [];
+  final repo = ref.read(vehicleRepositoryProvider);
+  return repo.getServices(user.uid);
 });
 
 // Finance Providers
 final financialTransactionsProvider = FutureProvider<List<FinancialTransaction>>((ref) async {
-  final repo = ref.read(financeRepositoryProvider);
-  final isDemo = ref.watch(isDemoModeProvider);
   final user = ref.watch(userProfileProvider);
-  return repo.getTransactions(user?.uid ?? 'demo_user', isDemo: isDemo);
+  if (user == null) return const [];
+  final repo = ref.read(financeRepositoryProvider);
+  return repo.getTransactions(user.uid);
 });
 
 final investmentsProvider = FutureProvider<List<InvestmentRecord>>((ref) async {
-  final repo = ref.read(financeRepositoryProvider);
-  final isDemo = ref.watch(isDemoModeProvider);
   final user = ref.watch(userProfileProvider);
-  return repo.getInvestments(user?.uid ?? 'demo_user', isDemo: isDemo);
+  if (user == null) return const [];
+  final repo = ref.read(financeRepositoryProvider);
+  return repo.getInvestments(user.uid);
 });
 
 // Household Expenses Provider
 final householdExpensesProvider = FutureProvider<List<HouseholdExpense>>((ref) async {
-  final repo = ref.read(householdRepositoryProvider);
-  final isDemo = ref.watch(isDemoModeProvider);
   final user = ref.watch(userProfileProvider);
-  return repo.getExpenses(user?.uid ?? 'demo_user', isDemo: isDemo);
+  if (user == null) return const [];
+  final repo = ref.read(householdRepositoryProvider);
+  return repo.getExpenses(user.uid);
 });
 
 // Property Providers
 final propertiesProvider = FutureProvider<List<Property>>((ref) async {
-  final repo = ref.read(propertyRepositoryProvider);
-  final isDemo = ref.watch(isDemoModeProvider);
   final user = ref.watch(userProfileProvider);
-  return repo.getProperties(user?.uid ?? 'demo_user', isDemo: isDemo);
+  if (user == null) return const [];
+  final repo = ref.read(propertyRepositoryProvider);
+  return repo.getProperties(user.uid);
 });
 
 final propertyMaintenancesProvider = FutureProvider<List<PropertyMaintenance>>((ref) async {
-  final repo = ref.read(propertyRepositoryProvider);
-  final isDemo = ref.watch(isDemoModeProvider);
   final user = ref.watch(userProfileProvider);
-  return repo.getMaintenances(user?.uid ?? 'demo_user', isDemo: isDemo);
+  if (user == null) return const [];
+  final repo = ref.read(propertyRepositoryProvider);
+  return repo.getMaintenances(user.uid);
 });
 
 // Personal Diary Providers
 final journalEntriesProvider = FutureProvider<List<JournalEntry>>((ref) async {
-  final repo = ref.read(personalRepositoryProvider);
-  final isDemo = ref.watch(isDemoModeProvider);
   final user = ref.watch(userProfileProvider);
-  return repo.getJournals(user?.uid ?? 'demo_user', isDemo: isDemo);
+  if (user == null) return const [];
+  final repo = ref.read(personalRepositoryProvider);
+  return repo.getJournals(user.uid);
 });
 
 final personalGoalsProvider = FutureProvider<List<PersonalGoal>>((ref) async {
-  final repo = ref.read(personalRepositoryProvider);
-  final isDemo = ref.watch(isDemoModeProvider);
   final user = ref.watch(userProfileProvider);
-  return repo.getGoals(user?.uid ?? 'demo_user', isDemo: isDemo);
+  if (user == null) return const [];
+  final repo = ref.read(personalRepositoryProvider);
+  return repo.getGoals(user.uid);
 });
 
 final specialEventsProvider = FutureProvider<List<SpecialEvent>>((ref) async {
-  final repo = ref.read(personalRepositoryProvider);
-  final isDemo = ref.watch(isDemoModeProvider);
   final user = ref.watch(userProfileProvider);
-  return repo.getEvents(user?.uid ?? 'demo_user', isDemo: isDemo);
+  if (user == null) return const [];
+  final repo = ref.read(personalRepositoryProvider);
+  return repo.getEvents(user.uid);
 });
 
 // Global Search Query Provider

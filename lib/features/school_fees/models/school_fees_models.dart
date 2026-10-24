@@ -6,6 +6,8 @@ class Child {
   final String name;
   final DateTime dateOfBirth;
   final String gender;
+  final String? schoolName;
+  final String? grade;
   final String? profilePhotoUrl;
   final String? notes;
   final DateTime createdAt;
@@ -16,6 +18,8 @@ class Child {
     required this.name,
     required this.dateOfBirth,
     required this.gender,
+    this.schoolName,
+    this.grade,
     this.profilePhotoUrl,
     this.notes,
     required this.createdAt,
@@ -30,6 +34,8 @@ class Child {
           ? (map['dateOfBirth'] as Timestamp).toDate()
           : DateTime.tryParse(map['dateOfBirth'].toString()) ?? DateTime.now(),
       gender: map['gender'] ?? 'Other',
+      schoolName: map['schoolName'] as String?,
+      grade: map['grade'] as String?,
       profilePhotoUrl: map['profilePhotoUrl'],
       notes: map['notes'],
       createdAt: map['createdAt'] is Timestamp
@@ -44,10 +50,38 @@ class Child {
       'name': name,
       'dateOfBirth': Timestamp.fromDate(dateOfBirth),
       'gender': gender,
+      'schoolName': schoolName,
+      'grade': grade,
       'profilePhotoUrl': profilePhotoUrl,
       'notes': notes,
       'createdAt': Timestamp.fromDate(createdAt),
     };
+  }
+
+  Child copyWith({
+    String? id,
+    String? userId,
+    String? name,
+    DateTime? dateOfBirth,
+    String? gender,
+    String? schoolName,
+    String? grade,
+    String? profilePhotoUrl,
+    String? notes,
+    DateTime? createdAt,
+  }) {
+    return Child(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      name: name ?? this.name,
+      dateOfBirth: dateOfBirth ?? this.dateOfBirth,
+      gender: gender ?? this.gender,
+      schoolName: schoolName ?? this.schoolName,
+      grade: grade ?? this.grade,
+      profilePhotoUrl: profilePhotoUrl ?? this.profilePhotoUrl,
+      notes: notes ?? this.notes,
+      createdAt: createdAt ?? this.createdAt,
+    );
   }
 }
 

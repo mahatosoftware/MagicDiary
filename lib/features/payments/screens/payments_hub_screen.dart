@@ -16,12 +16,22 @@ class PaymentsHubScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/');
+            }
+          },
+        ),
         title: const Text('My Payments 💳'),
         actions: [
           IconButton(
             icon: const Icon(Icons.add_card),
             tooltip: 'Add Bill Account',
-            onPressed: () => context.go('/bills/add-account'),
+            onPressed: () => context.push('/bills/add-account'),
           ),
         ],
       ),
@@ -71,7 +81,7 @@ class PaymentsHubScreen extends ConsumerWidget {
                             StatusBadge(status: b.status),
                           ],
                         ),
-                        onTap: () => context.go('/bills'),
+                        onTap: () => context.push('/bills'),
                       ),
                     );
                   }).toList(),

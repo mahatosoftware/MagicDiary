@@ -14,11 +14,12 @@ class FeeStructureFormScreen extends ConsumerStatefulWidget {
 
 class _FeeStructureFormScreenState extends ConsumerState<FeeStructureFormScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController(text: 'Grade 5 Annual Fee');
+  final _nameController = TextEditingController(text: 'Annual Tuition Fee');
   final _amountController = TextEditingController(text: '120000');
   String _frequency = 'Quarterly';
   int _numberOfInstallments = 4;
-  DateTime _firstDueDate = DateTime(2026, 4, 10);
+  DateTime _firstDueDate = DateTime.now().add(const Duration(days: 30));
+  String? _selectedChildId;
 
   final List<String> _frequencies = ['Monthly', 'Quarterly', 'Semi-Annually', 'Annually'];
 
@@ -48,12 +49,14 @@ class _FeeStructureFormScreenState extends ConsumerState<FeeStructureFormScreen>
   Future<void> _saveFeeStructure() async {
     if (!_formKey.currentState!.validate()) return;
     final user = ref.read(userProfileProvider);
-    final isDemo = ref.read(isDemoModeProvider);
+    if (user == null) return;
     final repo = ref.read(schoolFeesRepositoryProvider);
+
+    final childId = _selectedChildId ?? 'default_child';
 
     final fs = FeeStructure(
       id: '',
-      academicYearId: 'ay_1',
+      academicYearId: 'ay_current',
       name: _nameController.text.trim(),
       totalAmount: double.parse(_amountController.text.trim()),
       frequency: _frequency,
@@ -63,10 +66,9 @@ class _FeeStructureFormScreenState extends ConsumerState<FeeStructureFormScreen>
     );
 
     await repo.createFeeStructureWithInstallments(
-      user?.uid ?? 'demo_user',
+      user.uid,
       fs,
-      'child_1',
-      isDemo: isDemo,
+      childId,
     );
 
     ref.invalidate(feeInstallmentsProvider);
@@ -75,14 +77,30 @@ class _FeeStructureFormScreenState extends ConsumerState<FeeStructureFormScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Fee structure and schedule generated!')),
       );
-      context.go('/school-fees');
+      if (context.canPop()) {
+        context.pop();
+      } else {
+        context.go('/school-fees');
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final childrenAsync = ref.watch(childrenProvider);
+
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/school-fees');
+            }
+          },
+        ),
         title: const Text('Setup Fee Structure'),
       ),
       body: SingleChildScrollView(
@@ -92,6 +110,39 @@ class _FeeStructureFormScreenState extends ConsumerState<FeeStructureFormScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              childrenAsync.when(
+                data: (children) {
+                  if (children.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  if (_selectedChildId == null && children.isNotEmpty) {
+                    _selectedChildId = children.first.id;
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 16.0),
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _selectedChildId ?? children.first.id,
+                      decoration: const InputDecoration(
+                        labelText: 'Select Child *',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: children
+                          .map((c) {
+                            final schoolInfo = c.schoolName != null && c.schoolName!.isNotEmpty
+                                ? ' (${c.schoolName})'
+                                : '';
+                            return DropdownMenuItem(value: c.id, child: Text('${c.name}$schoolInfo'));
+                          })
+                          .toList(),
+                      onChanged: (val) {
+                        setState(() => _selectedChildId = val);
+                      },
+                    ),
+                  );
+                },
+                loading: () => const SizedBox.shrink(),
+                error: (err, stack) => const SizedBox.shrink(),
+              ),
               TextFormField(
                 controller: _nameController,
                 decoration: const InputDecoration(

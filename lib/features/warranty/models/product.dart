@@ -17,6 +17,8 @@ class Product {
   final DateTime? warrantyEndDate;
   final int warrantyDurationMonths;
   final bool extendedWarranty;
+  final bool isCustomWarranty;
+  final String? warrantyType;
   final String? invoiceDocumentId;
   final String? warrantyCardDocumentId;
   final List<String> imageUrls;
@@ -42,6 +44,8 @@ class Product {
     this.warrantyEndDate,
     this.warrantyDurationMonths = 12,
     this.extendedWarranty = false,
+    this.isCustomWarranty = false,
+    this.warrantyType,
     this.invoiceDocumentId,
     this.warrantyCardDocumentId,
     this.imageUrls = const [],
@@ -75,6 +79,8 @@ class Product {
           : (map['warrantyEndDate'] != null ? DateTime.tryParse(map['warrantyEndDate'].toString()) : null),
       warrantyDurationMonths: map['warrantyDurationMonths'] ?? 12,
       extendedWarranty: map['extendedWarranty'] ?? false,
+      isCustomWarranty: map['isCustomWarranty'] ?? false,
+      warrantyType: map['warrantyType'],
       invoiceDocumentId: map['invoiceDocumentId'],
       warrantyCardDocumentId: map['warrantyCardDocumentId'],
       imageUrls: List<String>.from(map['imageUrls'] ?? []),
@@ -106,6 +112,8 @@ class Product {
       'warrantyEndDate': warrantyEndDate != null ? Timestamp.fromDate(warrantyEndDate!) : null,
       'warrantyDurationMonths': warrantyDurationMonths,
       'extendedWarranty': extendedWarranty,
+      'isCustomWarranty': isCustomWarranty,
+      'warrantyType': warrantyType,
       'invoiceDocumentId': invoiceDocumentId,
       'warrantyCardDocumentId': warrantyCardDocumentId,
       'imageUrls': imageUrls,
@@ -131,6 +139,8 @@ class Product {
     DateTime? warrantyEndDate,
     int? warrantyDurationMonths,
     bool? extendedWarranty,
+    bool? isCustomWarranty,
+    String? warrantyType,
     String? invoiceDocumentId,
     String? warrantyCardDocumentId,
     List<String>? imageUrls,
@@ -154,6 +164,8 @@ class Product {
       warrantyEndDate: warrantyEndDate ?? this.warrantyEndDate,
       warrantyDurationMonths: warrantyDurationMonths ?? this.warrantyDurationMonths,
       extendedWarranty: extendedWarranty ?? this.extendedWarranty,
+      isCustomWarranty: isCustomWarranty ?? this.isCustomWarranty,
+      warrantyType: warrantyType ?? this.warrantyType,
       invoiceDocumentId: invoiceDocumentId ?? this.invoiceDocumentId,
       warrantyCardDocumentId: warrantyCardDocumentId ?? this.warrantyCardDocumentId,
       imageUrls: imageUrls ?? this.imageUrls,

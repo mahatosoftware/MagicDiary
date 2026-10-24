@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'product_form_screen.dart';
 
 class OcrInvoiceReviewScreen extends StatefulWidget {
@@ -54,6 +55,7 @@ class _OcrInvoiceReviewScreenState extends State<OcrInvoiceReviewScreen> {
             'brand': _brandController.text,
             'price': _amountController.text,
             'seller': _merchantController.text,
+            'purchaseDate': _dateController.text,
             'notes': 'Scanned Invoice #${_invoiceNoController.text}',
           },
         ),
@@ -65,6 +67,16 @@ class _OcrInvoiceReviewScreenState extends State<OcrInvoiceReviewScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/warranty');
+            }
+          },
+        ),
         title: const Text('OCR Invoice Scanner'),
       ),
       body: SingleChildScrollView(

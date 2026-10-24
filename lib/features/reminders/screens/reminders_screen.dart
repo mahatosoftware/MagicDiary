@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/date_calculators.dart';
@@ -10,7 +11,7 @@ class RemindersScreen extends ConsumerWidget {
 
   void _showDeferDialog(BuildContext context, WidgetRef ref, Reminder reminder) {
     final user = ref.read(userProfileProvider);
-    final isDemo = ref.read(isDemoModeProvider);
+    if (user == null) return;
     final repo = ref.read(reminderRepositoryProvider);
 
     showDialog(
@@ -28,7 +29,7 @@ class RemindersScreen extends ConsumerWidget {
               title: const Text('Defer +1 Day'),
               onTap: () async {
                 Navigator.pop(context);
-                await repo.deferReminder(user?.uid ?? 'demo_user', reminder.id, DeferOption.plus1Day, isDemo: isDemo);
+                await repo.deferReminder(user.uid, reminder.id, DeferOption.plus1Day);
                 ref.invalidate(remindersProvider);
               },
             ),
@@ -37,7 +38,7 @@ class RemindersScreen extends ConsumerWidget {
               title: const Text('Defer +1 Week'),
               onTap: () async {
                 Navigator.pop(context);
-                await repo.deferReminder(user?.uid ?? 'demo_user', reminder.id, DeferOption.plus1Week, isDemo: isDemo);
+                await repo.deferReminder(user.uid, reminder.id, DeferOption.plus1Week);
                 ref.invalidate(remindersProvider);
               },
             ),
@@ -46,7 +47,7 @@ class RemindersScreen extends ConsumerWidget {
               title: const Text('Defer +1 Month'),
               onTap: () async {
                 Navigator.pop(context);
-                await repo.deferReminder(user?.uid ?? 'demo_user', reminder.id, DeferOption.plus1Month, isDemo: isDemo);
+                await repo.deferReminder(user.uid, reminder.id, DeferOption.plus1Month);
                 ref.invalidate(remindersProvider);
               },
             ),
@@ -55,7 +56,7 @@ class RemindersScreen extends ConsumerWidget {
               title: const Text('Custom Days (+3 days)'),
               onTap: () async {
                 Navigator.pop(context);
-                await repo.deferReminder(user?.uid ?? 'demo_user', reminder.id, DeferOption.customDays, customDays: 3, isDemo: isDemo);
+                await repo.deferReminder(user.uid, reminder.id, DeferOption.customDays, customDays: 3);
                 ref.invalidate(remindersProvider);
               },
             ),
@@ -77,6 +78,16 @@ class RemindersScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/');
+            }
+          },
+        ),
         title: const Text('Shared Reminders System'),
       ),
       body: SingleChildScrollView(
@@ -157,9 +168,9 @@ class RemindersScreen extends ConsumerWidget {
                                     tooltip: 'Mark Completed',
                                     onPressed: () async {
                                       final user = ref.read(userProfileProvider);
-                                      final isDemo = ref.read(isDemoModeProvider);
+                                      if (user == null) return;
                                       final repo = ref.read(reminderRepositoryProvider);
-                                      await repo.completeReminder(user?.uid ?? 'demo_user', r.id, isDemo: isDemo);
+                                      await repo.completeReminder(user.uid, r.id);
                                       ref.invalidate(remindersProvider);
                                     },
                                   ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/utils/formatters.dart';
 import '../models/personal_models.dart';
@@ -15,6 +16,16 @@ class PersonalDashboardScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/diaries');
+            }
+          },
+        ),
         title: const Text('Personal Life & Memory Diary'),
         actions: [
           IconButton(
@@ -284,9 +295,11 @@ class PersonalDashboardScreen extends ConsumerWidget {
                 child: ElevatedButton(
                   onPressed: () {
                     if (titleController.text.isEmpty) return;
+                    final user = ref.read(userProfileProvider);
+                    if (user == null) return;
                     final repo = ref.read(personalRepositoryProvider);
                     repo.addJournal(
-                      'demo_user',
+                      user.uid,
                       JournalEntry(
                         id: DateTime.now().millisecondsSinceEpoch.toString(),
                         title: titleController.text,

@@ -1,12 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/app_providers.dart';
 
-class AppScaffold extends ConsumerWidget {
+class AppScaffold extends ConsumerStatefulWidget {
   final Widget child;
 
   const AppScaffold({super.key, required this.child});
+
+  @override
+  ConsumerState<AppScaffold> createState() => _AppScaffoldState();
+}
+
+class _AppScaffoldState extends ConsumerState<AppScaffold> {
+  DateTime? _lastBackPressTime;
 
   static int _calculateSelectedIndex(BuildContext context) {
     final String location = GoRouterState.of(context).uri.path;
@@ -39,13 +47,92 @@ class AppScaffold extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final isWide = MediaQuery.of(context).size.width >= 900;
     final selectedIndex = _calculateSelectedIndex(context);
-    final isDemoMode = ref.watch(isDemoModeProvider);
     final user = ref.watch(userProfileProvider);
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+
+        // 1. If an active modal, dialog, sheet, or route can pop, pop it
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+          return;
+        }
+        if (context.canPop()) {
+          context.pop();
+          return;
+        }
+
+        // 2. Check current route location and navigate to parent
+        final currentLocation = GoRouterState.of(context).uri.path;
+
+        // Sub-form / action screens -> navigate back to their diary dashboard
+        if (currentLocation.startsWith('/warranty/')) {
+          context.go('/warranty');
+          return;
+        }
+        if (currentLocation.startsWith('/vehicle/')) {
+          context.go('/vehicle');
+          return;
+        }
+        if (currentLocation.startsWith('/school-fees/')) {
+          context.go('/school-fees');
+          return;
+        }
+        if (currentLocation.startsWith('/bills/')) {
+          context.go('/bills');
+          return;
+        }
+
+        // Specialized diary modules -> navigate back to Diaries Hub
+        const specializedDiaries = [
+          '/personal',
+          '/vehicle',
+          '/finance',
+          '/household',
+          '/school-fees',
+          '/property',
+          '/warranty',
+          '/bills',
+        ];
+        if (specializedDiaries.contains(currentLocation)) {
+          context.go('/diaries');
+          return;
+        }
+
+        // Secondary hub screens -> navigate back to My Day (Home)
+        if (currentLocation == '/diaries' ||
+            currentLocation == '/payments' ||
+            currentLocation == '/documents' ||
+            currentLocation == '/reminders' ||
+            currentLocation == '/profile') {
+          context.go('/');
+          return;
+        }
+
+        // Already on root '/' -> double-tap to exit safely
+        final now = DateTime.now();
+        if (_lastBackPressTime == null ||
+            now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
+          _lastBackPressTime = now;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Press back again to exit Magic Diary'),
+              duration: Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          return;
+        }
+
+        // Confirmed second press within 2s -> exit app
+        SystemNavigator.pop();
+      },
+      child: Scaffold(
       drawer: Drawer(
         child: ListView(
           padding: EdgeInsets.zero,
@@ -145,7 +232,7 @@ class AppScaffold extends ConsumerWidget {
               title: const Text('Personal Diary'),
               onTap: () {
                 Navigator.pop(context);
-                context.go('/personal');
+                context.push('/personal');
               },
             ),
             ListTile(
@@ -153,7 +240,7 @@ class AppScaffold extends ConsumerWidget {
               title: const Text('Vehicle Diary'),
               onTap: () {
                 Navigator.pop(context);
-                context.go('/vehicle');
+                context.push('/vehicle');
               },
             ),
             ListTile(
@@ -161,7 +248,7 @@ class AppScaffold extends ConsumerWidget {
               title: const Text('Financial Diary'),
               onTap: () {
                 Navigator.pop(context);
-                context.go('/finance');
+                context.push('/finance');
               },
             ),
             ListTile(
@@ -169,7 +256,7 @@ class AppScaffold extends ConsumerWidget {
               title: const Text('Household Diary'),
               onTap: () {
                 Navigator.pop(context);
-                context.go('/household');
+                context.push('/household');
               },
             ),
             ListTile(
@@ -177,7 +264,7 @@ class AppScaffold extends ConsumerWidget {
               title: const Text('Education Diary'),
               onTap: () {
                 Navigator.pop(context);
-                context.go('/school-fees');
+                context.push('/school-fees');
               },
             ),
             ListTile(
@@ -185,7 +272,7 @@ class AppScaffold extends ConsumerWidget {
               title: const Text('Property Diary'),
               onTap: () {
                 Navigator.pop(context);
-                context.go('/property');
+                context.push('/property');
               },
             ),
             ListTile(
@@ -193,7 +280,7 @@ class AppScaffold extends ConsumerWidget {
               title: const Text('Warranty Diary'),
               onTap: () {
                 Navigator.pop(context);
-                context.go('/warranty');
+                context.push('/warranty');
               },
             ),
             const Divider(),
@@ -227,25 +314,6 @@ class AppScaffold extends ConsumerWidget {
                     ),
               ),
             ),
-            if (isDemoMode) ...[
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.amber.shade100,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.amber.shade700),
-                ),
-                child: Text(
-                  'DEMO',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.amber.shade900,
-                  ),
-                ),
-              ),
-            ],
           ],
         ),
         actions: [
@@ -338,7 +406,7 @@ class AppScaffold extends ConsumerWidget {
               ],
             ),
           if (isWide) const VerticalDivider(thickness: 1, width: 1),
-          Expanded(child: child),
+          Expanded(child: widget.child),
         ],
       ),
       bottomNavigationBar: isWide
@@ -377,6 +445,7 @@ class AppScaffold extends ConsumerWidget {
                 ),
               ],
             ),
+      ),
     );
   }
 
@@ -446,7 +515,7 @@ class AppScaffold extends ConsumerWidget {
                                 subtitle: Text(j.content, maxLines: 1, overflow: TextOverflow.ellipsis),
                                 onTap: () {
                                   Navigator.pop(context);
-                                  context.go('/personal');
+                                  context.push('/personal');
                                 },
                               )),
                         ],
@@ -461,7 +530,7 @@ class AppScaffold extends ConsumerWidget {
                                 subtitle: Text(p.brand),
                                 onTap: () {
                                   Navigator.pop(context);
-                                  context.go('/warranty');
+                                  context.push('/warranty');
                                 },
                               )),
                         ],
@@ -476,7 +545,7 @@ class AppScaffold extends ConsumerWidget {
                                 subtitle: Text('Amount: ₹${b.amount}'),
                                 onTap: () {
                                   Navigator.pop(context);
-                                  context.go('/payments');
+                                  context.push('/payments');
                                 },
                               )),
                         ],

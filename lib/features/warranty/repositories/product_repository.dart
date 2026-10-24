@@ -1,20 +1,17 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uuid/uuid.dart';
-import '../../../core/utils/mock_data.dart';
 import '../models/product.dart';
 import '../models/service_record.dart';
 
 class ProductRepository {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore _firestore;
   final Uuid _uuid = const Uuid();
 
-  final List<Product> _mockProducts = List.from(MockData.initialProducts);
-  final List<ServiceRecord> _mockServices = List.from(MockData.initialServiceRecords);
+  ProductRepository({FirebaseFirestore? firestore})
+      : _firestore = firestore ?? FirebaseFirestore.instance;
 
-  Future<List<Product>> getProducts(String userId, {bool isDemo = true}) async {
-    if (isDemo) {
-      return List.unmodifiable(_mockProducts);
-    }
+  Future<List<Product>> getProducts(String userId) async {
+    if (userId.isEmpty) return const [];
     try {
       final snapshot = await _firestore
           .collection('users')
@@ -24,14 +21,22 @@ class ProductRepository {
           .get();
       return snapshot.docs.map((doc) => Product.fromMap(doc.data(), doc.id)).toList();
     } catch (e) {
-      return List.unmodifiable(_mockProducts);
+      // Re-query without orderBy in case index or field is missing
+      try {
+        final snapshot = await _firestore
+            .collection('users')
+            .doc(userId)
+            .collection('products')
+            .get();
+        return snapshot.docs.map((doc) => Product.fromMap(doc.data(), doc.id)).toList();
+      } catch (inner) {
+        return const [];
+      }
     }
   }
 
-  Future<Product?> getProductById(String userId, String productId, {bool isDemo = true}) async {
-    if (isDemo) {
-      return _mockProducts.firstWhere((p) => p.id == productId, orElse: () => _mockProducts.first);
-    }
+  Future<Product?> getProductById(String userId, String productId) async {
+    if (userId.isEmpty || productId.isEmpty) return null;
     try {
       final doc = await _firestore
           .collection('users')
@@ -43,12 +48,12 @@ class ProductRepository {
         return Product.fromMap(doc.data()!, doc.id);
       }
     } catch (e) {
-      // Fallback
+      return null;
     }
     return null;
   }
 
-  Future<Product> addProduct(String userId, Product product, {bool isDemo = true}) async {
+  Future<Product> addProduct(String userId, Product product) async {
     final String newId = product.id.isEmpty ? _uuid.v4() : product.id;
     final Product newProduct = Product(
       id: newId,
@@ -67,6 +72,8 @@ class ProductRepository {
       warrantyEndDate: product.warrantyEndDate,
       warrantyDurationMonths: product.warrantyDurationMonths,
       extendedWarranty: product.extendedWarranty,
+      isCustomWarranty: product.isCustomWarranty,
+      warrantyType: product.warrantyType,
       invoiceDocumentId: product.invoiceDocumentId,
       warrantyCardDocumentId: product.warrantyCardDocumentId,
       imageUrls: product.imageUrls,
@@ -75,11 +82,6 @@ class ProductRepository {
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );
-
-    if (isDemo) {
-      _mockProducts.insert(0, newProduct);
-      return newProduct;
-    }
 
     await _firestore
         .collection('users')
@@ -90,15 +92,7 @@ class ProductRepository {
     return newProduct;
   }
 
-  Future<void> updateProduct(String userId, Product product, {bool isDemo = true}) async {
-    if (isDemo) {
-      final index = _mockProducts.indexWhere((p) => p.id == product.id);
-      if (index != -1) {
-        _mockProducts[index] = product;
-      }
-      return;
-    }
-
+  Future<void> updateProduct(String userId, Product product) async {
     await _firestore
         .collection('users')
         .doc(userId)
@@ -107,12 +101,7 @@ class ProductRepository {
         .update(product.toMap());
   }
 
-  Future<void> deleteProduct(String userId, String productId, {bool isDemo = true}) async {
-    if (isDemo) {
-      _mockProducts.removeWhere((p) => p.id == productId);
-      return;
-    }
-
+  Future<void> deleteProduct(String userId, String productId) async {
     await _firestore
         .collection('users')
         .doc(userId)
@@ -122,10 +111,8 @@ class ProductRepository {
   }
 
   // Service Records
-  Future<List<ServiceRecord>> getServiceRecords(String userId, String productId, {bool isDemo = true}) async {
-    if (isDemo) {
-      return _mockServices.where((s) => s.productId == productId).toList();
-    }
+  Future<List<ServiceRecord>> getServiceRecords(String userId, String productId) async {
+    if (userId.isEmpty || productId.isEmpty) return const [];
     try {
       final snapshot = await _firestore
           .collection('users')
@@ -137,11 +124,22 @@ class ProductRepository {
           .get();
       return snapshot.docs.map((doc) => ServiceRecord.fromMap(doc.data(), doc.id)).toList();
     } catch (e) {
-      return _mockServices.where((s) => s.productId == productId).toList();
+      try {
+        final snapshot = await _firestore
+            .collection('users')
+            .doc(userId)
+            .collection('products')
+            .doc(productId)
+            .collection('serviceRecords')
+            .get();
+        return snapshot.docs.map((doc) => ServiceRecord.fromMap(doc.data(), doc.id)).toList();
+      } catch (inner) {
+        return const [];
+      }
     }
   }
 
-  Future<ServiceRecord> addServiceRecord(String userId, ServiceRecord record, {bool isDemo = true}) async {
+  Future<ServiceRecord> addServiceRecord(String userId, ServiceRecord record) async {
     final String newId = record.id.isEmpty ? _uuid.v4() : record.id;
     final ServiceRecord newRecord = ServiceRecord(
       id: newId,
@@ -157,11 +155,6 @@ class ProductRepository {
       notes: record.notes,
       createdAt: DateTime.now(),
     );
-
-    if (isDemo) {
-      _mockServices.insert(0, newRecord);
-      return newRecord;
-    }
 
     await _firestore
         .collection('users')

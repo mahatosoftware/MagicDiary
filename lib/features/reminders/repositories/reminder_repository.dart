@@ -1,26 +1,38 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uuid/uuid.dart';
-import '../../../core/utils/mock_data.dart';
 import '../../../core/utils/date_calculators.dart';
 import '../models/reminder.dart';
 
 class ReminderRepository {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore _firestore;
   final Uuid _uuid = const Uuid();
 
-  final List<Reminder> _mockReminders = List.from(MockData.initialReminders);
+  ReminderRepository({FirebaseFirestore? firestore})
+      : _firestore = firestore ?? FirebaseFirestore.instance;
 
-  Future<List<Reminder>> getReminders(String userId, {bool isDemo = true}) async {
-    if (isDemo) return List.unmodifiable(_mockReminders);
+  Future<List<Reminder>> getReminders(String userId) async {
+    if (userId.isEmpty) return const [];
     try {
-      final snapshot = await _firestore.collection('users').doc(userId).collection('reminders').get();
+      final snapshot = await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('reminders')
+          .orderBy('dueDate', descending: false)
+          .get();
       return snapshot.docs.map((d) => Reminder.fromMap(d.data(), d.id)).toList();
     } catch (e) {
-      return List.unmodifiable(_mockReminders);
+      try {
+        final snapshot = await _firestore.collection('users').doc(userId).collection('reminders').get();
+        final list = snapshot.docs.map((d) => Reminder.fromMap(d.data(), d.id)).toList();
+        list.sort((a, b) => a.dueDate.compareTo(b.dueDate));
+        return list;
+      } catch (inner) {
+        return const [];
+      }
     }
   }
 
-  Future<Reminder> addReminder(String userId, Reminder reminder, {bool isDemo = true}) async {
+  Future<Reminder> addReminder(String userId, Reminder reminder) async {
     final newId = reminder.id.isEmpty ? _uuid.v4() : reminder.id;
     final newRem = Reminder(
       id: newId,
@@ -36,29 +48,13 @@ class ReminderRepository {
       createdAt: DateTime.now(),
     );
 
-    if (isDemo) {
-      _mockReminders.add(newRem);
-      return newRem;
-    }
-
     await _firestore.collection('users').doc(userId).collection('reminders').doc(newId).set(newRem.toMap());
     return newRem;
   }
 
-  Future<void> deferReminder(String userId, String reminderId, DeferOption option, {int customDays = 0, bool isDemo = true}) async {
+  Future<void> deferReminder(String userId, String reminderId, DeferOption option, {int customDays = 0}) async {
+    if (userId.isEmpty || reminderId.isEmpty) return;
     final DateTime newDueDate = DateCalculators.calculateDeferredDate(DateTime.now(), option, customDays: customDays);
-    
-    if (isDemo) {
-      final index = _mockReminders.indexWhere((r) => r.id == reminderId);
-      if (index != -1) {
-        _mockReminders[index] = _mockReminders[index].copyWith(
-          status: 'snoozed',
-          snoozedUntil: newDueDate,
-          dueDate: newDueDate,
-        );
-      }
-      return;
-    }
 
     await _firestore.collection('users').doc(userId).collection('reminders').doc(reminderId).update({
       'status': 'snoozed',
@@ -67,18 +63,8 @@ class ReminderRepository {
     });
   }
 
-  Future<void> completeReminder(String userId, String reminderId, {bool isDemo = true}) async {
-    if (isDemo) {
-      final index = _mockReminders.indexWhere((r) => r.id == reminderId);
-      if (index != -1) {
-        _mockReminders[index] = _mockReminders[index].copyWith(
-          status: 'completed',
-          completedAt: DateTime.now(),
-        );
-      }
-      return;
-    }
-
+  Future<void> completeReminder(String userId, String reminderId) async {
+    if (userId.isEmpty || reminderId.isEmpty) return;
     await _firestore.collection('users').doc(userId).collection('reminders').doc(reminderId).update({
       'status': 'completed',
       'completedAt': Timestamp.fromDate(DateTime.now()),

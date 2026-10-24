@@ -8,6 +8,16 @@ class DiariesHubScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/');
+            }
+          },
+        ),
         title: const Text('My Diaries 📔'),
       ),
       body: SingleChildScrollView(
@@ -39,49 +49,49 @@ class DiariesHubScreen extends StatelessWidget {
                   subtitle: 'Daily journals, mood notes, goals & special events',
                   icon: Icons.menu_book_rounded,
                   color: Colors.purple,
-                  onTap: () => context.go('/personal'),
+                  onTap: () => context.push('/personal'),
                 ),
                 _DiaryCategoryCard(
                   title: 'Vehicle Diary',
                   subtitle: 'Car & bike maintenance, PUC, insurance & FASTag',
                   icon: Icons.directions_car_rounded,
                   color: Colors.red,
-                  onTap: () => context.go('/vehicle'),
+                  onTap: () => context.push('/vehicle'),
                 ),
                 _DiaryCategoryCard(
                   title: 'Financial Diary',
                   subtitle: 'Income, expenses, investments, FDs & loan EMIs',
                   icon: Icons.account_balance_wallet_rounded,
                   color: Colors.green,
-                  onTap: () => context.go('/finance'),
+                  onTap: () => context.push('/finance'),
                 ),
                 _DiaryCategoryCard(
                   title: 'Household Diary',
                   subtitle: 'Electricity, water, gas, internet & maid salaries',
                   icon: Icons.home_work_rounded,
                   color: Colors.teal,
-                  onTap: () => context.go('/household'),
+                  onTap: () => context.push('/household'),
                 ),
                 _DiaryCategoryCard(
                   title: 'Education Diary',
                   subtitle: 'School fee schedules, child profiles & transport',
                   icon: Icons.school_rounded,
                   color: Colors.deepOrange,
-                  onTap: () => context.go('/school-fees'),
+                  onTap: () => context.push('/school-fees'),
                 ),
                 _DiaryCategoryCard(
                   title: 'Property Diary',
                   subtitle: 'Home ownership, property tax & renovation logs',
                   icon: Icons.apartment_rounded,
                   color: Colors.indigo,
-                  onTap: () => context.go('/property'),
+                  onTap: () => context.push('/property'),
                 ),
                 _DiaryCategoryCard(
                   title: 'Warranty Diary',
                   subtitle: 'Purchased products, invoices & OCR scanner',
                   icon: Icons.verified_rounded,
                   color: Colors.blue,
-                  onTap: () => context.go('/warranty'),
+                  onTap: () => context.push('/warranty'),
                 ),
               ],
             ),

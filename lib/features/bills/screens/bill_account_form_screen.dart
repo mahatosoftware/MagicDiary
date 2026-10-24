@@ -44,12 +44,12 @@ class _BillAccountFormScreenState extends ConsumerState<BillAccountFormScreen> {
   Future<void> _saveAccount() async {
     if (!_formKey.currentState!.validate()) return;
     final user = ref.read(userProfileProvider);
-    final isDemo = ref.read(isDemoModeProvider);
+    if (user == null) return;
     final repo = ref.read(billsRepositoryProvider);
 
     final account = BillAccount(
       id: '',
-      userId: user?.uid ?? 'demo_user',
+      userId: user.uid,
       name: _nameController.text.trim(),
       category: _category,
       providerName: _providerController.text.trim(),
@@ -61,14 +61,18 @@ class _BillAccountFormScreenState extends ConsumerState<BillAccountFormScreen> {
       createdAt: DateTime.now(),
     );
 
-    await repo.addBillAccount(user?.uid ?? 'demo_user', account, isDemo: isDemo);
+    await repo.addBillAccount(user.uid, account);
     ref.invalidate(billAccountsProvider);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Bill account added!')),
       );
-      context.go('/bills');
+      if (context.canPop()) {
+        context.pop();
+      } else {
+        context.go('/bills');
+      }
     }
   }
 
@@ -76,6 +80,16 @@ class _BillAccountFormScreenState extends ConsumerState<BillAccountFormScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/bills');
+            }
+          },
+        ),
         title: const Text('Add Bill Account'),
       ),
       body: SingleChildScrollView(

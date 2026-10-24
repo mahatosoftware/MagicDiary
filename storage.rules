@@ -1,0 +1,50 @@
+rules_version = '2';
+
+// ===============================================================
+// Magic Diary Cloud Storage Security Rules
+// ===============================================================
+//
+// Access Patterns:
+// - All uploaded assets (invoices, receipts, warranty cards, profile photos, documents)
+//   are strictly scoped under /users/{userId}/...
+// - File size is limited to 15MB to prevent storage abuse and DoS.
+// - Allowed content types: Images (JPEG, PNG, WebP, HEIC) and PDF documents.
+// - Only the authenticated document owner can read, write, or delete their assets.
+// - Default deny on all other paths.
+//
+// ===============================================================
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidFileSize() {
+      return request.resource.size < 15 * 1024 * 1024; // 15 MB max
+    }
+
+    function isValidContentType() {
+      return request.resource.contentType.matches('image/.*')
+          || request.resource.contentType == 'application/pdf';
+    }
+
+    // User-isolated directory
+    match /users/{userId}/{allPaths=**} {
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId) && isValidFileSize() && isValidContentType();
+      allow delete: if isOwner(userId);
+    }
+
+    // Default deny for all other storage paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

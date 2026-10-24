@@ -38,6 +38,7 @@ dependencies:
   # PDF Generation & Export
   pdf: ^3.10.8
   printing: ^5.13.0
+  google_sign_in: ^6.2.1
 
 dev_dependencies:
   flutter_test:

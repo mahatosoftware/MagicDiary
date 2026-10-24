@@ -6,6 +6,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/utils/date_calculators.dart';
 import '../../../core/utils/pdf_exporter.dart';
 import '../../../core/widgets/status_badge.dart';
+import 'product_form_screen.dart';
 
 class ProductListScreen extends ConsumerStatefulWidget {
   const ProductListScreen({super.key});
@@ -33,6 +34,16 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/diaries');
+            }
+          },
+        ),
         title: const Text('Warranty & Purchase Diary'),
         actions: [
           IconButton(
@@ -46,12 +57,12 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
           IconButton(
             icon: const Icon(Icons.document_scanner),
             tooltip: 'Scan Receipt with OCR',
-            onPressed: () => context.go('/warranty/ocr'),
+            onPressed: () => context.push('/warranty/ocr'),
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.go('/warranty/add'),
+        onPressed: () => context.push('/warranty/add'),
         icon: const Icon(Icons.add),
         label: const Text('Add Product'),
       ),
@@ -159,13 +170,36 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                               if (p.hasWarranty && p.warrantyEndDate != null)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 4.0),
-                                  child: Text(
-                                    AppFormatters.daysRemaining(daysRemaining),
-                                    style: TextStyle(
-                                      color: daysRemaining > 30 ? Colors.green : (daysRemaining > 0 ? Colors.orange : Colors.red),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                  child: Row(
+                                    children: [
+                                      Text(
+                                        AppFormatters.daysRemaining(daysRemaining),
+                                        style: TextStyle(
+                                          color: daysRemaining > 30 ? Colors.green : (daysRemaining > 0 ? Colors.orange : Colors.red),
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      if (p.isCustomWarranty) ...[
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Colors.purple.shade50,
+                                            borderRadius: BorderRadius.circular(4),
+                                            border: Border.all(color: Colors.purple.shade200),
+                                          ),
+                                          child: Text(
+                                            'Custom (${p.warrantyDurationMonths}m)',
+                                            style: TextStyle(
+                                              color: Colors.purple.shade800,
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
                                   ),
                                 ),
                             ],
@@ -179,7 +213,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                           onTap: () {
                             showDialog(
                               context: context,
-                              builder: (context) => AlertDialog(
+                              builder: (dialogContext) => AlertDialog(
                                 title: Text(p.name),
                                 content: SingleChildScrollView(
                                   child: Column(
@@ -192,16 +226,53 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                                       if (p.serialNumber != null) Text('Serial No: ${p.serialNumber}'),
                                       Text('Price: ${AppFormatters.currency(p.price)}'),
                                       Text('Purchase Date: ${AppFormatters.date(p.purchaseDate)}'),
-                                      if (p.warrantyEndDate != null)
-                                        Text('Warranty End Date: ${AppFormatters.date(p.warrantyEndDate!)}'),
+                                      const Divider(height: 16),
+                                      if (p.hasWarranty) ...[
+                                        Text('Warranty Duration: ${p.warrantyDurationMonths} Months${p.isCustomWarranty ? " (Custom)" : ""}'),
+                                        if (p.warrantyType != null) Text('Warranty Type: ${p.warrantyType}'),
+                                        if (p.warrantyEndDate != null)
+                                          Text('Warranty Expiry: ${AppFormatters.date(p.warrantyEndDate!)}'),
+                                        if (p.extendedWarranty) const Text('Extended Warranty: Yes'),
+                                      ] else ...[
+                                        const Text('Warranty: None'),
+                                      ],
                                       if (p.notes != null) Text('\nNotes: ${p.notes}'),
                                     ],
                                   ),
                                 ),
                                 actions: [
                                   TextButton(
-                                    onPressed: () => Navigator.pop(context),
+                                    onPressed: () => Navigator.pop(dialogContext),
                                     child: const Text('Close'),
+                                  ),
+                                  TextButton.icon(
+                                    icon: const Icon(Icons.edit, size: 16),
+                                    label: const Text('Edit'),
+                                    onPressed: () {
+                                      Navigator.pop(dialogContext);
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (context) => ProductFormScreen(product: p),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                  TextButton.icon(
+                                    icon: const Icon(Icons.delete_outline, size: 16, color: Colors.red),
+                                    label: const Text('Delete', style: TextStyle(color: Colors.red)),
+                                    onPressed: () async {
+                                      final user = ref.read(userProfileProvider);
+                                      if (user != null) {
+                                        Navigator.pop(dialogContext);
+                                        await ref.read(productRepositoryProvider).deleteProduct(user.uid, p.id);
+                                        ref.invalidate(productsProvider);
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(content: Text('Product deleted successfully')),
+                                          );
+                                        }
+                                      }
+                                    },
                                   ),
                                 ],
                               ),

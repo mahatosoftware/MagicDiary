@@ -16,6 +16,16 @@ class BillsDashboardScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/diaries');
+            }
+          },
+        ),
         title: const Text('Bills & Recurring Expenses Diary'),
         actions: [
           IconButton(
@@ -30,12 +40,12 @@ class BillsDashboardScreen extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.add),
             tooltip: 'Add Bill Account',
-            onPressed: () => context.go('/bills/add-account'),
+            onPressed: () => context.push('/bills/add-account'),
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.go('/bills/add-account'),
+        onPressed: () => context.push('/bills/add-account'),
         icon: const Icon(Icons.post_add),
         label: const Text('Add Account'),
       ),
@@ -52,7 +62,7 @@ class BillsDashboardScreen extends ConsumerWidget {
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                 ),
                 TextButton(
-                  onPressed: () => context.go('/bills/add-account'),
+                  onPressed: () => context.push('/bills/add-account'),
                   child: const Text('+ Add Account'),
                 ),
               ],
@@ -194,7 +204,7 @@ class BillsDashboardScreen extends ConsumerWidget {
                                 icon: const Icon(Icons.payment, color: Colors.blue),
                                 tooltip: 'Pay Bill',
                                 onPressed: () {
-                                  context.go('/bills/record-payment');
+                                  context.push('/bills/record-payment');
                                 },
                               ),
                           ],

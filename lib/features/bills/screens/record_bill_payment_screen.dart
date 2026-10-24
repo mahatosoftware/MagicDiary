@@ -33,7 +33,7 @@ class _RecordBillPaymentScreenState extends ConsumerState<RecordBillPaymentScree
   Future<void> _recordPayment() async {
     if (!_formKey.currentState!.validate()) return;
     final user = ref.read(userProfileProvider);
-    final isDemo = ref.read(isDemoModeProvider);
+    if (user == null) return;
     final repo = ref.read(billsRepositoryProvider);
 
     final payment = BillPayment(
@@ -47,14 +47,18 @@ class _RecordBillPaymentScreenState extends ConsumerState<RecordBillPaymentScree
       notes: _notesController.text.trim().isNotEmpty ? _notesController.text.trim() : null,
     );
 
-    await repo.recordBillPayment(user?.uid ?? 'demo_user', payment, isDemo: isDemo);
+    await repo.recordBillPayment(user.uid, payment);
     ref.invalidate(billsProvider);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Bill payment recorded!')),
       );
-      context.go('/bills');
+      if (context.canPop()) {
+        context.pop();
+      } else {
+        context.go('/bills');
+      }
     }
   }
 
@@ -62,6 +66,16 @@ class _RecordBillPaymentScreenState extends ConsumerState<RecordBillPaymentScree
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/bills');
+            }
+          },
+        ),
         title: const Text('Record Bill Payment'),
       ),
       body: SingleChildScrollView(

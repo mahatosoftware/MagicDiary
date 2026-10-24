@@ -1,27 +1,642 @@
 rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Magic Diary Database Security Rules
+//
+// Collection: /users/{userId}
+// Document ID: userId (matches request.auth.uid)
+// Fields:
+//   - email: string (required, format: email, max: 255)
+//   - displayName: string (required, max: 100)
+//   - username: string (optional, max: 50)
+//   - photoUrl: string (optional, nullable, max: 2048)
+//   - currencySymbol: string (optional, max: 10)
+//   - themeMode: string (optional, 'system'|'light'|'dark')
+//   - enableNotifications: bool (optional)
+//   - createdAt: timestamp (required, immutable)
+//   - updatedAt: timestamp (required)
+//
+// Collection: /usernames/{username}
+// Document ID: username
+// Fields:
+//   - uid: string (required, matches request.auth.uid)
+//   - email: string (required, matches request.auth.token.email)
+//   - createdAt: timestamp (optional)
+//
+// Subcollections under /users/{userId}/... (Strict User Ownership):
+//   - products/{productId} & serviceRecords/{recordId} (Warranty & Product Management)
+//   - children/{childId} (Child Profiles)
+//   - schools/{schoolId} (School Details)
+//   - academicYears/{yearId} (Academic Year tracking)
+//   - feeStructures/{structureId} (Fee Structure)
+//   - feeInstallments/{installmentId} (Fee Installments)
+//   - feePayments/{paymentId} (Fee Payments)
+//   - billAccounts/{accountId} (Recurring Bill Accounts)
+//   - bills/{billId} (Bills & Invoices)
+//   - billPayments/{paymentId} (Bill Payments)
+//   - documents/{documentId} (Document & Vault Records)
+//   - reminders/{reminderId} (Task & Event Reminders)
+//   - vehicles/{vehicleId} (Vehicle Profiles)
+//   - serviceRecords/{serviceId} (Vehicle Maintenance Services)
+//   - transactions/{transactionId} (Income & Expense Transactions)
+//   - investments/{investmentId} (Investment Portfolio)
+//   - householdExpenses/{expenseId} (Monthly Household Expenses)
+//   - properties/{propertyId} (Real Estate & Properties)
+//   - propertyMaintenances/{maintenanceId} (Property Maintenance)
+//   - journals/{journalId} (Personal Journal & Diary)
+//   - goals/{goalId} (Personal Life Goals)
+//   - events/{eventId} (Special Events & Milestones)
+//
+// ===============================================================
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Helper functions
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
     function isAuthenticated() {
       return request.auth != null;
     }
-    
+
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // User document
+    function hasRequiredFields(data, fields) {
+      return data.keys().hasAll(fields);
+    }
+
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$');
+    }
+
+    function isTimestampOrDateString(val) {
+      return val is timestamp || (val is string && val.size() >= 10 && val.size() <= 35 && val.matches('^\\d{4}-\\d{2}-\\d{2}.*'));
+    }
+
+    function isValidOptionalString(data, field, maxLen) {
+      return !(field in data) || data[field] == null || (data[field] is string && data[field].size() <= maxLen);
+    }
+
+    function isValidOptionalNumber(data, field) {
+      return !(field in data) || data[field] == null || (data[field] is number && data[field] >= 0);
+    }
+
+    function isValidOptionalDate(data, field) {
+      return !(field in data) || data[field] == null || isTimestampOrDateString(data[field]);
+    }
+
+    function isValidOptionalList(data, field, maxSize) {
+      return !(field in data) || data[field] == null || (data[field] is list && data[field].size() <= maxSize);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUserProfile(data) {
+      return hasRequiredFields(data, ['email', 'displayName', 'createdAt', 'updatedAt'])
+        && data.email is string && data.email.size() <= 255 && isValidEmail(data.email)
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
+        && isValidOptionalString(data, 'username', 50)
+        && isValidOptionalString(data, 'photoUrl', 2048)
+        && isValidOptionalString(data, 'currencySymbol', 10)
+        && (!('themeMode' in data) || data.themeMode == null || data.themeMode in ['system', 'light', 'dark'])
+        && (!('enableNotifications' in data) || data.enableNotifications == null || data.enableNotifications is bool)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidUsernameMapping(username, data) {
+      return hasRequiredFields(data, ['uid', 'email'])
+        && data.uid == request.auth.uid
+        && data.email == request.auth.token.email
+        && username is string && username.size() >= 3 && username.size() <= 30
+        && (!('createdAt' in data) || data.createdAt is timestamp);
+    }
+
+    function isValidProduct(data, userId) {
+      return hasRequiredFields(data, ['userId', 'name', 'category', 'brand', 'purchaseDate', 'price', 'hasWarranty', 'createdAt', 'updatedAt'])
+        && data.userId == userId
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && data.category is string && data.category.size() <= 50
+        && data.brand is string && data.brand.size() <= 100
+        && data.price is number && data.price >= 0
+        && data.hasWarranty is bool
+        && isTimestampOrDateString(data.purchaseDate)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && isValidOptionalString(data, 'model', 100)
+        && isValidOptionalString(data, 'serialNumber', 100)
+        && isValidOptionalString(data, 'currency', 10)
+        && isValidOptionalString(data, 'sellerInfo', 200)
+        && isValidOptionalDate(data, 'warrantyStartDate')
+        && isValidOptionalDate(data, 'warrantyEndDate')
+        && isValidOptionalNumber(data, 'warrantyDurationMonths')
+        && (!('extendedWarranty' in data) || data.extendedWarranty == null || data.extendedWarranty is bool)
+        && isValidOptionalString(data, 'invoiceDocumentId', 100)
+        && isValidOptionalString(data, 'warrantyCardDocumentId', 100)
+        && isValidOptionalList(data, 'imageUrls', 20)
+        && isValidOptionalString(data, 'notes', 2000)
+        && isValidOptionalList(data, 'tags', 20);
+    }
+
+    function isValidProductServiceRecord(data) {
+      return hasRequiredFields(data, ['productId', 'serviceDate', 'serviceType', 'workPerformed', 'totalCost', 'serviceCenter', 'createdAt'])
+        && data.productId is string && data.productId.size() <= 100
+        && isTimestampOrDateString(data.serviceDate)
+        && data.serviceType is string && data.serviceType.size() <= 100
+        && data.workPerformed is string && data.workPerformed.size() <= 1000
+        && data.totalCost is number && data.totalCost >= 0
+        && data.serviceCenter is string && data.serviceCenter.size() <= 200
+        && data.createdAt is timestamp
+        && isValidOptionalString(data, 'currency', 10)
+        && isValidOptionalString(data, 'invoiceDocumentId', 100)
+        && isValidOptionalDate(data, 'nextServiceDate')
+        && isValidOptionalString(data, 'notes', 2000);
+    }
+
+    function isValidChild(data, userId) {
+      return hasRequiredFields(data, ['userId', 'name', 'dateOfBirth', 'gender', 'createdAt'])
+        && data.userId == userId
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 100
+        && isTimestampOrDateString(data.dateOfBirth)
+        && data.gender is string && data.gender.size() <= 30
+        && data.createdAt is timestamp
+        && isValidOptionalString(data, 'profilePhotoUrl', 2048)
+        && isValidOptionalString(data, 'notes', 1000);
+    }
+
+    function isValidSchool(data, userId) {
+      return hasRequiredFields(data, ['userId', 'name', 'createdAt'])
+        && data.userId == userId
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 150
+        && data.createdAt is timestamp
+        && isValidOptionalString(data, 'address', 300)
+        && isValidOptionalString(data, 'contactPhone', 30)
+        && isValidOptionalString(data, 'contactEmail', 100)
+        && isValidOptionalString(data, 'website', 200);
+    }
+
+    function isValidAcademicYear(data) {
+      return hasRequiredFields(data, ['childId', 'schoolId', 'yearLabel', 'grade', 'startDate', 'endDate', 'createdAt'])
+        && data.childId is string && data.childId.size() <= 100
+        && data.schoolId is string && data.schoolId.size() <= 100
+        && data.yearLabel is string && data.yearLabel.size() <= 50
+        && data.grade is string && data.grade.size() <= 50
+        && isTimestampOrDateString(data.startDate)
+        && isTimestampOrDateString(data.endDate)
+        && data.createdAt is timestamp;
+    }
+
+    function isValidFeeStructure(data) {
+      return hasRequiredFields(data, ['academicYearId', 'name', 'totalAmount', 'frequency', 'numberOfInstallments', 'firstDueDate', 'createdAt'])
+        && data.academicYearId is string && data.academicYearId.size() <= 100
+        && data.name is string && data.name.size() <= 100
+        && data.totalAmount is number && data.totalAmount >= 0
+        && data.frequency is string && data.frequency.size() <= 50
+        && data.numberOfInstallments is number && data.numberOfInstallments >= 1
+        && isTimestampOrDateString(data.firstDueDate)
+        && data.createdAt is timestamp;
+    }
+
+    function isValidFeeInstallment(data) {
+      return hasRequiredFields(data, ['feeStructureId', 'childId', 'installmentNumber', 'title', 'amount', 'dueDate', 'status'])
+        && data.feeStructureId is string && data.feeStructureId.size() <= 100
+        && data.childId is string && data.childId.size() <= 100
+        && data.installmentNumber is number && data.installmentNumber >= 1
+        && data.title is string && data.title.size() <= 100
+        && data.amount is number && data.amount >= 0
+        && isTimestampOrDateString(data.dueDate)
+        && data.status in ['pending', 'paid', 'overdue', 'partially_paid']
+        && isValidOptionalNumber(data, 'paidAmount')
+        && isValidOptionalDate(data, 'paidDate');
+    }
+
+    function isValidFeePayment(data) {
+      return hasRequiredFields(data, ['installmentId', 'amountPaid', 'paymentDate', 'paymentMethod'])
+        && data.installmentId is string && data.installmentId.size() <= 100
+        && data.amountPaid is number && data.amountPaid >= 0
+        && isTimestampOrDateString(data.paymentDate)
+        && data.paymentMethod is string && data.paymentMethod.size() <= 50
+        && isValidOptionalString(data, 'transactionRef', 100)
+        && isValidOptionalString(data, 'receiptDocumentId', 100)
+        && isValidOptionalString(data, 'notes', 1000);
+    }
+
+    function isValidBillAccount(data, userId) {
+      return hasRequiredFields(data, ['userId', 'name', 'category', 'providerName', 'accountNumber', 'billingCycle', 'dueDayOfMonth', 'createdAt'])
+        && data.userId == userId
+        && data.name is string && data.name.size() <= 100
+        && data.category is string && data.category.size() <= 50
+        && data.providerName is string && data.providerName.size() <= 100
+        && data.accountNumber is string && data.accountNumber.size() <= 100
+        && data.billingCycle is string && data.billingCycle.size() <= 50
+        && data.dueDayOfMonth is number && data.dueDayOfMonth >= 1 && data.dueDayOfMonth <= 31
+        && data.createdAt is timestamp
+        && isValidOptionalNumber(data, 'defaultAmount')
+        && (!('autoReminder' in data) || data.autoReminder == null || data.autoReminder is bool);
+    }
+
+    function isValidBill(data, userId) {
+      return hasRequiredFields(data, ['billAccountId', 'userId', 'billPeriod', 'billDate', 'dueDate', 'amount', 'status'])
+        && data.billAccountId is string && data.billAccountId.size() <= 100
+        && data.userId == userId
+        && data.billPeriod is string && data.billPeriod.size() <= 50
+        && isTimestampOrDateString(data.billDate)
+        && isTimestampOrDateString(data.dueDate)
+        && data.amount is number && data.amount >= 0
+        && data.status in ['unpaid', 'paid', 'overdue', 'partially_paid']
+        && isValidOptionalNumber(data, 'minimumDue')
+        && isValidOptionalString(data, 'invoiceDocumentId', 100)
+        && isValidOptionalString(data, 'notes', 1000);
+    }
+
+    function isValidBillPayment(data) {
+      return hasRequiredFields(data, ['billId', 'billAccountId', 'amountPaid', 'paymentDate', 'paymentMethod'])
+        && data.billId is string && data.billId.size() <= 100
+        && data.billAccountId is string && data.billAccountId.size() <= 100
+        && data.amountPaid is number && data.amountPaid >= 0
+        && isTimestampOrDateString(data.paymentDate)
+        && data.paymentMethod is string && data.paymentMethod.size() <= 50
+        && isValidOptionalString(data, 'transactionRef', 100)
+        && isValidOptionalString(data, 'receiptDocumentId', 100)
+        && isValidOptionalString(data, 'notes', 1000);
+    }
+
+    function isValidDocumentRecord(data, userId) {
+      return hasRequiredFields(data, ['userId', 'title', 'category', 'fileUrl', 'mimeType', 'fileSizeBytes', 'createdAt'])
+        && data.userId == userId
+        && data.title is string && data.title.size() <= 150
+        && data.category is string && data.category.size() <= 50
+        && data.fileUrl is string && data.fileUrl.size() <= 2048
+        && data.mimeType is string && data.mimeType.size() <= 100
+        && data.fileSizeBytes is number && data.fileSizeBytes >= 0
+        && data.createdAt is timestamp
+        && isValidOptionalString(data, 'storagePath', 500)
+        && isValidOptionalString(data, 'relatedProductId', 100)
+        && isValidOptionalString(data, 'relatedInstallmentId', 100)
+        && isValidOptionalString(data, 'relatedBillId', 100)
+        && isValidOptionalList(data, 'tags', 20)
+        && isValidOptionalString(data, 'notes', 1000);
+    }
+
+    function isValidReminder(data, userId) {
+      return hasRequiredFields(data, ['userId', 'title', 'module', 'status', 'dueDate', 'createdAt'])
+        && data.userId == userId
+        && data.title is string && data.title.size() <= 150
+        && data.module is string && data.module.size() <= 50
+        && data.status in ['pending', 'snoozed', 'completed']
+        && isTimestampOrDateString(data.dueDate)
+        && data.createdAt is timestamp
+        && isValidOptionalString(data, 'description', 1000)
+        && isValidOptionalString(data, 'relatedId', 100)
+        && isValidOptionalDate(data, 'snoozedUntil')
+        && isValidOptionalDate(data, 'completedAt');
+    }
+
+    function isValidVehicle(data) {
+      return hasRequiredFields(data, ['id', 'name', 'type', 'brand', 'model', 'registrationNumber', 'purchaseDate', 'currentOdometer', 'insuranceExpiry', 'pucExpiry'])
+        && data.id is string && data.id.size() <= 100
+        && data.name is string && data.name.size() <= 100
+        && data.type is string && data.type.size() <= 50
+        && data.brand is string && data.brand.size() <= 100
+        && data.model is string && data.model.size() <= 100
+        && data.registrationNumber is string && data.registrationNumber.size() <= 50
+        && isTimestampOrDateString(data.purchaseDate)
+        && data.currentOdometer is number && data.currentOdometer >= 0
+        && isTimestampOrDateString(data.insuranceExpiry)
+        && isTimestampOrDateString(data.pucExpiry)
+        && isValidOptionalNumber(data, 'loanEmiAmount')
+        && isValidOptionalDate(data, 'nextServiceDate')
+        && isValidOptionalString(data, 'fastagId', 50);
+    }
+
+    function isValidVehicleService(data) {
+      return hasRequiredFields(data, ['id', 'vehicleId', 'serviceDate', 'odometerReading', 'serviceType', 'workPerformed', 'totalCost', 'serviceCenter'])
+        && data.id is string && data.id.size() <= 100
+        && data.vehicleId is string && data.vehicleId.size() <= 100
+        && isTimestampOrDateString(data.serviceDate)
+        && data.odometerReading is number && data.odometerReading >= 0
+        && data.serviceType is string && data.serviceType.size() <= 100
+        && data.workPerformed is string && data.workPerformed.size() <= 1000
+        && data.totalCost is number && data.totalCost >= 0
+        && data.serviceCenter is string && data.serviceCenter.size() <= 200;
+    }
+
+    function isValidTransaction(data) {
+      return hasRequiredFields(data, ['id', 'type', 'category', 'amount', 'date', 'description', 'paymentMethod'])
+        && data.id is string && data.id.size() <= 100
+        && data.type in ['Income', 'Expense']
+        && data.category is string && data.category.size() <= 50
+        && data.amount is number && data.amount >= 0
+        && isTimestampOrDateString(data.date)
+        && data.description is string && data.description.size() <= 500
+        && data.paymentMethod is string && data.paymentMethod.size() <= 50;
+    }
+
+    function isValidInvestment(data) {
+      return hasRequiredFields(data, ['id', 'title', 'type', 'investedAmount', 'currentAmount', 'maturityDate', 'accountNumber'])
+        && data.id is string && data.id.size() <= 100
+        && data.title is string && data.title.size() <= 150
+        && data.type is string && data.type.size() <= 50
+        && data.investedAmount is number && data.investedAmount >= 0
+        && data.currentAmount is number && data.currentAmount >= 0
+        && isTimestampOrDateString(data.maturityDate)
+        && data.accountNumber is string && data.accountNumber.size() <= 100;
+    }
+
+    function isValidHouseholdExpense(data) {
+      return hasRequiredFields(data, ['id', 'category', 'providerName', 'amount', 'dueDate', 'status', 'period'])
+        && data.id is string && data.id.size() <= 100
+        && data.category is string && data.category.size() <= 50
+        && data.providerName is string && data.providerName.size() <= 100
+        && data.amount is number && data.amount >= 0
+        && isTimestampOrDateString(data.dueDate)
+        && data.status in ['paid', 'unpaid']
+        && data.period is string && data.period.size() <= 50;
+    }
+
+    function isValidProperty(data) {
+      return hasRequiredFields(data, ['id', 'title', 'propertyType', 'address', 'purchasePrice', 'purchaseDate', 'propertyTaxAmount', 'taxDueDate'])
+        && data.id is string && data.id.size() <= 100
+        && data.title is string && data.title.size() <= 150
+        && data.propertyType is string && data.propertyType.size() <= 50
+        && data.address is string && data.address.size() <= 300
+        && data.purchasePrice is number && data.purchasePrice >= 0
+        && isTimestampOrDateString(data.purchaseDate)
+        && data.propertyTaxAmount is number && data.propertyTaxAmount >= 0
+        && isTimestampOrDateString(data.taxDueDate)
+        && isValidOptionalNumber(data, 'monthlyRentIncome');
+    }
+
+    function isValidPropertyMaintenance(data) {
+      return hasRequiredFields(data, ['id', 'propertyId', 'title', 'category', 'cost', 'date', 'contractorName'])
+        && data.id is string && data.id.size() <= 100
+        && data.propertyId is string && data.propertyId.size() <= 100
+        && data.title is string && data.title.size() <= 150
+        && data.category is string && data.category.size() <= 50
+        && data.cost is number && data.cost >= 0
+        && isTimestampOrDateString(data.date)
+        && data.contractorName is string && data.contractorName.size() <= 150;
+    }
+
+    function isValidJournal(data) {
+      return hasRequiredFields(data, ['id', 'title', 'content', 'date', 'mood', 'tags'])
+        && data.id is string && data.id.size() <= 100
+        && data.title is string && data.title.size() <= 150
+        && data.content is string && data.content.size() <= 10000
+        && isTimestampOrDateString(data.date)
+        && data.mood is string && data.mood.size() <= 50
+        && data.tags is list && data.tags.size() <= 20
+        && isValidOptionalString(data, 'gratitudeNote', 1000)
+        && isValidOptionalList(data, 'photoUrls', 10);
+    }
+
+    function isValidGoal(data) {
+      return hasRequiredFields(data, ['id', 'title', 'category', 'targetDate', 'progressPercentage', 'isCompleted'])
+        && data.id is string && data.id.size() <= 100
+        && data.title is string && data.title.size() <= 150
+        && data.category is string && data.category.size() <= 50
+        && isTimestampOrDateString(data.targetDate)
+        && data.progressPercentage is number && data.progressPercentage >= 0.0 && data.progressPercentage <= 1.0
+        && data.isCompleted is bool;
+    }
+
+    function isValidEvent(data) {
+      return hasRequiredFields(data, ['id', 'title', 'eventType', 'date'])
+        && data.id is string && data.id.size() <= 100
+        && data.title is string && data.title.size() <= 150
+        && data.eventType is string && data.eventType.size() <= 50
+        && isTimestampOrDateString(data.date)
+        && isValidOptionalString(data, 'giftIdeas', 1000);
+    }
+
+    // ===============================================================
+    // Root User Profile Rule
+    // ===============================================================
+
     match /users/{userId} {
-      allow read, write: if isOwner(userId);
-      
-      // Subcollections
-      match /{allSubcollections=**} {
-        allow read, write: if isOwner(userId);
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUserProfile(request.resource.data);
+      allow update: if isOwner(userId)
+                    && isValidUserProfile(request.resource.data)
+                    && areImmutableFieldsUnchanged(['createdAt', 'email']);
+      allow delete: if isOwner(userId);
+
+      // -------------------------------------------------------------
+      // Subcollections (Strict User Ownership & Validator Pattern)
+      // -------------------------------------------------------------
+
+      match /products/{productId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidProduct(request.resource.data, userId);
+        allow update: if isOwner(userId)
+                      && isValidProduct(request.resource.data, userId)
+                      && areImmutableFieldsUnchanged(['userId', 'createdAt']);
+
+        match /serviceRecords/{recordId} {
+          allow read, delete: if isOwner(userId);
+          allow create: if isOwner(userId) && isValidProductServiceRecord(request.resource.data);
+          allow update: if isOwner(userId)
+                        && isValidProductServiceRecord(request.resource.data)
+                        && areImmutableFieldsUnchanged(['productId', 'createdAt']);
+        }
+      }
+
+      match /children/{childId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidChild(request.resource.data, userId);
+        allow update: if isOwner(userId)
+                      && isValidChild(request.resource.data, userId)
+                      && areImmutableFieldsUnchanged(['userId', 'createdAt']);
+      }
+
+      match /schools/{schoolId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidSchool(request.resource.data, userId);
+        allow update: if isOwner(userId)
+                      && isValidSchool(request.resource.data, userId)
+                      && areImmutableFieldsUnchanged(['userId', 'createdAt']);
+      }
+
+      match /academicYears/{yearId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidAcademicYear(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidAcademicYear(request.resource.data)
+                      && areImmutableFieldsUnchanged(['childId', 'schoolId', 'createdAt']);
+      }
+
+      match /feeStructures/{structureId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidFeeStructure(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidFeeStructure(request.resource.data)
+                      && areImmutableFieldsUnchanged(['academicYearId', 'createdAt']);
+      }
+
+      match /feeInstallments/{installmentId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidFeeInstallment(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidFeeInstallment(request.resource.data)
+                      && areImmutableFieldsUnchanged(['feeStructureId', 'childId', 'installmentNumber']);
+      }
+
+      match /feePayments/{paymentId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidFeePayment(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidFeePayment(request.resource.data)
+                      && areImmutableFieldsUnchanged(['installmentId', 'paymentDate']);
+      }
+
+      match /billAccounts/{accountId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidBillAccount(request.resource.data, userId);
+        allow update: if isOwner(userId)
+                      && isValidBillAccount(request.resource.data, userId)
+                      && areImmutableFieldsUnchanged(['userId', 'createdAt']);
+      }
+
+      match /bills/{billId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidBill(request.resource.data, userId);
+        allow update: if isOwner(userId)
+                      && isValidBill(request.resource.data, userId)
+                      && areImmutableFieldsUnchanged(['userId', 'billAccountId']);
+      }
+
+      match /billPayments/{paymentId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidBillPayment(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidBillPayment(request.resource.data)
+                      && areImmutableFieldsUnchanged(['billId', 'billAccountId', 'paymentDate']);
+      }
+
+      match /documents/{documentId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidDocumentRecord(request.resource.data, userId);
+        allow update: if isOwner(userId)
+                      && isValidDocumentRecord(request.resource.data, userId)
+                      && areImmutableFieldsUnchanged(['userId', 'createdAt']);
+      }
+
+      match /reminders/{reminderId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidReminder(request.resource.data, userId);
+        allow update: if isOwner(userId)
+                      && isValidReminder(request.resource.data, userId)
+                      && areImmutableFieldsUnchanged(['userId', 'createdAt']);
+      }
+
+      match /vehicles/{vehicleId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidVehicle(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidVehicle(request.resource.data)
+                      && areImmutableFieldsUnchanged(['id']);
+      }
+
+      match /serviceRecords/{serviceId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidVehicleService(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidVehicleService(request.resource.data)
+                      && areImmutableFieldsUnchanged(['id', 'vehicleId']);
+      }
+
+      match /transactions/{transactionId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidTransaction(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidTransaction(request.resource.data)
+                      && areImmutableFieldsUnchanged(['id']);
+      }
+
+      match /investments/{investmentId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidInvestment(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidInvestment(request.resource.data)
+                      && areImmutableFieldsUnchanged(['id']);
+      }
+
+      match /householdExpenses/{expenseId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidHouseholdExpense(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidHouseholdExpense(request.resource.data)
+                      && areImmutableFieldsUnchanged(['id']);
+      }
+
+      match /properties/{propertyId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidProperty(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidProperty(request.resource.data)
+                      && areImmutableFieldsUnchanged(['id']);
+      }
+
+      match /propertyMaintenances/{maintenanceId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidPropertyMaintenance(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidPropertyMaintenance(request.resource.data)
+                      && areImmutableFieldsUnchanged(['id', 'propertyId']);
+      }
+
+      match /journals/{journalId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidJournal(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidJournal(request.resource.data)
+                      && areImmutableFieldsUnchanged(['id']);
+      }
+
+      match /goals/{goalId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidGoal(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidGoal(request.resource.data)
+                      && areImmutableFieldsUnchanged(['id']);
+      }
+
+      match /events/{eventId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidEvent(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidEvent(request.resource.data)
+                      && areImmutableFieldsUnchanged(['id']);
       }
     }
 
-    // Default deny for all other collections
+    // ===============================================================
+    // Username Registry (Safe Lookup without Profile Exposure)
+    // ===============================================================
+    match /usernames/{username} {
+      // Individual lookup by authenticated users; listing all usernames is forbidden
+      allow get: if isAuthenticated();
+      allow list: if false;
+      allow create: if isAuthenticated() && isValidUsernameMapping(username, request.resource.data);
+      allow update: if false;
+      allow delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
+    }
+
+    // ===============================================================
+    // Global Default Deny
+    // ===============================================================
     match /{document=**} {
       allow read, write: if false;
     }

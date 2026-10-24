@@ -74,17 +74,17 @@ class MyDayScreen extends ConsumerWidget {
                           ElevatedButton.icon(
                             icon: const Icon(Icons.edit_note),
                             label: const Text('Journal Today'),
-                            onPressed: () => context.go('/personal'),
+                            onPressed: () => context.push('/personal'),
                           ),
                           ElevatedButton.icon(
                             icon: const Icon(Icons.payment),
                             label: const Text('Pay Bill'),
-                            onPressed: () => context.go('/payments'),
+                            onPressed: () => context.push('/payments'),
                           ),
                           OutlinedButton.icon(
                             icon: const Icon(Icons.auto_stories),
                             label: const Text('All Diaries'),
-                            onPressed: () => context.go('/diaries'),
+                            onPressed: () => context.push('/diaries'),
                           ),
                         ],
                       ),
@@ -108,7 +108,7 @@ class MyDayScreen extends ConsumerWidget {
                     ),
                   ),
                   TextButton(
-                    onPressed: () => context.go('/payments'),
+                    onPressed: () => context.push('/payments'),
                     child: const Text('View All'),
                   ),
                 ],
@@ -147,7 +147,7 @@ class MyDayScreen extends ConsumerWidget {
                               const StatusBadge(status: 'unpaid'),
                             ],
                           ),
-                          onTap: () => context.go('/payments'),
+                          onTap: () => context.push('/payments'),
                         ),
                       );
                     }).toList(),
@@ -172,7 +172,7 @@ class MyDayScreen extends ConsumerWidget {
                     ),
                   ),
                   TextButton(
-                    onPressed: () => context.go('/reminders'),
+                    onPressed: () => context.push('/reminders'),
                     child: const Text('Reminders'),
                   ),
                 ],
@@ -200,7 +200,7 @@ class MyDayScreen extends ConsumerWidget {
                           ),
                           title: Text(r.title, style: const TextStyle(fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
                           subtitle: Text(r.description.isEmpty ? 'Due: ${AppFormatters.date(r.dueDate)}' : r.description),
-                          onTap: () => context.go('/reminders'),
+                          onTap: () => context.push('/reminders'),
                         ),
                       );
                     }).toList(),

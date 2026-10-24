@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../core/widgets/app_scaffold.dart';
 
 // Screens & 5 Main Hubs
@@ -16,19 +18,44 @@ import '../features/warranty/screens/product_form_screen.dart';
 import '../features/warranty/screens/ocr_invoice_review_screen.dart';
 import '../features/school_fees/screens/school_fees_dashboard_screen.dart';
 import '../features/school_fees/screens/child_form_screen.dart';
+import '../features/school_fees/models/school_fees_models.dart';
 import '../features/school_fees/screens/fee_structure_form_screen.dart';
 import '../features/school_fees/screens/record_fee_payment_screen.dart';
 import '../features/bills/screens/bills_dashboard_screen.dart';
 import '../features/bills/screens/bill_account_form_screen.dart';
 import '../features/bills/screens/record_bill_payment_screen.dart';
 import '../features/vehicle/screens/vehicle_dashboard_screen.dart';
+import '../features/vehicle/screens/vehicle_form_screen.dart';
 import '../features/finance/screens/finance_dashboard_screen.dart';
 import '../features/household/screens/household_dashboard_screen.dart';
 import '../features/property/screens/property_dashboard_screen.dart';
 import '../features/personal/screens/personal_dashboard_screen.dart';
 
+class AuthRefreshListenable extends ChangeNotifier {
+  AuthRefreshListenable() {
+    FirebaseAuth.instance.authStateChanges().listen((_) {
+      notifyListeners();
+    });
+  }
+}
+
+final _authRefreshListenable = AuthRefreshListenable();
+
 final router = GoRouter(
   initialLocation: '/',
+  refreshListenable: _authRefreshListenable,
+  redirect: (context, state) {
+    final bool loggedIn = FirebaseAuth.instance.currentUser != null;
+    final bool isLoggingIn = state.matchedLocation == '/auth/login';
+
+    if (!loggedIn && !isLoggingIn) {
+      return '/auth/login';
+    }
+    if (loggedIn && isLoggingIn) {
+      return '/';
+    }
+    return null;
+  },
   routes: [
     GoRoute(
       path: '/auth/login',
@@ -86,7 +113,9 @@ final router = GoRouter(
         ),
         GoRoute(
           path: '/school-fees/add-child',
-          builder: (context, state) => const ChildFormScreen(),
+          builder: (context, state) => ChildFormScreen(
+            child: state.extra as Child?,
+          ),
         ),
         GoRoute(
           path: '/school-fees/add-structure',
@@ -94,7 +123,9 @@ final router = GoRouter(
         ),
         GoRoute(
           path: '/school-fees/record-payment',
-          builder: (context, state) => const RecordFeePaymentScreen(),
+          builder: (context, state) => RecordFeePaymentScreen(
+            installment: state.extra as FeeInstallment?,
+          ),
         ),
         GoRoute(
           path: '/bills',
@@ -111,6 +142,10 @@ final router = GoRouter(
         GoRoute(
           path: '/vehicle',
           builder: (context, state) => const VehicleDashboardScreen(),
+        ),
+        GoRoute(
+          path: '/vehicle/add',
+          builder: (context, state) => const VehicleFormScreen(),
         ),
         GoRoute(
           path: '/finance',
