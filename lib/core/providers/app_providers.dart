@@ -104,6 +104,18 @@ class UserNotifier extends StateNotifier<UserProfile?> {
     state = updated;
   }
 
+  Future<void> deleteAccount({
+    String? password,
+    Function(String status)? onProgress,
+  }) async {
+    final repo = ref.read(authRepositoryProvider);
+    await repo.deleteUserAccountAndData(
+      password: password,
+      onProgress: onProgress,
+    );
+    state = null;
+  }
+
   @override
   void dispose() {
     _authSubscription?.cancel();

@@ -10,6 +10,7 @@ import '../features/payments/screens/payments_hub_screen.dart';
 import '../features/documents/screens/document_library_screen.dart';
 import '../features/reminders/screens/reminders_screen.dart';
 import '../features/profile/screens/profile_screen.dart';
+import '../features/profile/screens/account_settings_screen.dart';
 import '../features/auth/screens/login_screen.dart';
 import '../features/reports/screens/financial_reports_screen.dart';
 
@@ -177,6 +178,10 @@ final router = GoRouter(
         GoRoute(
           path: '/profile',
           builder: (context, state) => const ProfileScreen(),
+        ),
+        GoRoute(
+          path: '/profile/account-settings',
+          builder: (context, state) => const AccountSettingsScreen(),
         ),
       ],
     ),

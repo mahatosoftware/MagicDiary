@@ -150,6 +150,14 @@ class ProfileScreen extends ConsumerWidget {
               child: Column(
                 children: [
                   ListTile(
+                    leading: const Icon(Icons.manage_accounts_outlined, color: Colors.indigo),
+                    title: const Text('Account Settings'),
+                    subtitle: const Text('Security, credentials & delete account'),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+                    onTap: () => context.push('/profile/account-settings'),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
                     leading: Icon(
                       isGoogleAuth ? Icons.g_mobiledata_rounded : Icons.lock_outline_rounded,
                       color: theme.primaryColor,
