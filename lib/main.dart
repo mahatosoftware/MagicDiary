@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'config/theme.dart';
 import 'config/routes.dart';
+import 'core/ads/ad_manager.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,6 +15,13 @@ void main() async {
     );
   } catch (e) {
     debugPrint('Firebase initialization note: $e');
+  }
+
+  // Initialize Google Mobile Ads SDK (AdMob)
+  try {
+    await AdManager.instance.initialize();
+  } catch (e) {
+    debugPrint('AdMob initialization note: $e');
   }
 
   runApp(

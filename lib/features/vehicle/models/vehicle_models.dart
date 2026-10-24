@@ -62,6 +62,38 @@ class Vehicle {
             : null,
         fastagId: json['fastagId'] as String?,
       );
+
+  Vehicle copyWith({
+    String? id,
+    String? name,
+    String? type,
+    String? brand,
+    String? model,
+    String? registrationNumber,
+    DateTime? purchaseDate,
+    int? currentOdometer,
+    DateTime? insuranceExpiry,
+    DateTime? pucExpiry,
+    double? loanEmiAmount,
+    DateTime? nextServiceDate,
+    String? fastagId,
+  }) {
+    return Vehicle(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      type: type ?? this.type,
+      brand: brand ?? this.brand,
+      model: model ?? this.model,
+      registrationNumber: registrationNumber ?? this.registrationNumber,
+      purchaseDate: purchaseDate ?? this.purchaseDate,
+      currentOdometer: currentOdometer ?? this.currentOdometer,
+      insuranceExpiry: insuranceExpiry ?? this.insuranceExpiry,
+      pucExpiry: pucExpiry ?? this.pucExpiry,
+      loanEmiAmount: loanEmiAmount ?? this.loanEmiAmount,
+      nextServiceDate: nextServiceDate ?? this.nextServiceDate,
+      fastagId: fastagId ?? this.fastagId,
+    );
+  }
 }
 
 class ServiceRecord {
@@ -106,4 +138,26 @@ class ServiceRecord {
         totalCost: (json['totalCost'] as num).toDouble(),
         serviceCenter: json['serviceCenter'] as String,
       );
+
+  ServiceRecord copyWith({
+    String? id,
+    String? vehicleId,
+    DateTime? serviceDate,
+    int? odometerReading,
+    String? serviceType,
+    String? workPerformed,
+    double? totalCost,
+    String? serviceCenter,
+  }) {
+    return ServiceRecord(
+      id: id ?? this.id,
+      vehicleId: vehicleId ?? this.vehicleId,
+      serviceDate: serviceDate ?? this.serviceDate,
+      odometerReading: odometerReading ?? this.odometerReading,
+      serviceType: serviceType ?? this.serviceType,
+      workPerformed: workPerformed ?? this.workPerformed,
+      totalCost: totalCost ?? this.totalCost,
+      serviceCenter: serviceCenter ?? this.serviceCenter,
+    );
+  }
 }

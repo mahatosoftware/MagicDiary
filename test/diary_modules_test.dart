@@ -58,6 +58,71 @@ void main() {
       expect(fromJson.currentOdometer, equals(18450));
     });
 
+    test('Vehicle copyWith supports editing fields and renewal dates', () {
+      final vehicle = Vehicle(
+        id: 'veh_1',
+        name: 'Creta SX',
+        type: 'Car',
+        brand: 'Hyundai',
+        model: 'Creta',
+        registrationNumber: 'KA-01-MJ-8821',
+        purchaseDate: DateTime(2023, 5, 12),
+        currentOdometer: 18450,
+        insuranceExpiry: DateTime(2026, 11, 1),
+        pucExpiry: DateTime(2026, 10, 25),
+      );
+
+      final renewedInsurance = DateTime(2027, 11, 1);
+      final renewedPuc = DateTime(2027, 4, 25);
+
+      final updated = vehicle.copyWith(
+        currentOdometer: 22000,
+        insuranceExpiry: renewedInsurance,
+        pucExpiry: renewedPuc,
+        fastagId: 'FTG-998822',
+        loanEmiAmount: 18500,
+      );
+
+      expect(updated.id, equals('veh_1'));
+      expect(updated.currentOdometer, equals(22000));
+      expect(updated.insuranceExpiry, equals(renewedInsurance));
+      expect(updated.pucExpiry, equals(renewedPuc));
+      expect(updated.fastagId, equals('FTG-998822'));
+      expect(updated.loanEmiAmount, equals(18500.0));
+    });
+
+    test('ServiceRecord model serialization and vehicle linkage work', () {
+      final service = ServiceRecord(
+        id: 'svc_101',
+        vehicleId: 'veh_1',
+        serviceDate: DateTime(2026, 9, 15),
+        odometerReading: 20500,
+        serviceType: 'Periodic Service',
+        workPerformed: 'Full synthetic oil change & wheel balancing',
+        totalCost: 6500.0,
+        serviceCenter: 'Hyundai Motor Plaza',
+      );
+
+      final json = service.toJson();
+      final fromJson = ServiceRecord.fromJson(json);
+
+      expect(fromJson.id, equals('svc_101'));
+      expect(fromJson.vehicleId, equals('veh_1'));
+      expect(fromJson.totalCost, equals(6500.0));
+      expect(fromJson.serviceType, equals('Periodic Service'));
+
+      final editedService = fromJson.copyWith(
+        totalCost: 7200.0,
+        workPerformed: 'Full synthetic oil change, wheel balancing, and coolant top-up',
+        odometerReading: 20600,
+      );
+
+      expect(editedService.id, equals('svc_101'));
+      expect(editedService.totalCost, equals(7200.0));
+      expect(editedService.odometerReading, equals(20600));
+      expect(editedService.workPerformed, contains('coolant top-up'));
+    });
+
     test('FinancialTransaction model toJson and fromJson work', () {
       final tx = FinancialTransaction(
         id: 'tx_1',
@@ -248,6 +313,44 @@ void main() {
 
       expect(fromJson.title, equals('Productive Day'));
       expect(fromJson.mood, equals('😌 Calm'));
+    });
+
+    test('PersonalGoal model toJson and fromJson work with progress calculation', () {
+      final goal = PersonalGoal(
+        id: 'goal_1',
+        title: 'Run 5km Weekly',
+        category: 'Health & Fitness',
+        targetDate: DateTime(2026, 12, 31),
+        progressPercentage: 0.65,
+        isCompleted: false,
+      );
+
+      final json = goal.toJson();
+      final fromJson = PersonalGoal.fromJson(json);
+
+      expect(fromJson.id, equals('goal_1'));
+      expect(fromJson.title, equals('Run 5km Weekly'));
+      expect(fromJson.category, equals('Health & Fitness'));
+      expect(fromJson.progressPercentage, equals(0.65));
+      expect(fromJson.isCompleted, isFalse);
+    });
+
+    test('SpecialEvent model toJson and fromJson work', () {
+      final event = SpecialEvent(
+        id: 'evt_1',
+        title: "Mom's Birthday",
+        eventType: 'Birthday',
+        date: DateTime(2026, 11, 25),
+        giftIdeas: 'Kindle Paperwhite',
+      );
+
+      final json = event.toJson();
+      final fromJson = SpecialEvent.fromJson(json);
+
+      expect(fromJson.id, equals('evt_1'));
+      expect(fromJson.title, equals("Mom's Birthday"));
+      expect(fromJson.eventType, equals('Birthday'));
+      expect(fromJson.giftIdeas, equals('Kindle Paperwhite'));
     });
 
     test('Product model with standard warranty serializes and deserializes', () {

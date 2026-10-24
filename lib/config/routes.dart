@@ -11,6 +11,7 @@ import '../features/documents/screens/document_library_screen.dart';
 import '../features/reminders/screens/reminders_screen.dart';
 import '../features/profile/screens/profile_screen.dart';
 import '../features/auth/screens/login_screen.dart';
+import '../features/reports/screens/financial_reports_screen.dart';
 
 // Diary Module Screens
 import '../features/warranty/screens/product_list_screen.dart';
@@ -26,6 +27,7 @@ import '../features/bills/screens/bill_account_form_screen.dart';
 import '../features/bills/screens/record_bill_payment_screen.dart';
 import '../features/vehicle/screens/vehicle_dashboard_screen.dart';
 import '../features/vehicle/screens/vehicle_form_screen.dart';
+import '../features/vehicle/models/vehicle_models.dart';
 import '../features/finance/screens/finance_dashboard_screen.dart';
 import '../features/household/screens/household_dashboard_screen.dart';
 import '../features/property/screens/property_dashboard_screen.dart';
@@ -79,7 +81,12 @@ final router = GoRouter(
           path: '/payments',
           builder: (context, state) => const PaymentsHubScreen(),
         ),
-        // 4. My Documents Hub
+        // 4. Reports Hub (Financial Analytics)
+        GoRoute(
+          path: '/reports',
+          builder: (context, state) => const FinancialReportsScreen(),
+        ),
+        // Future: My Documents Hub
         GoRoute(
           path: '/documents',
           builder: (context, state) => const DocumentLibraryScreen(),
@@ -145,7 +152,15 @@ final router = GoRouter(
         ),
         GoRoute(
           path: '/vehicle/add',
-          builder: (context, state) => const VehicleFormScreen(),
+          builder: (context, state) => VehicleFormScreen(
+            vehicle: state.extra as Vehicle?,
+          ),
+        ),
+        GoRoute(
+          path: '/vehicle/edit',
+          builder: (context, state) => VehicleFormScreen(
+            vehicle: state.extra as Vehicle?,
+          ),
         ),
         GoRoute(
           path: '/finance',

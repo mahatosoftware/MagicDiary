@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/ads/admob_config.dart';
+import '../../../core/ads/widgets/ad_banner_widget.dart';
 
 class DiariesHubScreen extends StatelessWidget {
   const DiariesHubScreen({super.key});
@@ -95,6 +97,13 @@ class DiariesHubScreen extends StatelessWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 20),
+            // AdMob Placement 1: Diaries Hub Bottom Banner
+            const AdBannerWidget(
+              placement: AdMobConfig.placementDiariesBanner,
+              margin: EdgeInsets.symmetric(vertical: 12),
+            ),
+            const SizedBox(height: 16),
           ],
         ),
       ),

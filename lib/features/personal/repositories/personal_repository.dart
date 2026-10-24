@@ -81,6 +81,23 @@ class PersonalRepository {
         .collection('events')
         .doc(event.id)
         .set(event.toJson());
+
+    // Sync reminder
+    try {
+      final remRef = firestore.collection('users').doc(userId).collection('reminders').doc('reminder_evt_${event.id}');
+      await remRef.set({
+        'id': 'reminder_evt_${event.id}',
+        'userId': userId,
+        'title': '${event.eventType}: ${event.title}',
+        'description': event.giftIdeas != null ? 'Gift Ideas: ${event.giftIdeas}' : '${event.eventType} celebration',
+        'module': 'Personal',
+        'status': 'pending',
+        'dueDate': Timestamp.fromDate(event.date),
+        'relatedId': event.id,
+        'actionRoute': '/personal',
+        'createdAt': Timestamp.fromDate(DateTime.now()),
+      }, SetOptions(merge: true));
+    } catch (_) {}
   }
 
   Future<void> updateGoalProgress(String userId, String goalId, double progress, bool isCompleted) async {
@@ -94,5 +111,25 @@ class PersonalRepository {
           'progressPercentage': progress,
           'isCompleted': isCompleted,
         });
+  }
+
+  Future<void> deleteGoal(String userId, String goalId) async {
+    if (userId.isEmpty || goalId.isEmpty) return;
+    await firestore.collection('users').doc(userId).collection('goals').doc(goalId).delete();
+  }
+
+  Future<void> deleteEvent(String userId, String eventId) async {
+    if (userId.isEmpty || eventId.isEmpty) return;
+    await firestore.collection('users').doc(userId).collection('events').doc(eventId).delete();
+
+    try {
+      final remRef = firestore.collection('users').doc(userId).collection('reminders').doc('reminder_evt_$eventId');
+      await remRef.delete();
+    } catch (_) {}
+  }
+
+  Future<void> deleteJournal(String userId, String journalId) async {
+    if (userId.isEmpty || journalId.isEmpty) return;
+    await firestore.collection('users').doc(userId).collection('journals').doc(journalId).delete();
   }
 }

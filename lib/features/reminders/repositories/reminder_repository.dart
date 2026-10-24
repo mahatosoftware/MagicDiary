@@ -70,4 +70,45 @@ class ReminderRepository {
       'completedAt': Timestamp.fromDate(DateTime.now()),
     });
   }
+
+  Future<void> completeReminderByRelatedId(String userId, String relatedId, {DateTime? completedAt}) async {
+    if (userId.isEmpty || relatedId.isEmpty) return;
+    try {
+      final snap = await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('reminders')
+          .where('relatedId', isEqualTo: relatedId)
+          .get();
+      for (final doc in snap.docs) {
+        await doc.reference.update({
+          'status': 'completed',
+          'completedAt': Timestamp.fromDate(completedAt ?? DateTime.now()),
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> deleteReminder(String userId, String reminderId) async {
+    if (userId.isEmpty || reminderId.isEmpty) return;
+    await _firestore
+        .collection('users')
+        .doc(userId)
+        .collection('reminders')
+        .doc(reminderId)
+        .delete();
+  }
+
+  Future<void> syncReminder(String userId, Reminder reminder) async {
+    if (userId.isEmpty) return;
+    final docRef = _firestore.collection('users').doc(userId).collection('reminders').doc(reminder.id);
+    final snap = await docRef.get();
+    final createdAt = snap.exists && snap.data()?['createdAt'] is Timestamp
+        ? (snap.data()!['createdAt'] as Timestamp)
+        : Timestamp.fromDate(DateTime.now());
+
+    final map = reminder.toMap();
+    map['createdAt'] = createdAt;
+    await docRef.set(map, SetOptions(merge: true));
+  }
 }

@@ -12,6 +12,7 @@ import '../../features/documents/repositories/document_repository.dart';
 import '../../features/documents/models/document_record.dart';
 import '../../features/reminders/repositories/reminder_repository.dart';
 import '../../features/reminders/models/reminder.dart';
+import '../../features/reminders/services/reminder_sync_service.dart';
 
 // New Diary Repositories
 import '../../features/vehicle/repositories/vehicle_repository.dart';
@@ -34,6 +35,7 @@ final schoolFeesRepositoryProvider = Provider<SchoolFeesRepository>((ref) => Sch
 final billsRepositoryProvider = Provider<BillsRepository>((ref) => BillsRepository());
 final documentRepositoryProvider = Provider<DocumentRepository>((ref) => DocumentRepository());
 final reminderRepositoryProvider = Provider<ReminderRepository>((ref) => ReminderRepository());
+final reminderSyncServiceProvider = Provider<ReminderSyncService>((ref) => ReminderSyncService());
 
 final vehicleRepositoryProvider = Provider<VehicleRepository>((ref) => VehicleRepository());
 final financeRepositoryProvider = Provider<FinanceRepository>((ref) => FinanceRepository());

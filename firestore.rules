@@ -49,6 +49,10 @@ rules_version = '2';
 //   - journals/{journalId} (Personal Journal & Diary)
 //   - goals/{goalId} (Personal Life Goals)
 //   - events/{eventId} (Special Events & Milestones)
+//   - financialTransactions/{transactionId} (Canonical Financial Transactions)
+//   - financialObligations/{obligationId} (Canonical Financial Obligations)
+//   - recurringSchedules/{scheduleId} (Canonical Recurring Schedules)
+//   - financialCategories/{categoryId} (Standardized Financial Categories)
 //
 // ===============================================================
 
@@ -421,6 +425,94 @@ service cloud.firestore {
         && isValidOptionalString(data, 'giftIdeas', 1000);
     }
 
+    function isValidCanonicalTransaction(data, userId) {
+      return hasRequiredFields(data, ['id', 'userId', 'type', 'status', 'amountMinorUnits', 'currencyCode', 'categoryId', 'sourceModule', 'description', 'transactionDate'])
+        && data.userId == userId
+        && data.id is string && data.id.size() <= 100
+        && data.type in ['income', 'expense', 'transfer', 'refund', 'reimbursement', 'adjustment']
+        && data.status in ['pending', 'completed', 'cancelled', 'failed']
+        && data.amountMinorUnits is int && data.amountMinorUnits >= 0
+        && data.currencyCode is string && data.currencyCode.size() <= 10
+        && data.categoryId is string && data.categoryId.size() <= 100
+        && data.sourceModule is string && data.sourceModule.size() <= 50
+        && data.description is string && data.description.size() <= 500
+        && isTimestampOrDateString(data.transactionDate)
+        && isValidOptionalString(data, 'subcategoryId', 100)
+        && isValidOptionalString(data, 'sourceRecordId', 100)
+        && isValidOptionalString(data, 'accountId', 100)
+        && isValidOptionalString(data, 'paymentMethod', 100)
+        && isValidOptionalString(data, 'merchantOrPayee', 200)
+        && isValidOptionalString(data, 'notes', 2000)
+        && isValidOptionalString(data, 'linkedTransactionId', 100)
+        && isValidOptionalString(data, 'transferGroupId', 100)
+        && isValidOptionalString(data, 'recurrenceId', 100)
+        && (!('isRecurring' in data) || data.isRecurring == null || data.isRecurring is bool)
+        && (!('isDeleted' in data) || data.isDeleted == null || data.isDeleted is bool)
+        && (!('schemaVersion' in data) || data.schemaVersion == null || (data.schemaVersion is int && data.schemaVersion >= 0))
+        && isValidOptionalNumber(data, 'amount')
+        && isValidOptionalDate(data, 'createdAt')
+        && isValidOptionalDate(data, 'updatedAt');
+    }
+
+    function isValidCanonicalObligation(data, userId) {
+      return hasRequiredFields(data, ['id', 'userId', 'title', 'categoryId', 'sourceModule', 'expectedAmountMinorUnits', 'dueDate'])
+        && data.userId == userId
+        && data.id is string && data.id.size() <= 100
+        && data.title is string && data.title.size() <= 200
+        && data.categoryId is string && data.categoryId.size() <= 100
+        && data.sourceModule is string && data.sourceModule.size() <= 50
+        && data.expectedAmountMinorUnits is int && data.expectedAmountMinorUnits >= 0
+        && isTimestampOrDateString(data.dueDate)
+        && isValidOptionalString(data, 'subcategoryId', 100)
+        && isValidOptionalString(data, 'sourceRecordId', 100)
+        && (!('paidAmountMinorUnits' in data) || data.paidAmountMinorUnits == null || (data.paidAmountMinorUnits is int && data.paidAmountMinorUnits >= 0))
+        && isValidOptionalString(data, 'currencyCode', 10)
+        && (!('status' in data) || data.status == null || data.status in ['pending', 'partially_paid', 'paid', 'overdue', 'cancelled'])
+        && isValidOptionalString(data, 'recurrenceId', 100)
+        && isValidOptionalString(data, 'notes', 2000)
+        && isValidOptionalNumber(data, 'expectedAmount')
+        && isValidOptionalDate(data, 'createdAt')
+        && isValidOptionalDate(data, 'updatedAt');
+    }
+
+    function isValidCanonicalSchedule(data, userId) {
+      return hasRequiredFields(data, ['id', 'userId', 'title', 'categoryId', 'sourceModule', 'expectedAmountMinorUnits', 'frequency', 'startDate', 'nextDueDate'])
+        && data.userId == userId
+        && data.id is string && data.id.size() <= 100
+        && data.title is string && data.title.size() <= 200
+        && data.categoryId is string && data.categoryId.size() <= 100
+        && data.sourceModule is string && data.sourceModule.size() <= 50
+        && data.expectedAmountMinorUnits is int && data.expectedAmountMinorUnits >= 0
+        && data.frequency is string && data.frequency.size() <= 50
+        && isTimestampOrDateString(data.startDate)
+        && isTimestampOrDateString(data.nextDueDate)
+        && isValidOptionalString(data, 'subcategoryId', 100)
+        && isValidOptionalString(data, 'sourceRecordId', 100)
+        && isValidOptionalString(data, 'currencyCode', 10)
+        && isValidOptionalDate(data, 'endDate')
+        && (!('dueDayOfMonth' in data) || data.dueDayOfMonth == null || (data.dueDayOfMonth is int && data.dueDayOfMonth >= 1 && data.dueDayOfMonth <= 31))
+        && (!('isActive' in data) || data.isActive == null || data.isActive is bool)
+        && (!('autoReminder' in data) || data.autoReminder == null || data.autoReminder is bool)
+        && isValidOptionalNumber(data, 'expectedAmount')
+        && isValidOptionalDate(data, 'createdAt')
+        && isValidOptionalDate(data, 'updatedAt');
+    }
+
+    function isValidFinancialCategory(data, userId) {
+      return hasRequiredFields(data, ['id', 'displayName'])
+        && data.id is string && data.id.size() <= 100
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
+        && (!('userId' in data) || data.userId == null || (data.userId is string && data.userId == userId))
+        && isValidOptionalString(data, 'parentCategory', 100)
+        && isValidOptionalList(data, 'permittedTypes', 10)
+        && (!('isTransferOrBalanceMovement' in data) || data.isTransferOrBalanceMovement == null || data.isTransferOrBalanceMovement is bool)
+        && isValidOptionalString(data, 'description', 500)
+        && isValidOptionalNumber(data, 'iconCode')
+        && isValidOptionalNumber(data, 'colorValue')
+        && isValidOptionalDate(data, 'createdAt')
+        && isValidOptionalDate(data, 'updatedAt');
+    }
+
     // ===============================================================
     // Root User Profile Rule
     // ===============================================================
@@ -618,6 +710,38 @@ service cloud.firestore {
         allow create: if isOwner(userId) && isValidEvent(request.resource.data);
         allow update: if isOwner(userId)
                       && isValidEvent(request.resource.data)
+                      && areImmutableFieldsUnchanged(['id']);
+      }
+
+      match /financialTransactions/{transactionId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidCanonicalTransaction(request.resource.data, userId);
+        allow update: if isOwner(userId)
+                      && isValidCanonicalTransaction(request.resource.data, userId)
+                      && areImmutableFieldsUnchanged(['id', 'userId']);
+      }
+
+      match /financialObligations/{obligationId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidCanonicalObligation(request.resource.data, userId);
+        allow update: if isOwner(userId)
+                      && isValidCanonicalObligation(request.resource.data, userId)
+                      && areImmutableFieldsUnchanged(['id', 'userId']);
+      }
+
+      match /recurringSchedules/{scheduleId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidCanonicalSchedule(request.resource.data, userId);
+        allow update: if isOwner(userId)
+                      && isValidCanonicalSchedule(request.resource.data, userId)
+                      && areImmutableFieldsUnchanged(['id', 'userId']);
+      }
+
+      match /financialCategories/{categoryId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidFinancialCategory(request.resource.data, userId);
+        allow update: if isOwner(userId)
+                      && isValidFinancialCategory(request.resource.data, userId)
                       && areImmutableFieldsUnchanged(['id']);
       }
     }

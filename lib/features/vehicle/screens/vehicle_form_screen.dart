@@ -7,7 +7,8 @@ import '../../../core/providers/app_providers.dart';
 import '../models/vehicle_models.dart';
 
 class VehicleFormScreen extends ConsumerStatefulWidget {
-  const VehicleFormScreen({super.key});
+  final Vehicle? vehicle;
+  const VehicleFormScreen({super.key, this.vehicle});
 
   @override
   ConsumerState<VehicleFormScreen> createState() => _VehicleFormScreenState();
@@ -33,6 +34,35 @@ class _VehicleFormScreenState extends ConsumerState<VehicleFormScreen> {
   DateTime? _nextServiceDate = DateTime.now().add(const Duration(days: 120));
 
   bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.vehicle != null) {
+      final v = widget.vehicle!;
+      _nameController.text = v.name;
+      _brandController.text = v.brand;
+      _modelController.text = v.model;
+      _regNoController.text = v.registrationNumber;
+      _odometerController.text = v.currentOdometer.toString();
+      if (v.loanEmiAmount != null) {
+        _loanEmiController.text = v.loanEmiAmount!.toStringAsFixed(0);
+      }
+      if (v.fastagId != null) {
+        _fastagController.text = v.fastagId!;
+      }
+      if (_vehicleTypes.contains(v.type)) {
+        _type = v.type;
+      } else {
+        _vehicleTypes.add(v.type);
+        _type = v.type;
+      }
+      _purchaseDate = v.purchaseDate;
+      _insuranceExpiry = v.insuranceExpiry;
+      _pucExpiry = v.pucExpiry;
+      _nextServiceDate = v.nextServiceDate;
+    }
+  }
 
   @override
   void dispose() {
@@ -70,7 +100,7 @@ class _VehicleFormScreenState extends ConsumerState<VehicleFormScreen> {
     final user = ref.read(userProfileProvider);
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please log in to add a vehicle.')),
+        const SnackBar(content: Text('Please log in to manage your vehicles.')),
       );
       return;
     }
@@ -79,9 +109,11 @@ class _VehicleFormScreenState extends ConsumerState<VehicleFormScreen> {
 
     try {
       final repo = ref.read(vehicleRepositoryProvider);
-      const uuid = Uuid();
-      final newVehicle = Vehicle(
-        id: uuid.v4(),
+      final isEditing = widget.vehicle != null;
+      final vehicleId = isEditing ? widget.vehicle!.id : const Uuid().v4();
+
+      final vehicleToSave = Vehicle(
+        id: vehicleId,
         name: _nameController.text.trim(),
         type: _type,
         brand: _brandController.text.trim(),
@@ -100,13 +132,21 @@ class _VehicleFormScreenState extends ConsumerState<VehicleFormScreen> {
             : null,
       );
 
-      await repo.addVehicle(user.uid, newVehicle);
+      if (isEditing) {
+        await repo.updateVehicle(user.uid, vehicleToSave);
+      } else {
+        await repo.addVehicle(user.uid, vehicleToSave);
+      }
+
       ref.invalidate(vehiclesProvider);
+      ref.invalidate(remindersProvider);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${newVehicle.name} added to your garage!'),
+            content: Text(isEditing
+                ? '${vehicleToSave.name} updated successfully!'
+                : '${vehicleToSave.name} added to your garage!'),
             backgroundColor: Colors.green.shade700,
           ),
         );
@@ -120,7 +160,7 @@ class _VehicleFormScreenState extends ConsumerState<VehicleFormScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to add vehicle: $e'),
+            content: Text('Failed to save vehicle: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -147,7 +187,9 @@ class _VehicleFormScreenState extends ConsumerState<VehicleFormScreen> {
             }
           },
         ),
-        title: const Text('Add Vehicle to Garage'),
+        title: Text(widget.vehicle != null
+            ? 'Edit ${widget.vehicle!.name}'
+            : 'Add Vehicle to Garage'),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20.0),
@@ -439,7 +481,9 @@ class _VehicleFormScreenState extends ConsumerState<VehicleFormScreen> {
                             )
                           : const Icon(Icons.check_circle_outline),
                       label: Text(
-                        _isSaving ? 'Adding Vehicle...' : 'Save Vehicle to Garage',
+                        _isSaving
+                            ? (widget.vehicle != null ? 'Updating Vehicle...' : 'Adding Vehicle...')
+                            : (widget.vehicle != null ? 'Update Vehicle' : 'Save Vehicle to Garage'),
                         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                       ),
                     ),

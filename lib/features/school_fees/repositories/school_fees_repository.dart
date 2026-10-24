@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/utils/date_calculators.dart';
+import '../../../core/financial/models/financial_transaction.dart';
+import '../../../core/financial/repositories/financial_transaction_repository.dart';
 import '../models/school_fees_models.dart';
 
 class SchoolFeesRepository {
@@ -162,6 +164,23 @@ class SchoolFeesRepository {
     await _firestore.collection('users').doc(userId).collection('feeStructures').doc(newFsId).set(newFs.toMap());
     for (var inst in installments) {
       await _firestore.collection('users').doc(userId).collection('feeInstallments').doc(inst.id).set(inst.toMap());
+      // Sync reminder
+      try {
+        final remRef = _firestore.collection('users').doc(userId).collection('reminders').doc('reminder_school_${inst.id}');
+        await remRef.set({
+          'id': 'reminder_school_${inst.id}',
+          'userId': userId,
+          'title': 'School Fee: ${inst.title}',
+          'description': 'Fee installment #${inst.installmentNumber} of ₹${inst.amount.toStringAsFixed(0)} due.',
+          'module': 'SchoolFees',
+          'status': 'pending',
+          'dueDate': Timestamp.fromDate(inst.dueDate),
+          'relatedId': inst.id,
+          'amount': inst.amount,
+          'actionRoute': '/school-fees',
+          'createdAt': Timestamp.fromDate(DateTime.now()),
+        }, SetOptions(merge: true));
+      } catch (_) {}
     }
     return newFs;
   }
@@ -197,6 +216,27 @@ class SchoolFeesRepository {
     );
 
     await _firestore.collection('users').doc(userId).collection('feePayments').doc(newId).set(newPayment.toMap());
+
+    // Record canonical financial transaction idempotently
+    try {
+      final txRepo = FinancialTransactionRepository(firestore: _firestore);
+      await txRepo.recordTransaction(
+        userId,
+        FinancialTransaction.fromMajorUnits(
+          id: FinancialTransaction.generateDeterministicId('school_fees', newId),
+          userId: userId,
+          type: TransactionType.expense,
+          amountMajor: payment.amountPaid,
+          categoryId: 'education_school_fees',
+          sourceModule: 'school_fees',
+          sourceRecordId: newId,
+          description: 'School Fee Payment (Ref: ${payment.transactionRef.isNotEmpty ? payment.transactionRef : newId})',
+          transactionDate: payment.paymentDate,
+          paymentMethod: payment.paymentMethod,
+          notes: payment.notes,
+        ),
+      );
+    } catch (_) {}
     
     // Update installment in Firestore
     final instRef = _firestore.collection('users').doc(userId).collection('feeInstallments').doc(payment.installmentId);
@@ -210,6 +250,17 @@ class SchoolFeesRepository {
         'status': newStatus,
         'paidDate': Timestamp.fromDate(payment.paymentDate),
       });
+
+      // If fully paid, mark reminder completed
+      if (newStatus == 'paid') {
+        try {
+          final remRef = _firestore.collection('users').doc(userId).collection('reminders').doc('reminder_school_${payment.installmentId}');
+          await remRef.update({
+            'status': 'completed',
+            'completedAt': Timestamp.fromDate(payment.paymentDate),
+          });
+        } catch (_) {}
+      }
     }
 
     return newPayment;

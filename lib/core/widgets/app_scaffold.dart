@@ -21,7 +21,7 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
     if (location == '/') return 0;
     if (location.startsWith('/diaries')) return 1;
     if (location.startsWith('/payments')) return 2;
-    if (location.startsWith('/documents')) return 3;
+    if (location.startsWith('/reports') || location.startsWith('/documents')) return 3;
     if (location.startsWith('/reminders')) return 4;
     return 0; // Default to My Day
   }
@@ -38,7 +38,7 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
         context.go('/payments');
         break;
       case 3:
-        context.go('/documents');
+        context.go('/reports');
         break;
       case 4:
         context.go('/reminders');
@@ -107,6 +107,7 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
         // Secondary hub screens -> navigate back to My Day (Home)
         if (currentLocation == '/diaries' ||
             currentLocation == '/payments' ||
+            currentLocation == '/reports' ||
             currentLocation == '/documents' ||
             currentLocation == '/reminders' ||
             currentLocation == '/profile') {
@@ -200,13 +201,13 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.folder_rounded, color: Colors.amber),
-              title: const Text('My Documents'),
-              subtitle: const Text('Invoices, certificates, receipts & files'),
+              leading: const Icon(Icons.analytics_rounded, color: Colors.indigo),
+              title: const Text('Reports & Analytics'),
+              subtitle: const Text('Financial summary, trends & budgets'),
               selected: selectedIndex == 3,
               onTap: () {
                 Navigator.pop(context);
-                context.go('/documents');
+                context.go('/reports');
               },
             ),
             ListTile(
@@ -394,9 +395,9 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
                   label: Text('My Payments'),
                 ),
                 NavigationRailDestination(
-                  icon: Icon(Icons.folder_outlined),
-                  selectedIcon: Icon(Icons.folder_rounded),
-                  label: Text('My Documents'),
+                  icon: Icon(Icons.analytics_outlined),
+                  selectedIcon: Icon(Icons.analytics_rounded),
+                  label: Text('Reports'),
                 ),
                 NavigationRailDestination(
                   icon: Icon(Icons.alarm_outlined),
@@ -434,9 +435,9 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
                   label: 'Payments',
                 ),
                 BottomNavigationBarItem(
-                  icon: Icon(Icons.folder_outlined),
-                  activeIcon: Icon(Icons.folder_rounded),
-                  label: 'Documents',
+                  icon: Icon(Icons.analytics_outlined),
+                  activeIcon: Icon(Icons.analytics_rounded),
+                  label: 'Reports',
                 ),
                 BottomNavigationBarItem(
                   icon: Icon(Icons.alarm_outlined),

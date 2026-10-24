@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uuid/uuid.dart';
+import '../../../core/financial/models/financial_transaction.dart';
+import '../../../core/financial/repositories/financial_transaction_repository.dart';
 import '../models/bills_models.dart';
 
 class BillsRepository {
@@ -91,6 +93,25 @@ class BillsRepository {
     );
 
     await _firestore.collection('users').doc(userId).collection('bills').doc(newId).set(newBill.toMap());
+
+    // Sync reminder
+    try {
+      final remRef = _firestore.collection('users').doc(userId).collection('reminders').doc('reminder_bill_$newId');
+      await remRef.set({
+        'id': 'reminder_bill_$newId',
+        'userId': userId,
+        'title': 'Bill Due: ${newBill.billPeriod}',
+        'description': 'Bill payment of ₹${newBill.amount.toStringAsFixed(0)} due.',
+        'module': 'Bills',
+        'status': newBill.status == 'paid' ? 'completed' : 'pending',
+        'dueDate': Timestamp.fromDate(newBill.dueDate),
+        'relatedId': newId,
+        'amount': newBill.amount,
+        'actionRoute': '/bills',
+        'createdAt': Timestamp.fromDate(DateTime.now()),
+      }, SetOptions(merge: true));
+    } catch (_) {}
+
     return newBill;
   }
 
@@ -110,6 +131,36 @@ class BillsRepository {
 
     await _firestore.collection('users').doc(userId).collection('billPayments').doc(newId).set(newPayment.toMap());
     await _firestore.collection('users').doc(userId).collection('bills').doc(payment.billId).update({'status': 'paid'});
+
+    // Mark reminder completed
+    try {
+      final remRef = _firestore.collection('users').doc(userId).collection('reminders').doc('reminder_bill_${payment.billId}');
+      await remRef.update({
+        'status': 'completed',
+        'completedAt': Timestamp.fromDate(payment.paymentDate),
+      });
+    } catch (_) {}
+
+    // Record canonical financial transaction idempotently
+    try {
+      final txRepo = FinancialTransactionRepository(firestore: _firestore);
+      await txRepo.recordTransaction(
+        userId,
+        FinancialTransaction.fromMajorUnits(
+          id: FinancialTransaction.generateDeterministicId('bills', newId),
+          userId: userId,
+          type: TransactionType.expense,
+          amountMajor: payment.amountPaid,
+          categoryId: 'household_other',
+          sourceModule: 'bills',
+          sourceRecordId: newId,
+          description: 'Bill Payment (Ref: ${payment.transactionRef.isNotEmpty ? payment.transactionRef : newId})',
+          transactionDate: payment.paymentDate,
+          paymentMethod: payment.paymentMethod,
+          notes: payment.notes,
+        ),
+      );
+    } catch (_) {}
 
     return newPayment;
   }

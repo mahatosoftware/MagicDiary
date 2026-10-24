@@ -39,6 +39,7 @@ dependencies:
   pdf: ^3.10.8
   printing: ^5.13.0
   google_sign_in: ^6.2.1
+  google_mobile_ads: ^9.2.0
 
 dev_dependencies:
   flutter_test:

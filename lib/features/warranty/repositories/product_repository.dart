@@ -89,6 +89,26 @@ class ProductRepository {
         .collection('products')
         .doc(newId)
         .set(newProduct.toMap());
+
+    // Sync warranty expiry reminder if active
+    if (newProduct.hasWarranty && newProduct.warrantyEndDate != null) {
+      try {
+        final remRef = _firestore.collection('users').doc(userId).collection('reminders').doc('reminder_prod_${newId}_warranty');
+        await remRef.set({
+          'id': 'reminder_prod_${newId}_warranty',
+          'userId': userId,
+          'title': 'Warranty Expiring: ${newProduct.name}',
+          'description': 'Warranty for ${newProduct.brand} ${newProduct.name} (${newProduct.category}) ends soon.',
+          'module': 'Warranty',
+          'status': 'pending',
+          'dueDate': Timestamp.fromDate(newProduct.warrantyEndDate!),
+          'relatedId': newId,
+          'actionRoute': '/warranty',
+          'createdAt': Timestamp.fromDate(DateTime.now()),
+        }, SetOptions(merge: true));
+      } catch (_) {}
+    }
+
     return newProduct;
   }
 
@@ -99,6 +119,24 @@ class ProductRepository {
         .collection('products')
         .doc(product.id)
         .update(product.toMap());
+
+    if (product.hasWarranty && product.warrantyEndDate != null) {
+      try {
+        final remRef = _firestore.collection('users').doc(userId).collection('reminders').doc('reminder_prod_${product.id}_warranty');
+        await remRef.set({
+          'id': 'reminder_prod_${product.id}_warranty',
+          'userId': userId,
+          'title': 'Warranty Expiring: ${product.name}',
+          'description': 'Warranty for ${product.brand} ${product.name} (${product.category}) ends soon.',
+          'module': 'Warranty',
+          'status': 'pending',
+          'dueDate': Timestamp.fromDate(product.warrantyEndDate!),
+          'relatedId': product.id,
+          'actionRoute': '/warranty',
+          'createdAt': Timestamp.fromDate(DateTime.now()),
+        }, SetOptions(merge: true));
+      } catch (_) {}
+    }
   }
 
   Future<void> deleteProduct(String userId, String productId) async {
@@ -108,6 +146,11 @@ class ProductRepository {
         .collection('products')
         .doc(productId)
         .delete();
+
+    try {
+      final remRef = _firestore.collection('users').doc(userId).collection('reminders').doc('reminder_prod_${productId}_warranty');
+      await remRef.delete();
+    } catch (_) {}
   }
 
   // Service Records

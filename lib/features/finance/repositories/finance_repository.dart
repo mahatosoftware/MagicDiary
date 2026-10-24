@@ -1,4 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../core/financial/models/financial_category.dart';
+import '../../../core/financial/models/financial_transaction.dart' as canonical;
+import '../../../core/financial/repositories/financial_transaction_repository.dart';
 import '../models/finance_models.dart';
 
 class FinanceRepository {
@@ -45,6 +48,38 @@ class FinanceRepository {
         .collection('transactions')
         .doc(tx.id)
         .set(tx.toJson());
+
+    // Sync to canonical financial transaction collection
+    try {
+      final txRepo = FinancialTransactionRepository(firestore: firestore);
+      final isIncome = tx.type.toLowerCase() == 'income';
+      final isTransfer = tx.type.toLowerCase() == 'transfer' ||
+          tx.category.toLowerCase().contains('sip') ||
+          tx.category.toLowerCase().contains('investment');
+
+      canonical.TransactionType type = canonical.TransactionType.expense;
+      if (isTransfer) {
+        type = canonical.TransactionType.transfer;
+      } else if (isIncome) {
+        type = canonical.TransactionType.income;
+      }
+
+      await txRepo.recordTransaction(
+        userId,
+        canonical.FinancialTransaction.fromMajorUnits(
+          id: canonical.FinancialTransaction.generateDeterministicId('finance', tx.id),
+          userId: userId,
+          type: type,
+          amountMajor: tx.amount,
+          categoryId: CategoryRegistry.mapLegacyToCategoryId(tx.category, tx.description),
+          sourceModule: 'finance',
+          sourceRecordId: tx.id,
+          description: tx.description.isNotEmpty ? tx.description : tx.category,
+          transactionDate: tx.date,
+          paymentMethod: tx.paymentMethod,
+        ),
+      );
+    } catch (_) {}
   }
 
   Future<void> addInvestment(String userId, InvestmentRecord inv) async {
@@ -65,6 +100,12 @@ class FinanceRepository {
         .collection('transactions')
         .doc(transactionId)
         .delete();
+
+    try {
+      final txRepo = FinancialTransactionRepository(firestore: firestore);
+      final detId = canonical.FinancialTransaction.generateDeterministicId('finance', transactionId);
+      await txRepo.deleteTransaction(userId, detId, softDelete: true);
+    } catch (_) {}
   }
 
   Future<void> deleteInvestment(String userId, String investmentId) async {

@@ -6,6 +6,8 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/utils/date_calculators.dart';
 import '../../../core/utils/pdf_exporter.dart';
 import '../../../core/widgets/status_badge.dart';
+import '../../../core/ads/admob_config.dart';
+import '../../../core/ads/widgets/native_ad_card_widget.dart';
 import 'product_form_screen.dart';
 
 class ProductListScreen extends ConsumerStatefulWidget {
@@ -141,7 +143,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                           ? p.warrantyEndDate!.difference(DateTime.now()).inDays
                           : 0;
 
-                      return Card(
+                      final productCard = Card(
                         margin: const EdgeInsets.only(bottom: 12),
                         child: ListTile(
                           contentPadding: const EdgeInsets.all(12),
@@ -280,6 +282,22 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                           },
                         ),
                       );
+
+                      if ((index + 1) % 4 == 0) {
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            productCard,
+                            const Padding(
+                              padding: EdgeInsets.only(bottom: 12),
+                              child: NativeAdCardWidget(
+                                placement: AdMobConfig.placementWarrantyNative,
+                              ),
+                            ),
+                          ],
+                        );
+                      }
+                      return productCard;
                     },
                   );
                 },

@@ -1,4 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../core/financial/models/financial_category.dart';
+import '../../../core/financial/models/financial_transaction.dart';
+import '../../../core/financial/repositories/financial_transaction_repository.dart';
 import '../models/property_models.dart';
 
 class PropertyRepository {
@@ -45,6 +48,24 @@ class PropertyRepository {
         .collection('properties')
         .doc(property.id)
         .set(property.toJson());
+
+    // Sync property tax reminder
+    try {
+      final remRef = firestore.collection('users').doc(userId).collection('reminders').doc('reminder_prop_${property.id}_tax');
+      await remRef.set({
+        'id': 'reminder_prop_${property.id}_tax',
+        'userId': userId,
+        'title': 'Property Tax: ${property.title}',
+        'description': '${property.propertyTaxFrequency} property tax of ₹${property.propertyTaxAmount.toStringAsFixed(0)} for ${property.address}.',
+        'module': 'Property',
+        'status': 'pending',
+        'dueDate': Timestamp.fromDate(property.taxDueDate),
+        'relatedId': property.id,
+        'amount': property.propertyTaxAmount,
+        'actionRoute': '/property',
+        'createdAt': Timestamp.fromDate(DateTime.now()),
+      }, SetOptions(merge: true));
+    } catch (_) {}
   }
 
   Future<void> addMaintenance(String userId, PropertyMaintenance maintenance) async {
@@ -55,6 +76,26 @@ class PropertyRepository {
         .collection('propertyMaintenances')
         .doc(maintenance.id)
         .set(maintenance.toJson());
+
+    // Record canonical financial transaction idempotently
+    try {
+      final txRepo = FinancialTransactionRepository(firestore: firestore);
+      await txRepo.recordTransaction(
+        userId,
+        FinancialTransaction.fromMajorUnits(
+          id: FinancialTransaction.generateDeterministicId('property', maintenance.id),
+          userId: userId,
+          type: TransactionType.expense,
+          amountMajor: maintenance.cost,
+          categoryId: CategoryRegistry.mapLegacyToCategoryId(maintenance.category, maintenance.title),
+          sourceModule: 'property',
+          sourceRecordId: maintenance.id,
+          description: '${maintenance.title} (${maintenance.contractorName})',
+          transactionDate: maintenance.date,
+          merchantOrPayee: maintenance.contractorName,
+        ),
+      );
+    } catch (_) {}
   }
 
   Future<void> deleteProperty(String userId, String propertyId) async {
@@ -65,6 +106,11 @@ class PropertyRepository {
         .collection('properties')
         .doc(propertyId)
         .delete();
+
+    try {
+      final remRef = firestore.collection('users').doc(userId).collection('reminders').doc('reminder_prop_${propertyId}_tax');
+      await remRef.delete();
+    } catch (_) {}
   }
 
   Future<void> deleteMaintenance(String userId, String maintenanceId) async {

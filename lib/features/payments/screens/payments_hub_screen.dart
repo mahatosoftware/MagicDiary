@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/status_badge.dart';
+import '../../../core/ads/admob_config.dart';
+import '../../../core/ads/widgets/native_ad_card_widget.dart';
 
 class PaymentsHubScreen extends ConsumerWidget {
   const PaymentsHubScreen({super.key});
@@ -170,6 +172,12 @@ class PaymentsHubScreen extends ConsumerWidget {
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (err, stack) => Text('Error loading payment history: $err'),
             ),
+
+            const SizedBox(height: 16),
+            const NativeAdCardWidget(
+              placement: AdMobConfig.placementPaymentsInline,
+            ),
+            const SizedBox(height: 16),
           ],
         ),
       ),
