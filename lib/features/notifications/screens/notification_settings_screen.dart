@@ -411,8 +411,8 @@ class _NotificationSettingsScreenState extends ConsumerState<NotificationSetting
                         final picked = await showDatePicker(
                           context: context,
                           initialDate: _previewEventDate,
-                          firstDate: DateTime.now(),
-                          lastDate: DateTime.now().add(const Duration(days: 365)),
+                          firstDate: DateTime(1900),
+                          lastDate: DateTime(2200),
                         );
                         if (picked != null) {
                           setState(() => _previewEventDate = picked);

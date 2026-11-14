@@ -11,12 +11,16 @@ class GenericRecordDetailScreen extends ConsumerWidget {
   final String diaryId;
   final String recordId;
   final DiaryRecord? initialRecord;
+  final String? ownerId;
+  final String? ownerName;
 
   const GenericRecordDetailScreen({
     super.key,
     required this.diaryId,
     required this.recordId,
     this.initialRecord,
+    this.ownerId,
+    this.ownerName,
   });
 
   @override
@@ -25,12 +29,13 @@ class GenericRecordDetailScreen extends ConsumerWidget {
     final user = ref.watch(userProfileProvider);
     final color = diary?.color ?? Colors.blue;
 
-    final recordsAsync = ref.watch(diaryRecordsStreamProvider(diaryId));
+    final effectiveUserId = (ownerId != null && ownerId!.isNotEmpty) ? ownerId! : (user?.uid ?? '');
+    final recordsAsync = ref.watch(diaryUserRecordsStreamProvider((diaryId: diaryId, userId: effectiveUserId)));
     final record = recordsAsync.value?.firstWhere(
           (r) => r.id == recordId,
           orElse: () => initialRecord ?? DiaryRecord(
             id: recordId,
-            ownerId: user?.uid ?? '',
+            ownerId: effectiveUserId,
             sourceDiaryId: diaryId,
             title: 'Record',
             recordDate: DateTime.now(),
@@ -211,11 +216,13 @@ class GenericRecordDetailScreen extends ConsumerWidget {
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
               Navigator.pop(ctx);
-              final user = ref.read(userProfileProvider);
-              if (user != null) {
+              final targetOwnerId = (ownerId != null && ownerId!.isNotEmpty)
+                  ? ownerId!
+                  : (ref.read(userProfileProvider)?.uid ?? '');
+              if (targetOwnerId.isNotEmpty) {
                 final repo = ref.read(diaryRecordRepositoryProvider);
                 await repo.deleteRecord(
-                  userId: user.uid,
+                  userId: targetOwnerId,
                   diaryId: diaryId,
                   recordId: record.id,
                 );

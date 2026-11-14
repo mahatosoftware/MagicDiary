@@ -896,6 +896,12 @@ class DiaryRegistry {
     ),
   ];
 
+  static final List<DiaryDefinition> predefinedDiariesAlphabetical = () {
+    final list = List<DiaryDefinition>.from(predefinedDiaries);
+    list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return List<DiaryDefinition>.unmodifiable(list);
+  }();
+
   static DiaryDefinition? getDiaryById(String id) {
     try {
       return predefinedDiaries.firstWhere((d) => d.id == id);

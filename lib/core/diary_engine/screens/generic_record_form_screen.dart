@@ -12,11 +12,13 @@ import '../../providers/app_providers.dart';
 class GenericRecordFormScreen extends ConsumerStatefulWidget {
   final String diaryId;
   final DiaryRecord? initialRecord;
+  final String? ownerId;
 
   const GenericRecordFormScreen({
     super.key,
     required this.diaryId,
     this.initialRecord,
+    this.ownerId,
   });
 
   @override
@@ -121,8 +123,8 @@ class _GenericRecordFormScreenState extends ConsumerState<GenericRecordFormScree
                             final picked = await showDatePicker(
                               context: context,
                               initialDate: _recordDate,
-                              firstDate: DateTime(2000),
-                              lastDate: DateTime(2035),
+                              firstDate: DateTime(1900),
+                              lastDate: DateTime(2200),
                             );
                             if (picked != null) {
                               setState(() => _recordDate = picked);
@@ -236,11 +238,17 @@ class _GenericRecordFormScreenState extends ConsumerState<GenericRecordFormScree
           padding: const EdgeInsets.only(bottom: 14.0),
           child: InkWell(
             onTap: () async {
+              final isBirthOrHistorical = field.key.toLowerCase().contains('birth') ||
+                  field.key.toLowerCase().contains('dob') ||
+                  field.label.toLowerCase().contains('birth') ||
+                  field.key.toLowerCase().contains('anniversary') ||
+                  field.label.toLowerCase().contains('anniversary');
               final picked = await showDatePicker(
                 context: context,
-                initialDate: dateVal ?? DateTime.now(),
-                firstDate: DateTime(2000),
-                lastDate: DateTime(2035),
+                initialDate: dateVal ?? (isBirthOrHistorical ? DateTime(1990, 1, 1) : DateTime.now()),
+                firstDate: DateTime(1900),
+                lastDate: DateTime(2200),
+                initialDatePickerMode: isBirthOrHistorical ? DatePickerMode.year : DatePickerMode.day,
               );
               if (picked != null) {
                 setState(() => _fieldValues[field.key] = picked.toIso8601String());
@@ -338,10 +346,11 @@ class _GenericRecordFormScreenState extends ConsumerState<GenericRecordFormScree
       final now = DateTime.now();
       final recordId = widget.initialRecord?.id ?? const Uuid().v4();
       final amount = double.tryParse(_amountController.text.trim());
+      final targetUserId = (widget.ownerId != null && widget.ownerId!.isNotEmpty) ? widget.ownerId! : user.uid;
 
       final record = DiaryRecord(
         id: recordId,
-        ownerId: user.uid,
+        ownerId: targetUserId,
         sourceDiaryId: widget.diaryId,
         circleId: widget.initialRecord?.circleId,
         title: _titleController.text.trim(),
@@ -360,7 +369,7 @@ class _GenericRecordFormScreenState extends ConsumerState<GenericRecordFormScree
       );
 
       final repo = ref.read(diaryRecordRepositoryProvider);
-      await repo.saveRecord(userId: user.uid, record: record);
+      await repo.saveRecord(userId: targetUserId, record: record);
 
       if (mounted) {
         context.pop();

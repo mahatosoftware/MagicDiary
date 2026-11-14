@@ -29,9 +29,7 @@ class AuthRepository {
       }
       var profile = await getUserProfile(fbUser.uid);
       if (profile == null) {
-        final username = (fbUser.email?.split('@').first ?? 'user')
-            .replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '')
-            .toLowerCase();
+        final username = UserProfile.generate7CharUsername();
         profile = UserProfile(
           uid: fbUser.uid,
           email: fbUser.email ?? '',
@@ -46,6 +44,7 @@ class AuthRepository {
         );
         try {
           await _firestore.collection('users').doc(fbUser.uid).set(profile.toMap());
+          await _reserveUsername(username, fbUser.uid, fbUser.email ?? '');
         } catch (e) {
           debugPrint('Error creating user profile in Firestore: $e');
         }
@@ -58,7 +57,19 @@ class AuthRepository {
     try {
       final doc = await _firestore.collection('users').doc(uid).get();
       if (doc.exists && doc.data() != null) {
-        return UserProfile.fromMap(doc.data()!, uid);
+        final profile = UserProfile.fromMap(doc.data()!, uid);
+        if (profile.username.trim().isEmpty) {
+          final newUsername = UserProfile.generate7CharUsername();
+          final updated = profile.copyWith(username: newUsername);
+          try {
+            await _firestore.collection('users').doc(uid).update({'username': newUsername});
+            await _reserveUsername(newUsername, uid, profile.email);
+          } catch (e) {
+            debugPrint('Note backfilling username: $e');
+          }
+          return updated;
+        }
+        return profile;
       }
     } catch (e) {
       debugPrint('Error getting user profile: $e');
@@ -97,9 +108,7 @@ class AuthRepository {
     final user = credential.user!;
     var profile = await getUserProfile(user.uid);
     if (profile == null) {
-      final username = (user.email?.split('@').first ?? 'user')
-          .replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '')
-          .toLowerCase();
+      final username = UserProfile.generate7CharUsername();
       profile = UserProfile(
         uid: user.uid,
         email: user.email ?? emailToUse,
@@ -110,6 +119,7 @@ class AuthRepository {
         updatedAt: DateTime.now(),
       );
       await _firestore.collection('users').doc(user.uid).set(profile.toMap());
+      await _reserveUsername(username, user.uid, user.email ?? emailToUse);
     }
     return profile;
   }
@@ -124,7 +134,7 @@ class AuthRepository {
     final cleanEmail = email.trim();
     final cleanUsername = (username?.trim().isNotEmpty ?? false)
         ? username!.trim().toLowerCase()
-        : cleanEmail.split('@').first.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '').toLowerCase();
+        : UserProfile.generate7CharUsername();
 
     final credential = await _auth.createUserWithEmailAndPassword(
       email: cleanEmail,
@@ -144,6 +154,7 @@ class AuthRepository {
     );
 
     await _firestore.collection('users').doc(user.uid).set(profile.toMap());
+    await _reserveUsername(cleanUsername, user.uid, cleanEmail);
     return profile;
   }
 
@@ -172,9 +183,7 @@ class AuthRepository {
 
       var profile = await getUserProfile(user.uid);
       if (profile == null) {
-        final username = (user.email?.split('@').first ?? 'user')
-            .replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '')
-            .toLowerCase();
+        final username = UserProfile.generate7CharUsername();
         profile = UserProfile(
           uid: user.uid,
           email: user.email ?? '',
@@ -188,11 +197,25 @@ class AuthRepository {
           updatedAt: DateTime.now(),
         );
         await _firestore.collection('users').doc(user.uid).set(profile.toMap());
+        await _reserveUsername(username, user.uid, user.email ?? '');
       }
       return profile;
     } catch (e) {
       debugPrint('Google Sign-In failed: $e');
       rethrow;
+    }
+  }
+
+  Future<void> _reserveUsername(String username, String uid, String email) async {
+    if (username.isEmpty) return;
+    try {
+      await _firestore.collection('usernames').doc(username.toLowerCase()).set({
+        'uid': uid,
+        'email': email,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('Username reservation note: $e');
     }
   }
 

@@ -6,6 +6,8 @@ import '../../../core/diary_registry/diary_definition.dart';
 import '../../../core/diary_registry/diary_registry.dart';
 import '../../../core/diary_registry/diary_preferences_service.dart';
 import '../../../core/providers/app_providers.dart';
+import '../../shared_diaries/screens/shared_diaries_screen.dart';
+import '../../shared_diaries/models/shared_diary_models.dart';
 
 class MyDiariesScreen extends ConsumerStatefulWidget {
   const MyDiariesScreen({super.key});
@@ -39,6 +41,7 @@ class _MyDiariesScreenState extends ConsumerState<MyDiariesScreen> {
     final prefs = ref.watch(diaryPreferencesProvider);
     final reminders = ref.watch(remindersProvider).value ?? const [];
     final pendingRemindersCount = reminders.where((r) => r.isPending).length;
+    final sharedWithMe = ref.watch(sharedWithMeStreamProvider).value ?? const [];
 
     // Global search results across all 45 diaries
     final isSearching = _searchQuery.isNotEmpty;
@@ -128,6 +131,35 @@ class _MyDiariesScreenState extends ConsumerState<MyDiariesScreen> {
                                       fontSize: 11,
                                       fontWeight: FontWeight.bold,
                                       color: Colors.red.shade700,
+                                    ),
+                                  ),
+                                ],
+                                if (sharedWithMe.isNotEmpty) ...[
+                                  const SizedBox(width: 8),
+                                  InkWell(
+                                    borderRadius: BorderRadius.circular(6),
+                                    onTap: () => context.go('/shared-diaries'),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.blue.withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.share_rounded, size: 12, color: Colors.blue.shade800),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            '${sharedWithMe.length} Shared With You',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.blue.shade800,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -648,7 +680,9 @@ class _MyDiariesScreenState extends ConsumerState<MyDiariesScreen> {
   // MY ACTIVE DIARIES – CATEGORIZED DISPLAY WITH EXPAND / COLLAPSE
   // ---------------------------------------------------------------------------
   Widget _buildActiveDiariesCategorizedView(BuildContext context, DiaryPreferencesState prefs) {
-    if (prefs.activeDiaryIds.isEmpty) {
+    final sharedWithMe = ref.watch(sharedWithMeStreamProvider).value ?? const [];
+
+    if (prefs.activeDiaryIds.isEmpty && sharedWithMe.isEmpty) {
       return SliverFillRemaining(
         hasScrollBody: false,
         child: Center(
@@ -683,6 +717,54 @@ class _MyDiariesScreenState extends ConsumerState<MyDiariesScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       sliver: SliverList(
         delegate: SliverChildListDelegate([
+          // 0. Dedicated "Shared With You" Section if any shared diaries exist
+          if (sharedWithMe.isNotEmpty) ...[
+            Card(
+              elevation: 1.5,
+              margin: const EdgeInsets.only(bottom: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: Colors.blue.shade200, width: 1),
+              ),
+              child: ExpansionTile(
+                initiallyExpanded: true,
+                leading: CircleAvatar(
+                  radius: 18,
+                  backgroundColor: Colors.blue.withValues(alpha: 0.15),
+                  child: const Icon(Icons.share_rounded, color: Colors.blue, size: 18),
+                ),
+                title: const Text(
+                  'Shared With You',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5, color: Colors.blue),
+                ),
+                subtitle: Text(
+                  '${sharedWithMe.length} diaries shared with you',
+                  style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+                ),
+                children: sharedWithMe.map((share) {
+                  final def = DiaryRegistry.getDiaryById(share.diaryId);
+                  return ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    leading: CircleAvatar(
+                      radius: 16,
+                      backgroundColor: (def?.color ?? Colors.blue).withValues(alpha: 0.15),
+                      child: Icon(def?.icon ?? Icons.auto_stories, color: def?.color ?? Colors.blue, size: 16),
+                    ),
+                    title: Text(share.diaryName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                    subtitle: Text('Owner: ${share.ownerName} • ${share.permission.label}', style: const TextStyle(fontSize: 11.5)),
+                    trailing: const Icon(Icons.chevron_right_rounded, size: 20),
+                    onTap: () {
+                      context.push(
+                        '/diary-records/${share.diaryId}?ownerId=${share.ownerUid}&ownerName=${Uri.encodeComponent(share.ownerName)}&permission=${share.permission.name}',
+                        extra: share,
+                      );
+                    },
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+
           // Expand All / Collapse All Controls
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 4.0),

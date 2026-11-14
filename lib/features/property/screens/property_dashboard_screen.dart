@@ -153,8 +153,8 @@ class PropertyDashboardScreen extends ConsumerWidget {
                                   final picked = await showDatePicker(
                                     context: context,
                                     initialDate: purchaseDate,
-                                    firstDate: DateTime(1980),
-                                    lastDate: DateTime.now(),
+                                    firstDate: DateTime(1900),
+                                    lastDate: DateTime(2200),
                                   );
                                   if (picked != null) setState(() => purchaseDate = picked);
                                 },
@@ -215,8 +215,8 @@ class PropertyDashboardScreen extends ConsumerWidget {
                                   final picked = await showDatePicker(
                                     context: context,
                                     initialDate: taxDueDate,
-                                    firstDate: DateTime(2000),
-                                    lastDate: DateTime.now().add(const Duration(days: 3650)),
+                                    firstDate: DateTime(1900),
+                                    lastDate: DateTime(2200),
                                   );
                                   if (picked != null) setState(() => taxDueDate = picked);
                                 },
@@ -445,8 +445,8 @@ class PropertyDashboardScreen extends ConsumerWidget {
                                   final picked = await showDatePicker(
                                     context: context,
                                     initialDate: maintDate,
-                                    firstDate: DateTime(2000),
-                                    lastDate: DateTime.now(),
+                                    firstDate: DateTime(1900),
+                                    lastDate: DateTime(2200),
                                   );
                                   if (picked != null) setState(() => maintDate = picked);
                                 },

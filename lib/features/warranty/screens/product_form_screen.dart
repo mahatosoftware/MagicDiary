@@ -157,7 +157,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
       context: context,
       initialDate: initialDate,
       firstDate: _purchaseDate,
-      lastDate: DateTime(_purchaseDate.year + 30),
+      lastDate: DateTime(2200),
       helpText: 'Select Warranty Expiration Date',
     );
 
@@ -369,8 +369,8 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                   final picked = await showDatePicker(
                     context: context,
                     initialDate: _purchaseDate,
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime.now(),
+                    firstDate: DateTime(1900),
+                    lastDate: DateTime(2200),
                   );
                   if (picked != null) {
                     _onPurchaseDateChanged(picked);

@@ -418,8 +418,8 @@ class _SchoolFeesDashboardScreenState extends ConsumerState<SchoolFeesDashboardS
     final pickedDate = await showDatePicker(
       context: context,
       initialDate: inst.dueDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2035),
+      firstDate: DateTime(1900),
+      lastDate: DateTime(2200),
       helpText: 'UPDATE DUE DATE (${inst.title})',
       confirmText: 'SAVE DUE DATE',
     );

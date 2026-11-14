@@ -101,6 +101,24 @@ class MagicCircleMember {
       status: map['status'] as String? ?? 'active',
     );
   }
+
+  MagicCircleMember copyWith({
+    String? uid,
+    String? email,
+    String? displayName,
+    CircleRole? role,
+    DateTime? joinedAt,
+    String? status,
+  }) {
+    return MagicCircleMember(
+      uid: uid ?? this.uid,
+      email: email ?? this.email,
+      displayName: displayName ?? this.displayName,
+      role: role ?? this.role,
+      joinedAt: joinedAt ?? this.joinedAt,
+      status: status ?? this.status,
+    );
+  }
 }
 
 class MagicCircle {
@@ -111,6 +129,7 @@ class MagicCircle {
   final String ownerId;
   final List<MagicCircleMember> members;
   final List<String> memberUids;
+  final List<String> memberEmails;
   final List<String> sharedDiaryIds;
   final String? coverImageUrl;
   final DateTime createdAt;
@@ -125,20 +144,35 @@ class MagicCircle {
     required this.ownerId,
     required this.members,
     List<String>? memberUids,
+    List<String>? memberEmails,
     this.sharedDiaryIds = const [],
     this.coverImageUrl,
     required this.createdAt,
     required this.updatedAt,
     this.schemaVersion = 1,
-  }) : memberUids = memberUids ??
+  })  : memberUids = memberUids ??
             {
               ownerId,
               ...members
                   .map((m) => m.uid)
                   .where((uid) => uid.isNotEmpty && !uid.startsWith('pending_')),
-            }.toList();
+            }.toList(),
+        memberEmails = memberEmails ??
+            members
+                .map((m) => m.email.trim().toLowerCase())
+                .where((e) => e.isNotEmpty)
+                .toSet()
+                .toList();
 
-  bool isMember(String uid) => members.any((m) => m.uid == uid) || memberUids.contains(uid);
+  bool isMember(String uid, [String? email]) {
+    if (members.any((m) => m.uid == uid) || memberUids.contains(uid)) return true;
+    if (email != null && email.isNotEmpty) {
+      final clean = email.trim().toLowerCase();
+      return memberEmails.contains(clean) ||
+          members.any((m) => m.email.trim().toLowerCase() == clean);
+    }
+    return false;
+  }
   MagicCircleMember? getMember(String uid) {
     try {
       return members.firstWhere((m) => m.uid == uid);
@@ -155,6 +189,7 @@ class MagicCircle {
     String? ownerId,
     List<MagicCircleMember>? members,
     List<String>? memberUids,
+    List<String>? memberEmails,
     List<String>? sharedDiaryIds,
     String? coverImageUrl,
     DateTime? createdAt,
@@ -169,6 +204,7 @@ class MagicCircle {
       ownerId: ownerId ?? this.ownerId,
       members: members ?? this.members,
       memberUids: memberUids ?? this.memberUids,
+      memberEmails: memberEmails ?? this.memberEmails,
       sharedDiaryIds: sharedDiaryIds ?? this.sharedDiaryIds,
       coverImageUrl: coverImageUrl ?? this.coverImageUrl,
       createdAt: createdAt ?? this.createdAt,
@@ -185,6 +221,7 @@ class MagicCircle {
         'ownerId': ownerId,
         'members': members.map((m) => m.toMap()).toList(),
         'memberUids': memberUids,
+        'memberEmails': memberEmails,
         'sharedDiaryIds': sharedDiaryIds,
         'coverImageUrl': coverImageUrl,
         'createdAt': Timestamp.fromDate(createdAt),
@@ -219,6 +256,15 @@ class MagicCircle {
               .where((uid) => uid.isNotEmpty && !uid.startsWith('pending_')),
         }.toList();
 
+    final parsedMemberEmails = (map['memberEmails'] as List<dynamic>?)
+            ?.map((e) => e.toString().trim().toLowerCase())
+            .toList() ??
+        parsedMembers
+            .map((m) => m.email.trim().toLowerCase())
+            .where((e) => e.isNotEmpty)
+            .toSet()
+            .toList();
+
     return MagicCircle(
       id: id,
       name: map['name'] as String? ?? 'Magic Circle',
@@ -230,6 +276,7 @@ class MagicCircle {
       ownerId: ownerId,
       members: parsedMembers,
       memberUids: parsedMemberUids,
+      memberEmails: parsedMemberEmails,
       sharedDiaryIds: (map['sharedDiaryIds'] as List<dynamic>?)
               ?.map((d) => d.toString())
               .toList() ??

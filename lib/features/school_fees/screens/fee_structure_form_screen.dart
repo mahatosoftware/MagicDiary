@@ -206,8 +206,8 @@ class _FeeStructureFormScreenState extends ConsumerState<FeeStructureFormScreen>
                   final picked = await showDatePicker(
                     context: context,
                     initialDate: _firstDueDate,
-                    firstDate: DateTime(2025),
-                    lastDate: DateTime(2030),
+                    firstDate: DateTime(1900),
+                    lastDate: DateTime(2200),
                   );
                   if (picked != null) setState(() => _firstDueDate = picked);
                 },

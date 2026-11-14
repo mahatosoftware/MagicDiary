@@ -145,8 +145,8 @@ class _RecordBillPaymentScreenState extends ConsumerState<RecordBillPaymentScree
                         final picked = await showDatePicker(
                           context: context,
                           initialDate: _paymentDate,
-                          firstDate: DateTime(2020),
-                          lastDate: DateTime.now(),
+                          firstDate: DateTime(1900),
+                          lastDate: DateTime(2200),
                         );
                         if (picked != null) setState(() => _paymentDate = picked);
                       },

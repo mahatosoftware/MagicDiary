@@ -11,8 +11,9 @@ enum DiaryAccessRole {
   none,
 }
 
-/// Centralized Diary Access Control Service.
-/// Implements least-privilege authorization, sensitive diary classification, and record-level filtering.
+/// Centralized Diary Access Control & Sharing Policy Evaluation Service.
+/// Implements backend-aligned least-privilege authorization, sensitive diary classification,
+/// entire-diary future record policy checks, and selected-record granular filtering.
 class DiaryAccessControlService {
   /// Sensitive diary IDs requiring elevated privacy safeguards.
   static const Set<String> sensitiveDiaryIds = {
@@ -41,7 +42,7 @@ class DiaryAccessControlService {
     if (currentUserId.isEmpty) return DiaryAccessRole.none;
     if (currentUserId == diaryOwnerId) return DiaryAccessRole.owner;
     if (shareAccess == null) return DiaryAccessRole.none;
-    if (shareAccess.isExpired) return DiaryAccessRole.none;
+    if (!shareAccess.isActive) return DiaryAccessRole.none;
 
     switch (shareAccess.permission) {
       case SharedDiaryPermission.admin:
@@ -67,6 +68,30 @@ class DiaryAccessControlService {
       shareAccess: shareAccess,
     );
     return role != DiaryAccessRole.none;
+  }
+
+  /// Evaluates whether a specific record is accessible under the user's sharing policy.
+  static bool canAccessRecord({
+    required DiaryRecord record,
+    required String currentUserId,
+    required String diaryOwnerId,
+    SharedDiaryAccess? shareAccess,
+  }) {
+    if (currentUserId == diaryOwnerId) return true;
+    if (shareAccess == null || !shareAccess.isActive) return false;
+
+    // Mode 2: Selected Records Sharing
+    if (shareAccess.isSelectedMode) {
+      return shareAccess.grantedRecordIds.contains(record.id);
+    }
+
+    // Mode 1: Entire Diary Sharing with Future Record Policy
+    if (shareAccess.futureRecordPolicy == FutureRecordPolicy.existingOnly) {
+      final cutoff = shareAccess.snapshotCutoffTime ?? shareAccess.createdAt;
+      return record.createdAt.isBefore(cutoff) || record.createdAt.isAtSameMomentAs(cutoff);
+    }
+
+    return true;
   }
 
   /// Can the user add records to this diary?
@@ -136,8 +161,29 @@ class DiaryAccessControlService {
     return role == DiaryAccessRole.owner || role == DiaryAccessRole.admin;
   }
 
-  /// Filters records according to granular share configuration.
-  /// If `shareEntireDiary` is false, only explicitly granted record IDs are returned.
+  /// Can the user download or access attachments?
+  static bool canAccessAttachment({
+    required String currentUserId,
+    required String diaryOwnerId,
+    SharedDiaryAccess? shareAccess,
+  }) {
+    if (currentUserId == diaryOwnerId) return true;
+    if (shareAccess == null || !shareAccess.isActive) return false;
+    return shareAccess.allowAttachments;
+  }
+
+  /// Can the user export or download diary reports?
+  static bool canExport({
+    required String currentUserId,
+    required String diaryOwnerId,
+    SharedDiaryAccess? shareAccess,
+  }) {
+    if (currentUserId == diaryOwnerId) return true;
+    if (shareAccess == null || !shareAccess.isActive) return false;
+    return shareAccess.allowExport;
+  }
+
+  /// Filters records according to granular share configuration and future-record policies.
   static List<DiaryRecord> filterRecordsForUser({
     required List<DiaryRecord> allRecords,
     required String currentUserId,
@@ -147,14 +193,38 @@ class DiaryAccessControlService {
     if (currentUserId == diaryOwnerId) {
       return allRecords;
     }
-    if (shareAccess == null || shareAccess.isExpired) {
+    if (shareAccess == null || !shareAccess.isActive) {
       return const [];
     }
-    if (shareAccess.shareEntireDiary) {
-      return allRecords;
+
+    return allRecords.where((record) {
+      return canAccessRecord(
+        record: record,
+        currentUserId: currentUserId,
+        diaryOwnerId: diaryOwnerId,
+        shareAccess: shareAccess,
+      );
+    }).map((record) {
+      return filterRecordFieldsForUser(record: record, shareAccess: shareAccess);
+    }).toList();
+  }
+
+  /// Redacts sensitive fields if the share specifies restricted fields.
+  static DiaryRecord filterRecordFieldsForUser({
+    required DiaryRecord record,
+    SharedDiaryAccess? shareAccess,
+  }) {
+    if (shareAccess == null || shareAccess.restrictedFields.isEmpty) {
+      return record;
     }
-    // Granular record-level sharing
-    final grantedSet = shareAccess.grantedRecordIds.toSet();
-    return allRecords.where((r) => grantedSet.contains(r.id)).toList();
+
+    final restrictedSet = shareAccess.restrictedFields.toSet();
+    final sanitizedFields = Map<String, dynamic>.from(record.fields)
+      ..removeWhere((key, _) => restrictedSet.contains(key));
+
+    return record.copyWith(
+      fields: sanitizedFields,
+      attachmentIds: shareAccess.allowAttachments ? record.attachmentIds : const [],
+    );
   }
 }

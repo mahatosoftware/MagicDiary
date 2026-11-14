@@ -192,8 +192,8 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
                         final picked = await showDatePicker(
                           context: context,
                           initialDate: _selectedDate,
-                          firstDate: DateTime.now().subtract(const Duration(days: 30)),
-                          lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+                          firstDate: DateTime(1900),
+                          lastDate: DateTime(2200),
                         );
                         if (picked != null) {
                           setState(() => _selectedDate = picked);

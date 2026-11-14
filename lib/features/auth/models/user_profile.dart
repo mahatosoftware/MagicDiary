@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class UserProfile {
@@ -11,6 +12,31 @@ class UserProfile {
   final bool enableNotifications;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  /// Generates a clean 7-character alphanumeric username (lowercase a-z and 0-9).
+  /// Starts with an alphabetic character and contains at least one numeric digit.
+  static String generate7CharUsername() {
+    const letters = 'abcdefghijklmnopqrstuvwxyz';
+    const digits = '0123456789';
+    const allChars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    final random = Random.secure();
+
+    final buffer = StringBuffer();
+    // 1st character: letter (a-z)
+    buffer.write(letters[random.nextInt(letters.length)]);
+    // Next 5 characters: alphanumeric
+    for (int i = 0; i < 5; i++) {
+      buffer.write(allChars[random.nextInt(allChars.length)]);
+    }
+    // 7th character guarantee: numeric digit (0-9)
+    final digitChar = digits[random.nextInt(digits.length)];
+    final charsList = buffer.toString().split('')..add(digitChar);
+
+    // Keep first character as letter, shuffle characters 1..6
+    final firstChar = charsList[0];
+    final remaining = charsList.sublist(1)..shuffle(random);
+    return firstChar + remaining.join();
+  }
 
   UserProfile({
     required this.uid,

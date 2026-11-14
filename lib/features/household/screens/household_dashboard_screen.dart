@@ -175,8 +175,8 @@ class _HouseholdDashboardScreenState extends ConsumerState<HouseholdDashboardScr
                                   final picked = await showDatePicker(
                                     context: context,
                                     initialDate: dueDate,
-                                    firstDate: DateTime(2000),
-                                    lastDate: DateTime.now().add(const Duration(days: 365)),
+                                    firstDate: DateTime(1900),
+                                    lastDate: DateTime(2200),
                                   );
                                   if (picked != null) setState(() => dueDate = picked);
                                 },

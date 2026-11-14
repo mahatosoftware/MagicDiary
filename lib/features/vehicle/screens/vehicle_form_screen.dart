@@ -86,8 +86,8 @@ class _VehicleFormScreenState extends ConsumerState<VehicleFormScreen> {
     final picked = await showDatePicker(
       context: context,
       initialDate: initialDate,
-      firstDate: firstDate ?? DateTime(2000),
-      lastDate: lastDate ?? DateTime(2040),
+      firstDate: firstDate ?? DateTime(1900),
+      lastDate: lastDate ?? DateTime(2200),
     );
     if (picked != null) {
       setState(() => onPicked(picked));

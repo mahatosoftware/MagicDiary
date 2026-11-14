@@ -97,8 +97,8 @@ class _FinancialReportsScreenState extends ConsumerState<FinancialReportsScreen>
   Future<void> _pickCustomDateRange() async {
     final picked = await showDateRangePicker(
       context: context,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      firstDate: DateTime(1900),
+      lastDate: DateTime(2200),
       initialDateRange: _customStart != null && _customEnd != null
           ? DateTimeRange(start: _customStart!, end: _customEnd!)
           : DateTimeRange(

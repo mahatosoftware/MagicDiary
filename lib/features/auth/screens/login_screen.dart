@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../../../core/providers/app_providers.dart';
+import '../models/user_profile.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -28,6 +29,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _isLoading = false;
   bool _isGoogleLoading = false;
   String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _usernameController.text = UserProfile.generate7CharUsername();
+  }
 
   @override
   void dispose() {
@@ -289,6 +296,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           setState(() {
                             _isSignUp = newSelection.first;
                             _errorMessage = null;
+                            if (_isSignUp && _usernameController.text.trim().isEmpty) {
+                              _usernameController.text = UserProfile.generate7CharUsername();
+                            }
                           });
                         },
                       ),
@@ -383,11 +393,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         const SizedBox(height: 14),
                         TextFormField(
                           controller: _usernameController,
-                          decoration: const InputDecoration(
-                            labelText: 'Username',
-                            hintText: 'e.g. debasish_m',
-                            prefixIcon: Icon(Icons.alternate_email_outlined),
-                            border: OutlineInputBorder(),
+                          decoration: InputDecoration(
+                            labelText: 'Username (7-Character Alphanumeric)',
+                            hintText: 'e.g. k4m9x27',
+                            helperText: '7-character ID auto-generated for your account',
+                            prefixIcon: const Icon(Icons.alternate_email_outlined),
+                            suffixIcon: IconButton(
+                              icon: const Icon(Icons.refresh_rounded),
+                              tooltip: 'Generate new 7-character username',
+                              onPressed: () {
+                                setState(() {
+                                  _usernameController.text = UserProfile.generate7CharUsername();
+                                });
+                              },
+                            ),
+                            border: const OutlineInputBorder(),
                           ),
                           keyboardType: TextInputType.text,
                           textInputAction: TextInputAction.next,

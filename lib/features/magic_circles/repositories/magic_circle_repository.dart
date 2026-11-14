@@ -36,14 +36,19 @@ class MagicCircleRepository {
     });
   }
 
-  Stream<List<MagicCircle>> watchUserCircles(String uid) {
+  Stream<List<MagicCircle>> watchUserCircles({
+    required String uid,
+    String? email,
+    String? displayName,
+  }) {
     final controller = StreamController<List<MagicCircle>>.broadcast();
     Map<String, MagicCircle> ownedCircles = {};
     Map<String, MagicCircle> memberCircles = {};
+    Map<String, MagicCircle> emailCircles = {};
 
     void emit() {
       if (controller.isClosed) return;
-      final merged = <String, MagicCircle>{...ownedCircles, ...memberCircles};
+      final merged = <String, MagicCircle>{...ownedCircles, ...memberCircles, ...emailCircles};
       final list = merged.values.toList()
         ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
       controller.add(list);
@@ -68,7 +73,7 @@ class MagicCircleRepository {
           },
         );
 
-    // Stream 2: Circles where user is a member (matches memberUids rule)
+    // Stream 2: Circles where user is a member by UID (matches memberUids rule)
     final subMember = _circlesRef
         .where('memberUids', arrayContains: uid)
         .snapshots()
@@ -81,17 +86,112 @@ class MagicCircleRepository {
             emit();
           },
           onError: (err) {
-            // memberUids query might not match if documents lack the field yet
             emit();
           },
         );
 
+    // Stream 3: Circles where user was invited by email (matches memberEmails)
+    StreamSubscription? subEmail;
+    final cleanEmail = email?.trim().toLowerCase();
+    if (cleanEmail != null && cleanEmail.isNotEmpty) {
+      subEmail = _circlesRef
+          .where('memberEmails', arrayContains: cleanEmail)
+          .snapshots()
+          .listen(
+            (snapshot) {
+              emailCircles = {
+                for (final doc in snapshot.docs)
+                  doc.id: MagicCircle.fromMap(doc.data(), doc.id),
+              };
+              emit();
+
+              // Auto-claim any pending invited memberships
+              for (final doc in snapshot.docs) {
+                final circle = MagicCircle.fromMap(doc.data(), doc.id);
+                final hasPending = circle.members.any(
+                  (m) =>
+                      m.email.trim().toLowerCase() == cleanEmail &&
+                      (m.uid.startsWith('pending_') || m.uid.isEmpty || m.uid != uid),
+                );
+                if (hasPending || !circle.memberUids.contains(uid)) {
+                  claimPendingMembership(
+                    circleId: circle.id,
+                    uid: uid,
+                    email: cleanEmail,
+                    displayName: displayName,
+                  );
+                }
+              }
+            },
+            onError: (err) {
+              emit();
+            },
+          );
+    }
+
     controller.onCancel = () {
       subOwned.cancel();
       subMember.cancel();
+      subEmail?.cancel();
     };
 
     return controller.stream;
+  }
+
+  /// Claims an invited membership, transitioning from pending email UID to actual user UID.
+  Future<void> claimPendingMembership({
+    required String circleId,
+    required String uid,
+    required String email,
+    String? displayName,
+  }) async {
+    try {
+      final docRef = _circlesRef.doc(circleId);
+      final snap = await docRef.get();
+      if (!snap.exists || snap.data() == null) return;
+      final circle = MagicCircle.fromMap(snap.data()!, snap.id);
+      final cleanEmail = email.trim().toLowerCase();
+
+      bool modified = false;
+      final updatedMembers = circle.members.map((m) {
+        if (m.email.trim().toLowerCase() == cleanEmail &&
+            (m.uid.startsWith('pending_') || m.uid.isEmpty || m.uid != uid)) {
+          modified = true;
+          return MagicCircleMember(
+            uid: uid,
+            email: m.email,
+            displayName: (displayName != null && displayName.isNotEmpty)
+                ? displayName
+                : m.displayName,
+            role: m.role,
+            joinedAt: m.joinedAt,
+            status: 'active',
+          );
+        }
+        return m;
+      }).toList();
+
+      final updatedUids = {
+        ...circle.memberUids,
+        uid,
+      }.toList();
+
+      final updatedEmails = {
+        ...circle.memberEmails,
+        cleanEmail,
+      }.toList();
+
+      if (modified || !circle.memberUids.contains(uid)) {
+        await docRef.update({
+          'members': updatedMembers.map((m) => m.toMap()).toList(),
+          'memberUids': updatedUids,
+          'memberEmails': updatedEmails,
+          'updatedAt': Timestamp.now(),
+        });
+      }
+    } catch (_) {
+      // Ignored if user lacks permission or offline
+    }
   }
 
   Stream<List<CircleResponsibilityTask>> watchCircleTasks(String circleId) {

@@ -113,7 +113,7 @@ class _DeferBottomSheetState extends State<DeferBottomSheet> {
       context: context,
       initialDate: now.add(const Duration(days: 1)),
       firstDate: now,
-      lastDate: now.add(const Duration(days: 365)),
+      lastDate: DateTime(2200),
     );
     if (pickedDate == null) return;
     if (!mounted) return;

@@ -667,11 +667,13 @@ class PersonalDashboardScreen extends ConsumerWidget {
                   subtitle: Text(DateFormat('dd MMMM yyyy').format(selectedDate)),
                   trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
                   onTap: () async {
+                    final isBirthday = selectedType == 'Birthday';
                     final picked = await showDatePicker(
                       context: ctx,
                       initialDate: selectedDate,
                       firstDate: DateTime(1900),
-                      lastDate: DateTime(2100),
+                      lastDate: DateTime(2200),
+                      initialDatePickerMode: isBirthday ? DatePickerMode.year : DatePickerMode.day,
                     );
                     if (picked != null) {
                       setModalState(() => selectedDate = picked);
@@ -836,8 +838,8 @@ class PersonalDashboardScreen extends ConsumerWidget {
                     final picked = await showDatePicker(
                       context: ctx,
                       initialDate: targetDate,
-                      firstDate: DateTime.now(),
-                      lastDate: DateTime(2100),
+                      firstDate: DateTime(1900),
+                      lastDate: DateTime(2200),
                     );
                     if (picked != null) {
                       setModalState(() => targetDate = picked);

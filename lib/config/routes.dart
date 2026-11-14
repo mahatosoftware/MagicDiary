@@ -9,6 +9,9 @@ import '../features/diaries/screens/diaries_hub_screen.dart';
 import '../features/my_diaries/screens/my_diaries_screen.dart';
 import '../features/my_diaries/screens/diary_category_detail_screen.dart';
 import '../features/shared_diaries/screens/shared_diaries_screen.dart';
+import '../features/shared_diaries/screens/manage_diary_shares_screen.dart';
+import '../features/shared_diaries/screens/record_selection_screen.dart';
+import '../features/shared_diaries/models/shared_diary_models.dart';
 import '../features/magic_circles/screens/magic_circles_screen.dart';
 import '../features/magic_circles/screens/create_circle_screen.dart';
 import '../features/magic_circles/screens/circle_dashboard_screen.dart';
@@ -138,12 +141,16 @@ final router = GoRouter(
           path: '/diary-records/:diaryId',
           builder: (context, state) => GenericDiaryListScreen(
             diaryId: state.pathParameters['diaryId']!,
+            ownerId: state.uri.queryParameters['ownerId'],
+            ownerName: state.uri.queryParameters['ownerName'],
+            shareAccess: state.extra is SharedDiaryAccess ? state.extra as SharedDiaryAccess : null,
           ),
         ),
         GoRoute(
           path: '/diary-records/:diaryId/add',
           builder: (context, state) => GenericRecordFormScreen(
             diaryId: state.pathParameters['diaryId']!,
+            ownerId: state.uri.queryParameters['ownerId'],
           ),
         ),
         GoRoute(
@@ -151,6 +158,7 @@ final router = GoRouter(
           builder: (context, state) => GenericRecordFormScreen(
             diaryId: state.pathParameters['diaryId']!,
             initialRecord: state.extra as DiaryRecord?,
+            ownerId: state.uri.queryParameters['ownerId'],
           ),
         ),
         GoRoute(
@@ -159,6 +167,25 @@ final router = GoRouter(
             diaryId: state.pathParameters['diaryId']!,
             recordId: state.pathParameters['recordId']!,
             initialRecord: state.extra as DiaryRecord?,
+            ownerId: state.uri.queryParameters['ownerId'],
+            ownerName: state.uri.queryParameters['ownerName'],
+          ),
+        ),
+        GoRoute(
+          path: '/manage-shares/:diaryId',
+          builder: (context, state) => ManageDiarySharesScreen(
+            diaryId: state.pathParameters['diaryId']!,
+            diaryTitle: state.uri.queryParameters['title'],
+          ),
+        ),
+        GoRoute(
+          path: '/record-selection/:diaryId',
+          builder: (context, state) => RecordSelectionScreen(
+            diaryId: state.pathParameters['diaryId']!,
+            ownerUid: state.uri.queryParameters['ownerId'] ?? FirebaseAuth.instance.currentUser?.uid ?? '',
+            diaryTitle: state.uri.queryParameters['title'] ?? 'Select Records',
+            initiallySelectedRecordIds: (state.extra as Map<String, dynamic>?)?['selected'] as Set<String>? ?? {},
+            recipientName: state.uri.queryParameters['recipient'],
           ),
         ),
 

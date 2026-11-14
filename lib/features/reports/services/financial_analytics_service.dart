@@ -167,8 +167,8 @@ class FinancialAnalyticsService {
 
       case ReportPeriodType.allTime:
         return ReportDateRange(
-          start: DateTime(2020, 1, 1),
-          end: DateTime.now().add(const Duration(days: 365 * 10)),
+          start: DateTime(1900, 1, 1),
+          end: DateTime(2200, 12, 31, 23, 59, 59, 999),
           label: 'All Time Overview',
           periodType: periodType,
           yearType: yearType,

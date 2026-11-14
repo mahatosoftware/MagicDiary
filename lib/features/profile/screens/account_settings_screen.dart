@@ -450,6 +450,21 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
+                        Text('Username', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                        Text(
+                          user?.username.isNotEmpty == true ? '@${user!.username}' : 'N/A',
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
                         Text('User ID', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
                         Text(
                           currentUser?.uid ?? 'Unknown',

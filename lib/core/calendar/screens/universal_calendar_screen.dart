@@ -133,8 +133,8 @@ class _UniversalCalendarScreenState extends ConsumerState<UniversalCalendarScree
                     final picked = await showDatePicker(
                       context: context,
                       initialDate: _selectedDate,
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime(2035),
+                      firstDate: DateTime(1900),
+                      lastDate: DateTime(2200),
                     );
                     if (picked != null) {
                       setState(() => _selectedDate = picked);

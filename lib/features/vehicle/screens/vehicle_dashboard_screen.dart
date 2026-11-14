@@ -160,8 +160,8 @@ class VehicleDashboardScreen extends ConsumerWidget {
                           final picked = await showDatePicker(
                             context: context,
                             initialDate: serviceDate,
-                            firstDate: DateTime(2010),
-                            lastDate: DateTime.now(),
+                            firstDate: DateTime(1900),
+                            lastDate: DateTime(2200),
                           );
                           if (picked != null) setState(() => serviceDate = picked);
                         },
@@ -356,8 +356,8 @@ class VehicleDashboardScreen extends ConsumerWidget {
                           final picked = await showDatePicker(
                             context: context,
                             initialDate: newExpiry,
-                            firstDate: DateTime.now().subtract(const Duration(days: 30)),
-                            lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
+                            firstDate: DateTime(1900),
+                            lastDate: DateTime(2200),
                           );
                           if (picked != null) {
                             setState(() => newExpiry = picked);
@@ -566,8 +566,8 @@ class VehicleDashboardScreen extends ConsumerWidget {
                           final picked = await showDatePicker(
                             context: context,
                             initialDate: newExpiry,
-                            firstDate: DateTime.now().subtract(const Duration(days: 30)),
-                            lastDate: DateTime.now().add(const Duration(days: 365 * 3)),
+                            firstDate: DateTime(1900),
+                            lastDate: DateTime(2200),
                           );
                           if (picked != null) {
                             setState(() => newExpiry = picked);
@@ -796,8 +796,8 @@ class VehicleDashboardScreen extends ConsumerWidget {
                           final picked = await showDatePicker(
                             context: context,
                             initialDate: saleDate,
-                            firstDate: DateTime(2000),
-                            lastDate: DateTime.now(),
+                            firstDate: DateTime(1900),
+                            lastDate: DateTime(2200),
                           );
                           if (picked != null) {
                             setState(() => saleDate = picked);

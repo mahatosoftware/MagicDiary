@@ -11,7 +11,11 @@ final userCirclesStreamProvider = StreamProvider<List<MagicCircle>>((ref) {
   final user = ref.watch(userProfileProvider);
   if (user == null) return const Stream.empty();
   final repo = ref.read(magicCircleRepositoryProvider);
-  return repo.watchUserCircles(user.uid);
+  return repo.watchUserCircles(
+    uid: user.uid,
+    email: user.email,
+    displayName: user.displayName,
+  );
 });
 
 class MagicCirclesScreen extends ConsumerStatefulWidget {

@@ -9,6 +9,8 @@ import '../../../core/diary_registry/diary_registry.dart';
 import '../../../core/diary_registry/diary_definition.dart';
 import '../../../core/diary_registry/diary_category.dart';
 import '../../../core/providers/app_providers.dart';
+import '../../shared_diaries/models/shared_diary_models.dart';
+import '../../shared_diaries/repositories/shared_diary_repository.dart';
 
 final circleTasksStreamProvider = StreamProvider.family<List<CircleResponsibilityTask>, String>((ref, circleId) {
   final repo = ref.read(magicCircleRepositoryProvider);
@@ -299,11 +301,9 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
                           subtitle: Text(diary.description, maxLines: 2, overflow: TextOverflow.ellipsis),
                           trailing: const Icon(Icons.chevron_right),
                           onTap: () {
-                            if (diary.hasDedicatedRoute) {
-                              context.push(diary.dedicatedRoute!);
-                            } else {
-                              context.push('/diary-records/${diary.id}');
-                            }
+                            context.push(
+                              '/diary-records/${diary.id}?ownerId=${circle.ownerId}&ownerName=${Uri.encodeComponent(circle.name)}',
+                            );
                           },
                         ),
                       );
@@ -512,8 +512,8 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
                   final picked = await showDatePicker(
                     context: context,
                     initialDate: dueDate,
-                    firstDate: DateTime.now(),
-                    lastDate: DateTime(2035),
+                    firstDate: DateTime(1900),
+                    lastDate: DateTime(2200),
                   );
                   if (picked != null) setModalState(() => dueDate = picked);
                 },
@@ -567,7 +567,8 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
   }
 
   void _showAddDiaryModal(BuildContext context, MagicCircle circle) {
-    var selectedDiary = DiaryRegistry.predefinedDiaries.first;
+    final alphabeticalDiaries = DiaryRegistry.predefinedDiariesAlphabetical;
+    var selectedDiary = alphabeticalDiaries.first;
 
     showModalBottomSheet(
       context: context,
@@ -586,7 +587,7 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
                   labelText: 'Select Predefined Diary',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                items: DiaryRegistry.predefinedDiaries
+                items: alphabeticalDiaries
                     .map((d) => DropdownMenuItem(value: d, child: Text(d.name)))
                     .toList(),
                 onChanged: (val) {
@@ -616,6 +617,35 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
                         updatedAt: DateTime.now(),
                       );
                       await ref.read(magicCircleRepositoryProvider).updateCircle(updatedCircle);
+
+                      // Also generate SharedDiaryAccess for circle members so it appears in Shared Diaries
+                      final sharedRepo = ref.read(sharedDiaryRepositoryProvider);
+                      for (final member in circle.members) {
+                        if (member.uid != circle.ownerId && member.email.isNotEmpty) {
+                          final cleanEmail = member.email.trim().toLowerCase();
+                          final share = SharedDiaryAccess(
+                            id: SharedDiaryRepository.generateShareId(
+                              ownerUid: circle.ownerId,
+                              diaryId: selectedDiary.id,
+                              target: cleanEmail,
+                            ),
+                            diaryId: selectedDiary.id,
+                            diaryName: selectedDiary.name,
+                            ownerUid: circle.ownerId,
+                            ownerName: circle.name,
+                            circleId: circle.id,
+                            circleName: circle.name,
+                            sharedWithUid: member.uid.isNotEmpty ? member.uid : 'pending_$cleanEmail',
+                            sharedWithEmail: cleanEmail,
+                            sharedWithName: member.displayName,
+                            permission: SharedDiaryPermission.editor,
+                            shareEntireDiary: true,
+                            createdAt: DateTime.now(),
+                            updatedAt: DateTime.now(),
+                          );
+                          await sharedRepo.createShareAccess(share);
+                        }
+                      }
                     }
                     if (ctx.mounted) Navigator.pop(ctx);
                   },

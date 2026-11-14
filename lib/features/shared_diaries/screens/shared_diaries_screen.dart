@@ -2,21 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:uuid/uuid.dart';
 import '../models/shared_diary_models.dart';
 import '../repositories/shared_diary_repository.dart';
+import '../widgets/sharing_wizard_sheet.dart';
 import '../../../core/diary_registry/diary_registry.dart';
 import '../../../core/diary_registry/diary_definition.dart';
 import '../../../core/diary_registry/diary_category.dart';
 import '../../../core/providers/app_providers.dart';
 
-final sharedDiaryRepositoryProvider = Provider<SharedDiaryRepository>((ref) => SharedDiaryRepository());
 
 final sharedWithMeStreamProvider = StreamProvider<List<SharedDiaryAccess>>((ref) {
   final user = ref.watch(userProfileProvider);
   if (user == null) return const Stream.empty();
   final repo = ref.read(sharedDiaryRepositoryProvider);
-  return repo.watchSharedWithMe(user.uid);
+  return repo.watchSharedWithMe(
+    uid: user.uid,
+    email: user.email,
+    displayName: user.displayName,
+  );
 });
 
 final sharedByMeStreamProvider = StreamProvider<List<SharedDiaryAccess>>((ref) {
@@ -36,6 +39,8 @@ class SharedDiariesScreen extends ConsumerStatefulWidget {
 class _SharedDiariesScreenState extends ConsumerState<SharedDiariesScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   DiaryCategoryType? _selectedCategory;
+  SharingMode? _selectedSharingMode;
+  ShareStatus? _selectedStatus;
 
   @override
   void initState() {
@@ -72,7 +77,7 @@ class _SharedDiariesScreenState extends ConsumerState<SharedDiariesScreen> with 
       ),
       body: Column(
         children: [
-          // Category Filter Chips
+          // Filter Chips: Categories
           SizedBox(
             height: 48,
             child: ListView(
@@ -102,6 +107,41 @@ class _SharedDiariesScreenState extends ConsumerState<SharedDiariesScreen> with 
               ],
             ),
           ),
+
+          // Secondary Filter Chips: Sharing Mode & Status
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Row(
+              children: [
+                // Mode filter dropdown/chip
+                FilterChip(
+                  label: Text(_selectedSharingMode == null ? 'All Modes' : _selectedSharingMode!.shortLabel),
+                  selected: _selectedSharingMode != null,
+                  onSelected: (_) => _showModeFilterDialog(),
+                ),
+                const SizedBox(width: 8),
+                FilterChip(
+                  label: Text(_selectedStatus == null ? 'All Status' : _selectedStatus!.name.toUpperCase()),
+                  selected: _selectedStatus != null,
+                  onSelected: (_) => _showStatusFilterDialog(),
+                ),
+                const Spacer(),
+                if (_selectedCategory != null || _selectedSharingMode != null || _selectedStatus != null)
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        _selectedCategory = null;
+                        _selectedSharingMode = null;
+                        _selectedStatus = null;
+                      });
+                    },
+                    child: const Text('Reset', style: TextStyle(fontSize: 12)),
+                  ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+
           Expanded(
             child: TabBarView(
               controller: _tabController,
@@ -111,21 +151,16 @@ class _SharedDiariesScreenState extends ConsumerState<SharedDiariesScreen> with 
                   loading: () => const Center(child: CircularProgressIndicator()),
                   error: (err, stack) => Center(child: Text('Error: $err')),
                   data: (shares) {
-                    final displayedShares = _selectedCategory == null
-                        ? shares
-                        : shares.where((s) {
-                            final def = DiaryRegistry.getDiaryById(s.diaryId);
-                            return def?.categoryType == _selectedCategory;
-                          }).toList();
+                    final displayedShares = _filterShares(shares);
 
                     if (displayedShares.isEmpty) {
                       return _buildEmptyState(
                         icon: Icons.inbox_outlined,
-                        title: _selectedCategory != null
-                            ? 'No Shared Diaries in this Category'
+                        title: _selectedCategory != null || _selectedSharingMode != null
+                            ? 'No Shared Diaries match filters'
                             : 'No Diaries Shared With You',
-                        subtitle: _selectedCategory != null
-                            ? 'Try selecting "All Categories" to view other shared diaries.'
+                        subtitle: _selectedCategory != null || _selectedSharingMode != null
+                            ? 'Try resetting the filters above to view other shared diaries.'
                             : 'When family members or colleagues share diaries with you, they will appear here.',
                       );
                     }
@@ -134,198 +169,409 @@ class _SharedDiariesScreenState extends ConsumerState<SharedDiariesScreen> with 
                       itemCount: displayedShares.length,
                       itemBuilder: (context, index) {
                         final share = displayedShares[index];
-                  final diaryDef = DiaryRegistry.getDiaryById(share.diaryId);
-                  return Card(
-                    elevation: 1.5,
-                    margin: const EdgeInsets.only(bottom: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              CircleAvatar(
-                                backgroundColor: (diaryDef?.color ?? Colors.blue).withValues(alpha: 0.15),
-                                child: Icon(diaryDef?.icon ?? Icons.auto_stories, color: diaryDef?.color ?? Colors.blue),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                        final diaryDef = DiaryRegistry.getDiaryById(share.diaryId);
+                        final isEntire = share.sharingMode == SharingMode.entire;
+
+                        return Card(
+                          elevation: 1.5,
+                          margin: const EdgeInsets.only(bottom: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
                                   children: [
-                                    Text(
-                                      share.diaryName,
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                    CircleAvatar(
+                                      backgroundColor: (diaryDef?.color ?? Colors.blue).withValues(alpha: 0.15),
+                                      child: Icon(diaryDef?.icon ?? Icons.auto_stories, color: diaryDef?.color ?? Colors.blue),
                                     ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      'Owner: ${share.ownerName}',
-                                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            share.diaryName,
+                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'Owner: ${share.ownerName}',
+                                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.blue.shade50,
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        share.permission.label,
+                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blue.shade700),
+                                      ),
                                     ),
                                   ],
                                 ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: Colors.blue.shade50,
-                                  borderRadius: BorderRadius.circular(8),
+                                const SizedBox(height: 10),
+
+                                // Mode & Record Scope Chips
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 6,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: (isEntire ? Colors.teal : Colors.indigo).withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            isEntire ? Icons.library_books_rounded : Icons.checklist_rounded,
+                                            size: 13,
+                                            color: isEntire ? Colors.teal.shade800 : Colors.indigo.shade800,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            isEntire
+                                                ? 'Entire Diary'
+                                                : '${share.grantedRecordIds.length} Selected Records',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.bold,
+                                              color: isEntire ? Colors.teal.shade800 : Colors.indigo.shade800,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (isEntire && share.futurePolicySafe != FutureRecordPolicy.allFuture)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey.shade100,
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          share.futurePolicySafe.label,
+                                          style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                                        ),
+                                      ),
+                                    if (share.isTemporary && share.expiresAt != null)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: Colors.orange.shade50,
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          'Expires ${DateFormat('d MMM yyyy').format(share.expiresAt!)}',
+                                          style: TextStyle(fontSize: 11, color: Colors.orange.shade800, fontWeight: FontWeight.w600),
+                                        ),
+                                      ),
+                                  ],
                                 ),
-                                child: Text(
-                                  share.permission.label,
-                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blue.shade700),
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (share.circleName != null) ...[
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                const Icon(Icons.groups_outlined, size: 14, color: Colors.purple),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'Linked to Circle: ${share.circleName}',
-                                  style: const TextStyle(fontSize: 12, color: Colors.purple, fontWeight: FontWeight.w500),
+
+                                if (share.circleName != null) ...[
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.groups_outlined, size: 14, color: Colors.purple),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'Linked to Circle: ${share.circleName}',
+                                        style: const TextStyle(fontSize: 12, color: Colors.purple, fontWeight: FontWeight.w500),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                                const Divider(height: 24),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    TextButton.icon(
+                                      icon: const Icon(Icons.exit_to_app_rounded, size: 16, color: Colors.red),
+                                      label: const Text('Leave Diary', style: TextStyle(color: Colors.red, fontSize: 12)),
+                                      onPressed: () => _confirmLeaveDiary(context, share),
+                                    ),
+                                    ElevatedButton(
+                                      onPressed: () {
+                                        context.push(
+                                          '/diary-records/${share.diaryId}?ownerId=${share.ownerUid}&ownerName=${Uri.encodeComponent(share.ownerName)}&permission=${share.permission.name}',
+                                          extra: share,
+                                        );
+                                      },
+                                      child: const Text('Open Diary'),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
-                          ],
-                          const Divider(height: 24),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              TextButton.icon(
-                                icon: const Icon(Icons.exit_to_app_rounded, size: 16, color: Colors.red),
-                                label: const Text('Leave Diary', style: TextStyle(color: Colors.red, fontSize: 12)),
-                                onPressed: () => _confirmLeaveDiary(context, share),
-                              ),
-                              ElevatedButton(
-                                onPressed: () {
-                                  if (diaryDef?.hasDedicatedRoute ?? false) {
-                                    context.push(diaryDef!.dedicatedRoute!);
-                                  } else {
-                                    context.push('/diary-records/${share.diaryId}');
-                                  }
-                                },
-                                child: const Text('Open Diary'),
-                              ),
-                            ],
                           ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              );
-            },
-          ),
+                        );
+                      },
+                    );
+                  },
+                ),
 
-          // 2. Shared By Me
-          sharedByMeAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (err, stack) => Center(child: Text('Error: $err')),
-            data: (shares) {
-              final displayedShares = _selectedCategory == null
-                  ? shares
-                  : shares.where((s) {
-                      final def = DiaryRegistry.getDiaryById(s.diaryId);
-                      return def?.categoryType == _selectedCategory;
-                    }).toList();
+                // 2. Shared By Me
+                sharedByMeAsync.when(
+                  loading: () => const Center(child: CircularProgressIndicator()),
+                  error: (err, stack) => Center(child: Text('Error: $err')),
+                  data: (shares) {
+                    final displayedShares = _filterShares(shares);
 
-              if (displayedShares.isEmpty) {
-                return _buildEmptyState(
-                  icon: Icons.outbox_outlined,
-                  title: _selectedCategory != null
-                      ? 'No Shared Diaries in this Category'
-                      : 'You haven\'t shared any diaries yet',
-                  subtitle: _selectedCategory != null
-                      ? 'Try selecting "All Categories" to view other shared diaries.'
-                      : 'Share bills, vehicles, warranties or properties with family members or friends.',
-                );
-              }
-              return ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
-                itemCount: displayedShares.length,
-                itemBuilder: (context, index) {
-                  final share = displayedShares[index];
-                  final diaryDef = DiaryRegistry.getDiaryById(share.diaryId);
-                  return Card(
-                    elevation: 1.5,
-                    margin: const EdgeInsets.only(bottom: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              CircleAvatar(
-                                backgroundColor: (diaryDef?.color ?? Colors.blue).withValues(alpha: 0.15),
-                                child: Icon(diaryDef?.icon ?? Icons.auto_stories, color: diaryDef?.color ?? Colors.blue),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                    if (displayedShares.isEmpty) {
+                      return _buildEmptyState(
+                        icon: Icons.outbox_outlined,
+                        title: _selectedCategory != null || _selectedSharingMode != null
+                            ? 'No Shared Diaries match filters'
+                            : 'You haven\'t shared any diaries yet',
+                        subtitle: _selectedCategory != null || _selectedSharingMode != null
+                            ? 'Try resetting the filters above to view other shared diaries.'
+                            : 'Share bills, vehicles, warranties or properties with family members or circles.',
+                      );
+                    }
+                    return ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
+                      itemCount: displayedShares.length,
+                      itemBuilder: (context, index) {
+                        final share = displayedShares[index];
+                        final diaryDef = DiaryRegistry.getDiaryById(share.diaryId);
+                        final isEntire = share.sharingMode == SharingMode.entire;
+
+                        return Card(
+                          elevation: 1.5,
+                          margin: const EdgeInsets.only(bottom: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
                                   children: [
-                                    Text(
-                                      share.diaryName,
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                    CircleAvatar(
+                                      backgroundColor: (diaryDef?.color ?? Colors.blue).withValues(alpha: 0.15),
+                                      child: Icon(diaryDef?.icon ?? Icons.auto_stories, color: diaryDef?.color ?? Colors.blue),
                                     ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      'Shared with: ${share.sharedWithEmail}',
-                                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            share.diaryName,
+                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            share.recipientType == RecipientType.circle && share.circleName != null
+                                                ? 'Circle: ${share.circleName}'
+                                                : 'Shared with: ${share.sharedWithEmail}',
+                                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.green.shade50,
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        share.permission.name.toUpperCase(),
+                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green.shade700),
+                                      ),
                                     ),
                                   ],
                                 ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: Colors.green.shade50,
-                                  borderRadius: BorderRadius.circular(8),
+                                const SizedBox(height: 10),
+
+                                // Mode, Policy & Scope Badges
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 6,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: (isEntire ? Colors.teal : Colors.indigo).withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            isEntire ? Icons.library_books_rounded : Icons.checklist_rounded,
+                                            size: 13,
+                                            color: isEntire ? Colors.teal.shade800 : Colors.indigo.shade800,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            isEntire
+                                                ? 'Entire Diary'
+                                                : '${share.grantedRecordIds.length} Selected Records',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.bold,
+                                              color: isEntire ? Colors.teal.shade800 : Colors.indigo.shade800,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (isEntire)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey.shade100,
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          share.futurePolicySafe.label,
+                                          style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                                        ),
+                                      ),
+                                    if (share.status != ShareStatus.active)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: Colors.red.shade50,
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          share.status.name.toUpperCase(),
+                                          style: TextStyle(fontSize: 11, color: Colors.red.shade700, fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                    if (share.isTemporary && share.expiresAt != null)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: Colors.orange.shade50,
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          'Expires ${DateFormat('d MMM yyyy').format(share.expiresAt!)}',
+                                          style: TextStyle(fontSize: 11, color: Colors.orange.shade800, fontWeight: FontWeight.w600),
+                                        ),
+                                      ),
+                                  ],
                                 ),
-                                child: Text(
-                                  share.permission.name.toUpperCase(),
-                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green.shade700),
+
+                                const Divider(height: 24),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    OutlinedButton.icon(
+                                      icon: const Icon(Icons.settings_suggest_rounded, size: 16),
+                                      label: const Text('Manage Sharing', style: TextStyle(fontSize: 12)),
+                                      onPressed: () {
+                                        context.push(
+                                          '/manage-shares/${share.diaryId}?title=${Uri.encodeComponent(share.diaryName)}',
+                                        );
+                                      },
+                                    ),
+                                    TextButton.icon(
+                                      icon: const Icon(Icons.block_rounded, size: 16, color: Colors.red),
+                                      label: const Text('Revoke', style: TextStyle(color: Colors.red, fontSize: 12)),
+                                      onPressed: () => _confirmRevoke(context, share),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                          const Divider(height: 24),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Shared on ${DateFormat('d MMM yyyy').format(share.createdAt)}',
-                                style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-                              ),
-                              OutlinedButton.icon(
-                                icon: const Icon(Icons.block_rounded, size: 16, color: Colors.red),
-                                label: const Text('Revoke Access', style: TextStyle(color: Colors.red, fontSize: 12)),
-                                onPressed: () => _confirmRevoke(context, share),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              );
-            },
+                        );
+                      },
+                    );
+                  },
+                ),
+              ],
+            ),
           ),
         ],
       ),
-    ),
-  ],
-),
-);
+    );
+  }
+
+  List<SharedDiaryAccess> _filterShares(List<SharedDiaryAccess> shares) {
+    return shares.where((s) {
+      if (_selectedCategory != null) {
+        final def = DiaryRegistry.getDiaryById(s.diaryId);
+        if (def?.categoryType != _selectedCategory) return false;
+      }
+      if (_selectedSharingMode != null) {
+        if (s.sharingMode != _selectedSharingMode) return false;
+      }
+      if (_selectedStatus != null) {
+        if (s.status != _selectedStatus) return false;
+      }
+      return true;
+    }).toList();
+  }
+
+  void _showModeFilterDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Filter by Sharing Mode'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () {
+              setState(() => _selectedSharingMode = null);
+              Navigator.pop(ctx);
+            },
+            child: const Text('All Modes'),
+          ),
+          ...SharingMode.values.map((mode) {
+            return SimpleDialogOption(
+              onPressed: () {
+                setState(() => _selectedSharingMode = mode);
+                Navigator.pop(ctx);
+              },
+              child: Text(mode.label),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  void _showStatusFilterDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Filter by Share Status'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () {
+              setState(() => _selectedStatus = null);
+              Navigator.pop(ctx);
+            },
+            child: const Text('All Statuses'),
+          ),
+          ...ShareStatus.values.map((status) {
+            return SimpleDialogOption(
+              onPressed: () {
+                setState(() => _selectedStatus = status);
+                Navigator.pop(ctx);
+              },
+              child: Text(status.name.toUpperCase()),
+            );
+          }),
+        ],
+      ),
+    );
   }
 
   Widget _buildEmptyState({
@@ -362,7 +608,12 @@ class _SharedDiariesScreenState extends ConsumerState<SharedDiariesScreen> with 
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
               Navigator.pop(ctx);
-              await ref.read(sharedDiaryRepositoryProvider).revokeShareAccess(share.id);
+              await ref.read(sharedDiaryRepositoryProvider).revokeShareAccess(
+                    share.id,
+                    ownerUid: share.ownerUid,
+                    diaryId: share.diaryId,
+                    target: share.sharedWithUid,
+                  );
             },
             child: const Text('Revoke'),
           ),
@@ -383,7 +634,12 @@ class _SharedDiariesScreenState extends ConsumerState<SharedDiariesScreen> with 
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
               Navigator.pop(ctx);
-              await ref.read(sharedDiaryRepositoryProvider).revokeShareAccess(share.id);
+              await ref.read(sharedDiaryRepositoryProvider).revokeShareAccess(
+                    share.id,
+                    ownerUid: share.ownerUid,
+                    diaryId: share.diaryId,
+                    target: share.sharedWithUid,
+                  );
             },
             child: const Text('Leave'),
           ),
@@ -393,110 +649,67 @@ class _SharedDiariesScreenState extends ConsumerState<SharedDiariesScreen> with 
   }
 
   void _showShareDiaryModal(BuildContext context) {
-    final emailController = TextEditingController();
-    var selectedDiary = DiaryRegistry.predefinedDiaries.first;
-    var selectedPermission = SharedDiaryPermission.viewer;
-    var shareEntire = true;
+    final alphabeticalDiaries = DiaryRegistry.predefinedDiariesAlphabetical;
+    DiaryDefinition selectedDiary = alphabeticalDiaries.first;
 
-    showModalBottomSheet(
+    showDialog(
       context: context,
-      isScrollControlled: true,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModalState) => Padding(
-          padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
-          child: Column(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.share_rounded, color: Colors.blue),
+              SizedBox(width: 8),
+              Text('Select Diary to Share'),
+            ],
+          ),
+          content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Share a Diary', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              const Text('Choose one of your 45 Life OS Diaries to launch the sharing wizard:'),
               const SizedBox(height: 16),
               DropdownButtonFormField<DiaryDefinition>(
                 initialValue: selectedDiary,
+                isExpanded: true,
                 decoration: InputDecoration(
-                  labelText: 'Select Diary to Share',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 ),
-                items: DiaryRegistry.predefinedDiaries
-                    .map((d) => DropdownMenuItem(value: d, child: Text(d.name)))
-                    .toList(),
+                items: alphabeticalDiaries.map((d) {
+                  return DropdownMenuItem(
+                    value: d,
+                    child: Row(
+                      children: [
+                        Icon(d.icon, size: 18, color: d.color),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(d.name, overflow: TextOverflow.ellipsis)),
+                      ],
+                    ),
+                  );
+                }).toList(),
                 onChanged: (val) {
-                  if (val != null) setModalState(() => selectedDiary = val);
+                  if (val != null) {
+                    setDialogState(() => selectedDiary = val);
+                  }
                 },
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: InputDecoration(
-                  labelText: 'Recipient Email Address',
-                  prefixIcon: const Icon(Icons.email_outlined),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-              const SizedBox(height: 14),
-              DropdownButtonFormField<SharedDiaryPermission>(
-                initialValue: selectedPermission,
-                decoration: InputDecoration(
-                  labelText: 'Permission Level',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                items: SharedDiaryPermission.values
-                    .map((p) => DropdownMenuItem(value: p, child: Text(p.label)))
-                    .toList(),
-                onChanged: (val) {
-                  if (val != null) setModalState(() => selectedPermission = val);
-                },
-              ),
-              const SizedBox(height: 14),
-              SwitchListTile(
-                title: const Text('Share Complete Diary'),
-                subtitle: const Text('Shares all non-private records in this diary'),
-                value: shareEntire,
-                onChanged: (val) => setModalState(() => shareEntire = val),
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  onPressed: () async {
-                    final email = emailController.text.trim();
-                    if (email.isEmpty || !email.contains('@')) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Please enter a valid email')),
-                      );
-                      return;
-                    }
-                    final user = ref.read(userProfileProvider);
-                    if (user == null) return;
-
-                    final shareId = const Uuid().v4();
-                    final share = SharedDiaryAccess(
-                      id: shareId,
-                      diaryId: selectedDiary.id,
-                      diaryName: selectedDiary.name,
-                      ownerUid: user.uid,
-                      ownerName: user.displayName,
-                      sharedWithUid: 'pending_$email',
-                      sharedWithEmail: email,
-                      sharedWithName: email.split('@').first,
-                      permission: selectedPermission,
-                      shareEntireDiary: shareEntire,
-                      createdAt: DateTime.now(),
-                      updatedAt: DateTime.now(),
-                    );
-
-                    await ref.read(sharedDiaryRepositoryProvider).createShareAccess(share);
-                    if (ctx.mounted) Navigator.pop(ctx);
-                  },
-                  child: const Text('Send Invitation', style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
               ),
             ],
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton.icon(
+              icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+              label: const Text('Launch Sharing Wizard'),
+              onPressed: () {
+                Navigator.pop(ctx);
+                SharingWizardSheet.show(context, selectedDiary);
+              },
+            ),
+          ],
         ),
       ),
     );

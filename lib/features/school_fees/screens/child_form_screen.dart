@@ -203,8 +203,9 @@ class _ChildFormScreenState extends ConsumerState<ChildFormScreen> {
                   final picked = await showDatePicker(
                     context: context,
                     initialDate: _dob,
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime.now(),
+                    firstDate: DateTime(1900),
+                    lastDate: DateTime(2200),
+                    initialDatePickerMode: DatePickerMode.year,
                   );
                   if (picked != null) setState(() => _dob = picked);
                 },

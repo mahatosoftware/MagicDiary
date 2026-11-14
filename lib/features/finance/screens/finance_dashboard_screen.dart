@@ -164,8 +164,8 @@ class FinanceDashboardScreen extends ConsumerWidget {
                                   final picked = await showDatePicker(
                                     context: context,
                                     initialDate: maturityDate,
-                                    firstDate: DateTime(2000),
-                                    lastDate: DateTime.now().add(const Duration(days: 3650 * 5)),
+                                    firstDate: DateTime(1900),
+                                    lastDate: DateTime(2200),
                                   );
                                   if (picked != null) setState(() => maturityDate = picked);
                                 },
@@ -407,8 +407,8 @@ class FinanceDashboardScreen extends ConsumerWidget {
                                   final picked = await showDatePicker(
                                     context: context,
                                     initialDate: txDate,
-                                    firstDate: DateTime(2000),
-                                    lastDate: DateTime.now(),
+                                    firstDate: DateTime(1900),
+                                    lastDate: DateTime(2200),
                                   );
                                   if (picked != null) setState(() => txDate = picked);
                                 },

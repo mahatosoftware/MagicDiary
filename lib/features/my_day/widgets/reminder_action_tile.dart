@@ -181,7 +181,7 @@ class ReminderActionTile extends ConsumerWidget {
                           context: context,
                           initialDate: reminder.dueDate.isBefore(now) ? now.add(const Duration(days: 1)) : reminder.dueDate,
                           firstDate: now,
-                          lastDate: now.add(const Duration(days: 365 * 2)),
+                          lastDate: DateTime(2200),
                         );
                         if (picked != null) {
                           final days = picked.difference(DateTime(now.year, now.month, now.day)).inDays;

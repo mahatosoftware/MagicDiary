@@ -7,8 +7,19 @@ import '../../diary_registry/diary_definition.dart';
 import '../models/diary_record.dart';
 import '../repositories/diary_record_repository.dart';
 import '../../providers/app_providers.dart';
+import '../../security/diary_access_control_service.dart';
+import '../../../features/shared_diaries/models/shared_diary_models.dart';
+import '../../../features/shared_diaries/widgets/sharing_wizard_sheet.dart';
 
 final diaryRecordRepositoryProvider = Provider<DiaryRecordRepository>((ref) => DiaryRecordRepository());
+
+typedef DiaryRecordQuery = ({String diaryId, String userId});
+
+final diaryUserRecordsStreamProvider = StreamProvider.family<List<DiaryRecord>, DiaryRecordQuery>((ref, query) {
+  if (query.userId.isEmpty) return const Stream.empty();
+  final repo = ref.read(diaryRecordRepositoryProvider);
+  return repo.watchRecords(userId: query.userId, diaryId: query.diaryId);
+});
 
 final diaryRecordsStreamProvider = StreamProvider.family<List<DiaryRecord>, String>((ref, diaryId) {
   final user = ref.watch(userProfileProvider);
@@ -19,17 +30,34 @@ final diaryRecordsStreamProvider = StreamProvider.family<List<DiaryRecord>, Stri
 
 class GenericDiaryListScreen extends ConsumerWidget {
   final String diaryId;
+  final String? ownerId;
+  final String? ownerName;
+  final SharedDiaryAccess? shareAccess;
 
-  const GenericDiaryListScreen({super.key, required this.diaryId});
+  const GenericDiaryListScreen({
+    super.key,
+    required this.diaryId,
+    this.ownerId,
+    this.ownerName,
+    this.shareAccess,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final diary = DiaryRegistry.getDiaryById(diaryId);
-    final recordsAsync = ref.watch(diaryRecordsStreamProvider(diaryId));
+    final currentUser = ref.watch(userProfileProvider);
+    final effectiveUserId = (ownerId != null && ownerId!.isNotEmpty) ? ownerId! : (currentUser?.uid ?? '');
+    final isShared = ownerId != null && ownerId!.isNotEmpty && ownerId != currentUser?.uid;
 
-    final title = diary?.name ?? 'Diary Records';
+    final recordsAsync = ref.watch(diaryUserRecordsStreamProvider((diaryId: diaryId, userId: effectiveUserId)));
+
+    final title = isShared && ownerName != null && ownerName!.isNotEmpty
+        ? '${diary?.name ?? "Diary"} ($ownerName)'
+        : (diary?.name ?? 'Diary Records');
     final color = diary?.color ?? Colors.blue;
     final icon = diary?.icon ?? Icons.auto_stories_rounded;
+
+    final canAdd = !isShared || (shareAccess?.permission.canAdd ?? true);
 
     return Scaffold(
       appBar: AppBar(
@@ -39,7 +67,7 @@ class GenericDiaryListScreen extends ConsumerWidget {
             if (context.canPop()) {
               context.pop();
             } else {
-              context.go('/diaries');
+              context.go(isShared ? '/shared-diaries' : '/diaries');
             }
           },
         ),
@@ -50,19 +78,81 @@ class GenericDiaryListScreen extends ConsumerWidget {
             tooltip: 'View in Calendar',
             onPressed: () => context.push('/calendar'),
           ),
+          if (!isShared && diary != null)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.share_rounded),
+              tooltip: 'Diary Sharing',
+              onSelected: (value) {
+                if (value == 'share') {
+                  SharingWizardSheet.show(context, diary);
+                } else if (value == 'manage') {
+                  context.push('/manage-shares/$diaryId?title=${Uri.encodeComponent(diary.name)}');
+                }
+              },
+              itemBuilder: (ctx) => [
+                const PopupMenuItem(
+                  value: 'share',
+                  child: Row(
+                    children: [
+                      Icon(Icons.person_add_alt_1_rounded, size: 20, color: Colors.blue),
+                      SizedBox(width: 12),
+                      Text('Share Diary'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'manage',
+                  child: Row(
+                    children: [
+                      Icon(Icons.settings_suggest_rounded, size: 20, color: Colors.indigo),
+                      SizedBox(width: 12),
+                      Text('Manage Existing Shares'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          context.push('/diary-records/$diaryId/add');
-        },
-        backgroundColor: color,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add),
-        label: const Text('Add Entry', style: TextStyle(fontWeight: FontWeight.bold)),
-      ),
+      floatingActionButton: canAdd
+          ? FloatingActionButton.extended(
+              onPressed: () {
+                final queryParams = isShared
+                    ? '?ownerId=$effectiveUserId&ownerName=${Uri.encodeComponent(ownerName ?? "")}'
+                    : '';
+                context.push('/diary-records/$diaryId/add$queryParams', extra: shareAccess);
+              },
+              backgroundColor: color,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add),
+              label: const Text('Add Entry', style: TextStyle(fontWeight: FontWeight.bold)),
+            )
+          : null,
       body: Column(
         children: [
+          if (isShared)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: Colors.blue.withValues(alpha: 0.12),
+              child: Row(
+                children: [
+                  const Icon(Icons.share_rounded, size: 16, color: Colors.blue),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Shared by ${ownerName ?? "Owner"} • ${shareAccess?.sharingMode.shortLabel ?? "Shared"} • ${shareAccess?.permission.label ?? "Shared Access"}',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue),
+                    ),
+                  ),
+                  if (shareAccess?.isTemporary == true && shareAccess?.expiresAt != null)
+                    Text(
+                      'Expires ${DateFormat('d MMM').format(shareAccess!.expiresAt!)}',
+                      style: TextStyle(fontSize: 11, color: Colors.red.shade700, fontWeight: FontWeight.w600),
+                    ),
+                ],
+              ),
+            ),
           // Diary Header Card
           Container(
             padding: const EdgeInsets.all(16.0),
@@ -127,7 +217,16 @@ class GenericDiaryListScreen extends ConsumerWidget {
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (err, stack) => Center(child: Text('Error loading records: $err')),
               data: (records) {
-                if (records.isEmpty) {
+                final visibleRecords = isShared && shareAccess != null
+                    ? DiaryAccessControlService.filterRecordsForUser(
+                        allRecords: records,
+                        currentUserId: currentUser?.uid ?? '',
+                        diaryOwnerId: effectiveUserId,
+                        shareAccess: shareAccess,
+                      )
+                    : records;
+
+                if (visibleRecords.isEmpty) {
                   return Center(
                     child: Padding(
                       padding: const EdgeInsets.all(32.0),
@@ -137,12 +236,14 @@ class GenericDiaryListScreen extends ConsumerWidget {
                           Icon(icon, size: 64, color: Colors.grey.shade400),
                           const SizedBox(height: 16),
                           Text(
-                            'No records yet in $title',
+                            isShared ? 'No Accessible Shared Records' : 'No records yet in $title',
                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Tap "Add Entry" below to create your first record.',
+                            isShared
+                                ? 'The owner has not granted access to records in this diary, or your share has expired.'
+                                : 'Tap "Add Entry" below to create your first record.',
                             textAlign: TextAlign.center,
                             style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
                           ),
@@ -154,9 +255,9 @@ class GenericDiaryListScreen extends ConsumerWidget {
 
                 return ListView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
-                  itemCount: records.length,
+                  itemCount: visibleRecords.length,
                   itemBuilder: (context, index) {
-                    final record = records[index];
+                    final record = visibleRecords[index];
                     return Card(
                       elevation: 1.5,
                       margin: const EdgeInsets.only(bottom: 12),
@@ -164,7 +265,10 @@ class GenericDiaryListScreen extends ConsumerWidget {
                       child: InkWell(
                         borderRadius: BorderRadius.circular(16),
                         onTap: () {
-                          context.push('/diary-records/$diaryId/${record.id}', extra: record);
+                          final queryParams = isShared
+                              ? '?ownerId=$effectiveUserId&ownerName=${Uri.encodeComponent(ownerName ?? "")}'
+                              : '';
+                          context.push('/diary-records/$diaryId/${record.id}$queryParams', extra: record);
                         },
                         child: Padding(
                           padding: const EdgeInsets.all(16.0),

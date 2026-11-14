@@ -362,5 +362,413 @@ void main() {
       expect(DataEncryptionService.verifyHash('1235', hash), isFalse);
       expect(DataEncryptionService.verifyHash('', hash), isFalse);
     });
+
+    // 16. Shared Diary Access Level Permissions
+    test('Scenario 16: Contributor and Editor roles have write permissions while Viewer is restricted', () {
+      final contributorAccess = SharedDiaryAccess(
+        id: 'share_contrib_1',
+        diaryId: 'vehicle',
+        diaryName: 'Vehicle Diary',
+        ownerUid: userA,
+        ownerName: 'Alice',
+        sharedWithUid: userB,
+        sharedWithEmail: 'bob@test.com',
+        sharedWithName: 'Bob',
+        permission: SharedDiaryPermission.contributor,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      final editorAccess = SharedDiaryAccess(
+        id: 'share_editor_1',
+        diaryId: 'vehicle',
+        diaryName: 'Vehicle Diary',
+        ownerUid: userA,
+        ownerName: 'Alice',
+        sharedWithUid: userC,
+        sharedWithEmail: 'charlie@test.com',
+        sharedWithName: 'Charlie',
+        permission: SharedDiaryPermission.editor,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      // Contributor can read and add records, and edit their own contributed records
+      expect(DiaryAccessControlService.canRead(currentUserId: userB, diaryOwnerId: userA, shareAccess: contributorAccess), isTrue);
+      expect(DiaryAccessControlService.canAdd(currentUserId: userB, diaryOwnerId: userA, shareAccess: contributorAccess), isTrue);
+      expect(DiaryAccessControlService.canEdit(currentUserId: userB, diaryOwnerId: userA, recordCreatorId: userB, shareAccess: contributorAccess), isTrue);
+      expect(DiaryAccessControlService.canEdit(currentUserId: userB, diaryOwnerId: userA, recordCreatorId: userA, shareAccess: contributorAccess), isFalse);
+
+      // Editor can read, add, and edit any record
+      expect(DiaryAccessControlService.canRead(currentUserId: userC, diaryOwnerId: userA, shareAccess: editorAccess), isTrue);
+      expect(DiaryAccessControlService.canAdd(currentUserId: userC, diaryOwnerId: userA, shareAccess: editorAccess), isTrue);
+      expect(DiaryAccessControlService.canEdit(currentUserId: userC, diaryOwnerId: userA, recordCreatorId: userA, shareAccess: editorAccess), isTrue);
+    });
+
+    // 17. Shared Diary Pending Invitation Claiming Transition
+    test('Scenario 17: Pending invitation transitions correctly when claimed by recipient UID', () {
+      final pendingShare = SharedDiaryAccess(
+        id: 'share_pending_1',
+        diaryId: 'bills',
+        diaryName: 'Household Bills',
+        ownerUid: userA,
+        ownerName: 'Alice',
+        sharedWithUid: 'pending_bob@test.com',
+        sharedWithEmail: 'bob@test.com',
+        sharedWithName: 'bob',
+        permission: SharedDiaryPermission.editor,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      expect(pendingShare.sharedWithUid.startsWith('pending_'), isTrue);
+
+      // Recipient Bob claims the invite, transitioning sharedWithUid to userB
+      final claimedShare = SharedDiaryAccess(
+        id: pendingShare.id,
+        diaryId: pendingShare.diaryId,
+        diaryName: pendingShare.diaryName,
+        ownerUid: pendingShare.ownerUid,
+        ownerName: pendingShare.ownerName,
+        sharedWithUid: userB,
+        sharedWithEmail: pendingShare.sharedWithEmail,
+        sharedWithName: pendingShare.sharedWithName,
+        permission: pendingShare.permission,
+        createdAt: pendingShare.createdAt,
+        updatedAt: DateTime.now(),
+      );
+
+      expect(claimedShare.sharedWithUid, equals(userB));
+      expect(claimedShare.ownerUid, equals(userA));
+      expect(claimedShare.permission, equals(SharedDiaryPermission.editor));
+      expect(DiaryAccessControlService.canRead(currentUserId: userB, diaryOwnerId: userA, shareAccess: claimedShare), isTrue);
+      expect(DiaryAccessControlService.canAdd(currentUserId: userB, diaryOwnerId: userA, shareAccess: claimedShare), isTrue);
+    });
+
+    // 18. Complete Diary Sharing with existingOnly policy
+    test('Scenario 18: Complete Diary Sharing with existingOnly policy blocks access to future records after snapshotCutoffTime', () {
+      final cutoff = DateTime.now();
+      final existingOnlyShare = SharedDiaryAccess(
+        id: 'share_existing_only',
+        diaryId: 'vehicle',
+        diaryName: 'Vehicle',
+        ownerUid: userA,
+        ownerName: 'Alice',
+        sharedWithUid: userB,
+        sharedWithEmail: 'bob@test.com',
+        sharedWithName: 'Bob',
+        permission: SharedDiaryPermission.viewer,
+        sharingMode: SharingMode.entire,
+        shareEntireDiary: true,
+        futureRecordPolicy: FutureRecordPolicy.existingOnly,
+        snapshotCutoffTime: cutoff,
+        createdAt: cutoff,
+        updatedAt: cutoff,
+      );
+
+      final oldRecord = DiaryRecord(
+        id: 'rec_old',
+        ownerId: userA,
+        sourceDiaryId: 'vehicle',
+        title: 'Past Oil Change',
+        recordDate: cutoff.subtract(const Duration(days: 10)),
+        createdAt: cutoff.subtract(const Duration(hours: 2)),
+        updatedAt: cutoff.subtract(const Duration(hours: 2)),
+        createdBy: userA,
+        updatedBy: userA,
+      );
+
+      final futureRecord = DiaryRecord(
+        id: 'rec_future',
+        ownerId: userA,
+        sourceDiaryId: 'vehicle',
+        title: 'New Service Booking',
+        recordDate: cutoff.add(const Duration(days: 5)),
+        createdAt: cutoff.add(const Duration(hours: 1)),
+        updatedAt: cutoff.add(const Duration(hours: 1)),
+        createdBy: userA,
+        updatedBy: userA,
+      );
+
+      expect(existingOnlyShare.hasRecordAccess(oldRecord.id, oldRecord.createdAt), isTrue);
+      expect(existingOnlyShare.hasRecordAccess(futureRecord.id, futureRecord.createdAt), isFalse);
+
+      expect(DiaryAccessControlService.canAccessRecord(record: oldRecord, currentUserId: userB, diaryOwnerId: userA, shareAccess: existingOnlyShare), isTrue);
+      expect(DiaryAccessControlService.canAccessRecord(record: futureRecord, currentUserId: userB, diaryOwnerId: userA, shareAccess: existingOnlyShare), isFalse);
+
+      final filtered = DiaryAccessControlService.filterRecordsForUser(
+        allRecords: [oldRecord, futureRecord],
+        currentUserId: userB,
+        diaryOwnerId: userA,
+        shareAccess: existingOnlyShare,
+      );
+      expect(filtered.length, equals(1));
+      expect(filtered.first.id, equals('rec_old'));
+    });
+
+    // 19. Complete Diary Sharing with allFuture policy
+    test('Scenario 19: Complete Diary Sharing with allFuture policy allows access to both past and future records', () {
+      final now = DateTime.now();
+      final allFutureShare = SharedDiaryAccess(
+        id: 'share_all_future',
+        diaryId: 'vehicle',
+        diaryName: 'Vehicle',
+        ownerUid: userA,
+        ownerName: 'Alice',
+        sharedWithUid: userB,
+        sharedWithEmail: 'bob@test.com',
+        sharedWithName: 'Bob',
+        permission: SharedDiaryPermission.editor,
+        sharingMode: SharingMode.entire,
+        shareEntireDiary: true,
+        futureRecordPolicy: FutureRecordPolicy.allFuture,
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      final oldRecord = DiaryRecord(
+        id: 'rec_past',
+        ownerId: userA,
+        sourceDiaryId: 'vehicle',
+        title: 'Past Battery Replacement',
+        recordDate: now.subtract(const Duration(days: 30)),
+        createdAt: now.subtract(const Duration(days: 30)),
+        updatedAt: now.subtract(const Duration(days: 30)),
+        createdBy: userA,
+        updatedBy: userA,
+      );
+
+      final futureRecord = DiaryRecord(
+        id: 'rec_future_new',
+        ownerId: userA,
+        sourceDiaryId: 'vehicle',
+        title: 'Future Tire Rotation',
+        recordDate: now.add(const Duration(days: 3)),
+        createdAt: now.add(const Duration(hours: 5)),
+        updatedAt: now.add(const Duration(hours: 5)),
+        createdBy: userA,
+        updatedBy: userA,
+      );
+
+      expect(allFutureShare.hasRecordAccess(oldRecord.id, oldRecord.createdAt), isTrue);
+      expect(allFutureShare.hasRecordAccess(futureRecord.id, futureRecord.createdAt), isTrue);
+
+      expect(DiaryAccessControlService.canAccessRecord(record: oldRecord, currentUserId: userB, diaryOwnerId: userA, shareAccess: allFutureShare), isTrue);
+      expect(DiaryAccessControlService.canAccessRecord(record: futureRecord, currentUserId: userB, diaryOwnerId: userA, shareAccess: allFutureShare), isTrue);
+    });
+
+    // 20. Selected Record Sharing enforces grantedRecordIds list
+    test('Scenario 20: Selected Record Sharing strictly restricts read to granted IDs and rejects ungranted records', () {
+      final now = DateTime.now();
+      final selectedShare = SharedDiaryAccess(
+        id: 'share_selected_only',
+        diaryId: 'property',
+        diaryName: 'Property',
+        ownerUid: userA,
+        ownerName: 'Alice',
+        sharedWithUid: userC,
+        sharedWithEmail: 'charlie@test.com',
+        sharedWithName: 'Charlie',
+        permission: SharedDiaryPermission.viewer,
+        sharingMode: SharingMode.selected,
+        shareEntireDiary: false,
+        grantedRecordIds: ['doc_tax_2025', 'doc_lease_agreement'],
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      expect(selectedShare.isSelectedMode, isTrue);
+
+      final grantedRec = DiaryRecord(
+        id: 'doc_tax_2025',
+        ownerId: userA,
+        sourceDiaryId: 'property',
+        title: 'Property Tax 2025',
+        recordDate: now,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: userA,
+        updatedBy: userA,
+      );
+
+      final ungrantedRec = DiaryRecord(
+        id: 'doc_private_deed',
+        ownerId: userA,
+        sourceDiaryId: 'property',
+        title: 'Title Deed & Mortgage',
+        recordDate: now,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: userA,
+        updatedBy: userA,
+      );
+
+      expect(selectedShare.hasRecordAccess(grantedRec.id, grantedRec.createdAt), isTrue);
+      expect(selectedShare.hasRecordAccess(ungrantedRec.id, ungrantedRec.createdAt), isFalse);
+
+      expect(DiaryAccessControlService.canAccessRecord(record: grantedRec, currentUserId: userC, diaryOwnerId: userA, shareAccess: selectedShare), isTrue);
+      expect(DiaryAccessControlService.canAccessRecord(record: ungrantedRec, currentUserId: userC, diaryOwnerId: userA, shareAccess: selectedShare), isFalse);
+    });
+
+    // 21. ShareStatus, attachment restriction, and restrictedFields masking
+    test('Scenario 21: Revoked status, attachment restrictions, and restrictedFields redacting work seamlessly', () {
+      final now = DateTime.now();
+      final revokedShare = SharedDiaryAccess(
+        id: 'share_revoked',
+        diaryId: 'vehicle',
+        diaryName: 'Vehicle',
+        ownerUid: userA,
+        ownerName: 'Alice',
+        sharedWithUid: userB,
+        sharedWithEmail: 'bob@test.com',
+        sharedWithName: 'Bob',
+        permission: SharedDiaryPermission.editor,
+        status: ShareStatus.revoked,
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      expect(revokedShare.isActive, isFalse);
+      expect(DiaryAccessControlService.canRead(currentUserId: userB, diaryOwnerId: userA, shareAccess: revokedShare), isFalse);
+
+      final restrictedShare = SharedDiaryAccess(
+        id: 'share_restricted',
+        diaryId: 'vehicle',
+        diaryName: 'Vehicle',
+        ownerUid: userA,
+        ownerName: 'Alice',
+        sharedWithUid: userB,
+        sharedWithEmail: 'bob@test.com',
+        sharedWithName: 'Bob',
+        permission: SharedDiaryPermission.viewer,
+        allowAttachments: false,
+        restrictedFields: ['privateNotes', 'confidentialCost'],
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      final record = DiaryRecord(
+        id: 'rec_car',
+        ownerId: userA,
+        sourceDiaryId: 'vehicle',
+        title: 'Vehicle Audit',
+        recordDate: now,
+        fields: {
+          'odometer': 12000,
+          'privateNotes': 'Do not show buyer',
+          'confidentialCost': 85000,
+        },
+        attachmentIds: ['att_1', 'att_2'],
+        createdAt: now,
+        updatedAt: now,
+        createdBy: userA,
+        updatedBy: userA,
+      );
+
+      expect(DiaryAccessControlService.canAccessAttachment(currentUserId: userB, diaryOwnerId: userA, shareAccess: restrictedShare), isFalse);
+
+      final sanitized = DiaryAccessControlService.filterRecordFieldsForUser(record: record, shareAccess: restrictedShare);
+      expect(sanitized.fields.containsKey('odometer'), isTrue);
+      expect(sanitized.fields.containsKey('privateNotes'), isFalse);
+      expect(sanitized.fields.containsKey('confidentialCost'), isFalse);
+      expect(sanitized.attachmentIds, isEmpty);
+    });
+
+    // 22. SharedRecordAccessSummary accurate computation
+    test('Scenario 22: SharedRecordAccessSummary correctly computes counts without double-counting', () {
+      final records = [
+        DiaryRecord(id: 'r1', ownerId: userA, sourceDiaryId: 'd', title: 'R1', recordDate: DateTime.now(), createdBy: userA, updatedBy: userA, createdAt: DateTime.now(), updatedAt: DateTime.now()),
+        DiaryRecord(id: 'r2', ownerId: userA, sourceDiaryId: 'd', title: 'R2', recordDate: DateTime.now(), createdBy: userA, updatedBy: userA, createdAt: DateTime.now(), updatedAt: DateTime.now()),
+        DiaryRecord(id: 'r3', ownerId: userA, sourceDiaryId: 'd', title: 'R3', recordDate: DateTime.now(), createdBy: userA, updatedBy: userA, createdAt: DateTime.now(), updatedAt: DateTime.now()),
+        DiaryRecord(id: 'r4', ownerId: userA, sourceDiaryId: 'd', title: 'R4', recordDate: DateTime.now(), createdBy: userA, updatedBy: userA, createdAt: DateTime.now(), updatedAt: DateTime.now()),
+        DiaryRecord(id: 'r5', ownerId: userA, sourceDiaryId: 'd', title: 'R5', recordDate: DateTime.now(), createdBy: userA, updatedBy: userA, createdAt: DateTime.now(), updatedAt: DateTime.now()),
+      ];
+
+      final summary = SharedRecordAccessSummary.compute(
+        allRecords: records,
+        currentlySelectedRecordIds: {'r1', 'r2'},
+        allOtherSharedRecordIds: {'r2', 'r3'},
+      );
+
+      expect(summary.totalRecords, equals(5));
+      expect(summary.selectedRecords, equals(2));
+      expect(summary.alreadySharedRecords, equals(1)); // r3 is already shared; r2 is in current selection
+      expect(summary.remainingPrivateRecords, equals(2)); // r4 and r5 remain private
+    });
+
+    // 23. MagicCircle memberEmails visibility and pending membership transition
+    test('Scenario 23: MagicCircle computes memberEmails, isMember matches email, and supports pending claim', () {
+      final now = DateTime.now();
+      final circle = MagicCircle(
+        id: 'circle_fam',
+        name: 'Family Circle',
+        category: CircleCategory.family,
+        ownerId: userA,
+        createdAt: now,
+        updatedAt: now,
+        members: [
+          MagicCircleMember(
+            uid: userA,
+            email: 'alice@test.com',
+            displayName: 'Alice',
+            role: CircleRole.owner,
+            joinedAt: now,
+            status: 'active',
+          ),
+          MagicCircleMember(
+            uid: 'pending_bob@test.com',
+            email: 'bob@test.com',
+            displayName: 'Bob (Invited)',
+            role: CircleRole.contributor,
+            joinedAt: now,
+            status: 'invited',
+          ),
+        ],
+      );
+
+      // Verify memberEmails is auto-populated and lowercased
+      expect(circle.memberEmails, contains('alice@test.com'));
+      expect(circle.memberEmails, contains('bob@test.com'));
+      expect(circle.memberUids, contains(userA));
+      expect(circle.memberUids.contains('pending_bob@test.com'), isFalse);
+
+      // Verify isMember works with UID and with Email
+      expect(circle.isMember(userA), isTrue);
+      expect(circle.isMember('different_uid', 'bob@test.com'), isTrue);
+      expect(circle.isMember('different_uid', 'BOB@TEST.COM'), isTrue);
+      expect(circle.isMember('stranger_uid', 'stranger@test.com'), isFalse);
+
+      // Verify Firestore serialization & deserialization
+      final map = circle.toMap();
+      expect(map['memberEmails'], isA<List>());
+      expect((map['memberEmails'] as List).contains('bob@test.com'), isTrue);
+
+      final reconstructed = MagicCircle.fromMap(map, 'circle_fam');
+      expect(reconstructed.memberEmails, contains('bob@test.com'));
+      expect(reconstructed.isMember('different_uid', 'bob@test.com'), isTrue);
+
+      // Transition pending member to real UID
+      final claimedMembers = reconstructed.members.map((m) {
+        if (m.email.toLowerCase() == 'bob@test.com' && m.uid.startsWith('pending_')) {
+          return m.copyWith(
+            uid: userB,
+            displayName: 'Bob M',
+            status: 'active',
+          );
+        }
+        return m;
+      }).toList();
+
+      final claimedCircle = reconstructed.copyWith(
+        members: claimedMembers,
+        memberUids: [userA, userB],
+      );
+
+      expect(claimedCircle.memberUids, contains(userB));
+      expect(claimedCircle.isMember(userB), isTrue);
+      final claimedBob = claimedCircle.members.firstWhere((m) => m.uid == userB);
+      expect(claimedBob.status, equals('active'));
+      expect(claimedBob.displayName, equals('Bob M'));
+    });
   });
 }
