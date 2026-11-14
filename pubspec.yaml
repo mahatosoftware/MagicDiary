@@ -25,6 +25,7 @@ dependencies:
   # Utilities & Formatting
   intl: ^0.19.0
   uuid: ^4.4.0
+  crypto: ^3.0.3
   google_fonts: ^6.2.0
 
   # Storage & Preferences
@@ -42,6 +43,7 @@ dependencies:
   google_mobile_ads: ^9.2.0
   flutter_local_notifications: 22.3.3
   timezone: ^0.11.2
+  firebase_app_check: ^0.3.2+10
 
 dev_dependencies:
   flutter_test:

@@ -68,9 +68,13 @@ rules_version = '2';
 //   - notification_actions/{actionId} (User Notification Interaction Audit Log)
 //   - notification_history/{entryId} (Notification Delivery & Read History)
 //   - devices/{deviceId} (User FCM Push Notification Device Tokens)
+//   - sessions/{sessionId} (Active Device Sessions)
+//   - security_logs/{logId} (Append-only Security Audit Log)
+//   - security_settings/{settingId} (Security & Privacy Settings)
 //   - diaries/{diaryId}/records/{recordId} (Universal Diary Records for 45 Life OS Subdiaries)
 //
 // Top-Level Collections:
+//   - /circle_invitations/{invitationId} (Magic Circle Member Invitations)
 //   - /households/{householdId} (Shared Household Workspaces)
 //   - /household_invitations/{invitationId} (Household Member Invitations)
 //   - /household_tasks/{taskId} (Household Shared Tasks & Responsibilities)
@@ -800,6 +804,49 @@ service cloud.firestore {
         && isValidOptionalString(data, 'appVersion', 50);
     }
 
+    function isValidSession(data, userId) {
+      return hasRequiredFields(data, ['id', 'userId', 'deviceId', 'deviceName', 'platform', 'createdAt', 'lastActiveAt', 'isRevoked'])
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 100
+        && data.userId == userId
+        && data.deviceId is string && data.deviceId.size() >= 1 && data.deviceId.size() <= 150
+        && data.deviceName is string && data.deviceName.size() >= 1 && data.deviceName.size() <= 150
+        && data.platform is string && data.platform.size() >= 1 && data.platform.size() <= 50
+        && isTimestampOrDateString(data.createdAt)
+        && isTimestampOrDateString(data.lastActiveAt)
+        && data.isRevoked is bool
+        && isValidOptionalString(data, 'ipAddress', 50)
+        && isValidOptionalString(data, 'userAgent', 500)
+        && isValidOptionalString(data, 'appVersion', 50);
+    }
+
+    function isValidSecurityLog(data, userId) {
+      return hasRequiredFields(data, ['id', 'userId', 'action', 'status', 'timestamp'])
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 100
+        && data.userId == userId
+        && data.action is string && data.action.size() >= 1 && data.action.size() <= 100
+        && data.status is string && data.status.size() >= 1 && data.status.size() <= 50
+        && isTimestampOrDateString(data.timestamp)
+        && isValidOptionalString(data, 'deviceId', 150)
+        && isValidOptionalString(data, 'devicePlatform', 50)
+        && isValidOptionalString(data, 'ipAddress', 50)
+        && isValidOptionalString(data, 'userAgent', 500)
+        && (!('metadata' in data) || data.metadata == null || (data.metadata is string && data.metadata.size() <= 2000) || data.metadata is map)
+        && isValidOptionalMap(data, 'details');
+    }
+
+    function isValidSecuritySettings(data, userId) {
+      return hasRequiredFields(data, ['id', 'userId', 'appLockEnabled', 'biometricEnabled', 'inactivityTimeoutMinutes', 'hideSensitiveNotifications', 'updatedAt'])
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 100
+        && data.userId == userId
+        && data.appLockEnabled is bool
+        && data.biometricEnabled is bool
+        && (data.inactivityTimeoutMinutes is int || data.inactivityTimeoutMinutes is number)
+        && data.inactivityTimeoutMinutes >= 0
+        && data.hideSensitiveNotifications is bool
+        && isTimestampOrDateString(data.updatedAt)
+        && isValidOptionalDate(data, 'createdAt');
+    }
+
     // ===============================================================
     // Top-Level Household Workspaces Validators & Membership Helpers
     // ===============================================================
@@ -1044,6 +1091,29 @@ service cloud.firestore {
         getCircleDoc(circleId).data.ownerId == uid
         || isCircleAdmin(getCircleDoc(circleId).data.members, uid)
       );
+    }
+
+    function isCircleOwnerOrAdmin(circleId, uid) {
+      return isCircleAdminOrOwner(circleId, uid);
+    }
+
+    function isValidCircleInvitation(data) {
+      return hasRequiredFields(data, ['id', 'circleId', 'circleName', 'inviterUid', 'inviterName', 'inviteeEmail', 'role', 'status', 'createdAt', 'expiresAt'])
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 100
+        && data.circleId is string && data.circleId.size() >= 1 && data.circleId.size() <= 100
+        && data.circleName is string && data.circleName.size() >= 1 && data.circleName.size() <= 150
+        && data.inviterUid is string && data.inviterUid.size() >= 1 && data.inviterUid.size() <= 100
+        && data.inviterName is string && data.inviterName.size() >= 1 && data.inviterName.size() <= 100
+        && data.inviteeEmail is string && data.inviteeEmail.size() <= 255 && isValidEmail(data.inviteeEmail)
+        && data.role is string && data.role in ['admin', 'editor', 'contributor', 'viewer', 'member']
+        && data.status in ['pending', 'accepted', 'revoked', 'expired']
+        && isTimestampOrDateString(data.createdAt)
+        && isTimestampOrDateString(data.expiresAt)
+        && isValidOptionalString(data, 'token', 100)
+        && isValidOptionalDate(data, 'acceptedAt')
+        && isValidOptionalString(data, 'acceptedByUid', 100)
+        && isValidOptionalDate(data, 'revokedAt')
+        && isValidOptionalString(data, 'revokedByUid', 100);
     }
 
     function isValidCircleTask(data, circleId) {
@@ -1467,6 +1537,31 @@ service cloud.firestore {
                       && areImmutableFieldsUnchanged(['id', 'userId', 'createdAt']);
       }
 
+      // --- Device Sessions (SessionManagementService) ---
+      match /sessions/{sessionId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidSession(request.resource.data, userId);
+        allow update: if isOwner(userId)
+                      && isValidSession(request.resource.data, userId)
+                      && areImmutableFieldsUnchanged(['id', 'userId', 'createdAt', 'deviceId']);
+      }
+
+      // --- Append-Only Security Audit Logs (SecurityAuditService) ---
+      match /security_logs/{logId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidSecurityLog(request.resource.data, userId);
+        allow update, delete: if false;
+      }
+
+      // --- Security & Privacy Settings ---
+      match /security_settings/{settingId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidSecuritySettings(request.resource.data, userId);
+        allow update: if isOwner(userId)
+                      && isValidSecuritySettings(request.resource.data, userId)
+                      && areImmutableFieldsUnchanged(['id', 'userId']);
+      }
+
       // --- Universal Life OS Subdiaries & Records ---
       match /diaries/{diaryId} {
         allow read, write: if isOwner(userId);
@@ -1610,6 +1705,28 @@ service cloud.firestore {
                       && areImmutableFieldsUnchanged(['id', 'circleId']);
         allow delete: if isAuthenticated() && isCircleOwnerOrMember(circleId, request.auth.uid);
       }
+    }
+
+    // ===============================================================
+    // Circle Invitations (Magic Circles Invitations) Collection
+    // ===============================================================
+    match /circle_invitations/{invitationId} {
+      allow read: if isAuthenticated() && (
+        resource.data.inviterUid == request.auth.uid
+        || (request.auth.token.email != null && resource.data.inviteeEmail.lower() == request.auth.token.email.lower())
+      );
+      allow create: if isAuthenticated()
+                    && request.resource.data.inviterUid == request.auth.uid
+                    && isCircleOwnerOrAdmin(request.resource.data.circleId, request.auth.uid)
+                    && isValidCircleInvitation(request.resource.data);
+      allow update: if isAuthenticated()
+                    && isValidCircleInvitation(request.resource.data)
+                    && areImmutableFieldsUnchanged(['id', 'circleId', 'inviterUid', 'inviteeEmail', 'createdAt'])
+                    && (
+                      resource.data.inviterUid == request.auth.uid
+                      || (request.auth.token.email != null && resource.data.inviteeEmail.lower() == request.auth.token.email.lower() && areImmutableFieldsUnchanged(['role']))
+                    );
+      allow delete: if isAuthenticated() && resource.data.inviterUid == request.auth.uid;
     }
 
     // ===============================================================

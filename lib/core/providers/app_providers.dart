@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../security/security.dart';
 import '../../features/auth/repositories/auth_repository.dart';
 import '../../features/auth/models/user_profile.dart';
 import '../../features/warranty/repositories/product_repository.dart';
@@ -524,3 +525,16 @@ final cashForecastSummaryProvider = Provider<ForecastSummary>((ref) {
     scenario: scenario,
   );
 });
+
+// --- Centralized Security Providers ---
+final secureStorageServiceProvider = Provider<SecureStorageService>((ref) => SecureStorageService());
+final authSecurityServiceProvider = Provider<AuthSecurityService>((ref) => AuthSecurityService());
+final sessionManagementServiceProvider = Provider<SessionManagementService>((ref) => SessionManagementService());
+final circlePermissionServiceProvider = Provider<CirclePermissionService>((ref) => CirclePermissionService());
+final attachmentSecurityServiceProvider = Provider<AttachmentSecurityService>((ref) => AttachmentSecurityService());
+final appCheckServiceProvider = Provider<AppCheckService>((ref) => AppCheckService());
+final notificationPrivacyServiceProvider = Provider<NotificationPrivacyService>((ref) => NotificationPrivacyService());
+final voiceIntegrationSecurityServiceProvider = Provider<VoiceIntegrationSecurityService>((ref) => VoiceIntegrationSecurityService());
+final securityAuditServiceProvider = Provider<SecurityAuditService>((ref) => SecurityAuditService());
+final dataExportSecurityServiceProvider = Provider<DataExportSecurityService>((ref) => DataExportSecurityService());
+

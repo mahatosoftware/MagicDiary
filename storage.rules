@@ -40,6 +40,17 @@ service firebase.storage {
           || request.resource.contentType.matches('audio/.*');
     }
 
+    function isCircleMember(circleId) {
+      return isAuthenticated() && (
+        firestore.get(/databases/(default)/documents/circles/$(circleId)).data.ownerId == request.auth.uid
+        || request.auth.uid in firestore.get(/databases/(default)/documents/circles/$(circleId)).data.memberUids
+      );
+    }
+
+    function isCircleOwner(circleId) {
+      return isAuthenticated() && firestore.get(/databases/(default)/documents/circles/$(circleId)).data.ownerId == request.auth.uid;
+    }
+
     // User-isolated directory
     match /users/{userId}/{allPaths=**} {
       allow read: if isOwner(userId);
@@ -47,11 +58,11 @@ service firebase.storage {
       allow delete: if isOwner(userId);
     }
 
-    // Circle shared attachments directory
+    // Circle shared attachments directory - strictly gated to authenticated members
     match /circles/{circleId}/{allPaths=**} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isValidFileSize() && isValidContentType();
-      allow delete: if isAuthenticated();
+      allow read: if isCircleMember(circleId);
+      allow write: if isCircleMember(circleId) && isValidFileSize() && isValidContentType();
+      allow delete: if isCircleOwner(circleId);
     }
 
     // Default deny for all other storage paths

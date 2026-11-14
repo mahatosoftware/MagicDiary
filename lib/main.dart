@@ -7,6 +7,7 @@ import 'config/theme.dart';
 import 'config/routes.dart';
 import 'core/ads/ad_manager.dart';
 import 'core/notifications/services/notification_manager.dart';
+import 'core/security/security.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -15,6 +16,7 @@ void main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+    await FirebaseAppCheckService.initialize();
     FirebaseFirestore.instance.settings = const Settings(
       persistenceEnabled: true,
       cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,

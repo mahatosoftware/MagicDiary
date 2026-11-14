@@ -487,6 +487,14 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
                     subtitle: Text('Encrypted Firebase Authentication session.'),
                     trailing: Icon(Icons.verified, color: Colors.teal, size: 20),
                   ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.security, color: Colors.indigo),
+                    title: const Text('Security & Privacy Center'),
+                    subtitle: const Text('App lock, active sessions, notification privacy & exports.'),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+                    onTap: () => context.push('/security-privacy'),
+                  ),
                   if (!isGoogleAuth && (currentUser?.email?.isNotEmpty ?? false)) ...[
                     const Divider(height: 1),
                     ListTile(

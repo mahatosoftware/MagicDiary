@@ -20,6 +20,7 @@ import '../features/notifications/screens/notification_centre_screen.dart';
 import '../features/notifications/screens/notification_settings_screen.dart';
 import '../features/profile/screens/profile_screen.dart';
 import '../features/profile/screens/account_settings_screen.dart';
+import '../features/profile/screens/security_settings_screen.dart';
 import '../features/auth/screens/login_screen.dart';
 import '../features/reports/screens/financial_reports_screen.dart';
 
@@ -283,6 +284,10 @@ final router = GoRouter(
         GoRoute(
           path: '/profile/account-settings',
           builder: (context, state) => const AccountSettingsScreen(),
+        ),
+        GoRoute(
+          path: '/security-privacy',
+          builder: (context, state) => const SecuritySettingsScreen(),
         ),
       ],
     ),

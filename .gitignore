@@ -44,27 +44,73 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# Sensitive & Key files
-key.properties
-local.properties
-*.keystore
-*.jks
-*.p12
-*.p8
-*.pem
-*.key
-*.crt
-*.der
-*.mobileprovision
+# Python & Backend Worker Caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# Environment files and Local Secrets
 .env
 .env.*
 *.env
+!.env.example
+!*/.env.example
 secrets.json
+*.secret
+secrets/
 
-# Firebase configuration files (Public Repository)
+# Android Signing, Keystores & Local Properties
+key.properties
+**/key.properties
+local.properties
+**/local.properties
+*.keystore
+*.jks
+*.bks
+
+# Apple Developer Provisioning, Keys & Certificates
+*.p8
+*.p12
+*.pfx
+*.pem
+*.key
+*.crt
+*.cer
+*.cert
+*.der
+*.mobileprovision
+
+# SSH & Generic Private Keys
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+
+# Google Cloud & Firebase Service Account Private Keys
+*service-account*.json
+*service_account*.json
+*serviceAccount*.json
+*credentials*.json
+serviceAccountKey.json
+firebase-adminsdk*.json
+gcp-key*.json
+client_secret*.json
+
+# Firebase Client Configuration (Protected for Public / Open Repositories)
 google-services.json
+**/google-services.json
 GoogleService-Info.plist
+**/GoogleService-Info.plist
 firebase_options.dart
+**/firebase_options.dart
 .firebaserc
 
-
+# Firebase & Local Emulator Logs
+*-debug.log
+firestore-debug.log
+ui-debug.log
+firebase-debug.log

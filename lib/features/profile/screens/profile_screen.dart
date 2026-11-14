@@ -158,6 +158,14 @@ class ProfileScreen extends ConsumerWidget {
                   ),
                   const Divider(height: 1),
                   ListTile(
+                    leading: const Icon(Icons.shield_outlined, color: Colors.teal),
+                    title: const Text('Security & Privacy'),
+                    subtitle: const Text('App lock, active sessions, notification privacy & exports'),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+                    onTap: () => context.push('/security-privacy'),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
                     leading: Icon(
                       isGoogleAuth ? Icons.g_mobiledata_rounded : Icons.lock_outline_rounded,
                       color: theme.primaryColor,
