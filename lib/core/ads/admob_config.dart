@@ -13,15 +13,18 @@ class AdMobConfig {
   /// Keep false for production; debug builds will automatically serve test ads.
   static const bool forceTestAds = false;
 
+  /// Returns true only if valid production AdMob unit IDs have been configured
+  /// (i.e. placeholders containing 'XXXX' have been replaced with real registered IDs).
+  static bool get hasProductionIds =>
+      !_prodAndroidBanner.contains('XXXX') &&
+      !_prodAndroidInterstitial.contains('XXXX');
+
   /// Determines whether Google AdMob should serve Test Ads.
   ///
-  /// ALWAYS returns `true` in debug mode builds ([kDebugMode]), guaranteeing that
-  /// all debug builds (emulators, simulators, or physical devices running debug builds)
-  /// strictly use Google's official Test Ad IDs and never request production ads.
-  ///
-  /// In release mode builds ([kReleaseMode]), returns `false` (unless [forceTestAds] is true),
-  /// serving registered production AdMob IDs.
-  static bool get isTesting => kDebugMode || forceTestAds;
+  /// Returns `true` in debug mode ([kDebugMode]), when [forceTestAds] is true,
+  /// or when production AdMob IDs have not yet been configured (preventing fatal
+  /// IllegalArgumentExceptions when loading placeholder IDs in release builds).
+  static bool get isTesting => kDebugMode || forceTestAds || !hasProductionIds;
 
   /// Global master switch to enable or disable all ads across the app.
   static const bool globalAdsEnabled = true;

@@ -60,17 +60,15 @@ class AuthSecurityService {
 
     final isGoogle = user.providerData.any((p) => p.providerId == 'google.com');
     if (isGoogle) {
-      final googleSignIn = GoogleSignIn();
-      final googleUser = await googleSignIn.signIn();
-      if (googleUser != null) {
-        final googleAuth = await googleUser.authentication;
+      try {
+        final googleUser = await GoogleSignIn.instance.authenticate();
+        final googleAuth = googleUser.authentication;
         final cred = fb.GoogleAuthProvider.credential(
-          accessToken: googleAuth.accessToken,
           idToken: googleAuth.idToken,
         );
         await user.reauthenticateWithCredential(cred);
         return true;
-      }
+      } catch (_) {}
     }
 
     throw fb.FirebaseAuthException(
@@ -83,10 +81,7 @@ class AuthSecurityService {
   Future<void> secureSignOut() async {
     try {
       await _secureStorage.delete(SecureStorageService.keyActiveSessionId);
-      final googleSignIn = GoogleSignIn();
-      if (await googleSignIn.isSignedIn()) {
-        await googleSignIn.signOut();
-      }
+      await GoogleSignIn.instance.signOut();
     } catch (_) {}
     await _auth.signOut();
   }

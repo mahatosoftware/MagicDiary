@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../../../core/providers/app_providers.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -39,6 +41,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   String _getFriendlyErrorMessage(dynamic error) {
+    if (error is GoogleSignInException) {
+      if (error.code == GoogleSignInExceptionCode.canceled) {
+        return 'Sign-in canceled.';
+      }
+      return 'Google Sign-In failed (${error.description ?? error.code.name}). Please verify your connection or sign in with email/password.';
+    }
+    if (error is PlatformException) {
+      if (error.code == 'sign_in_failed') {
+        if (error.message?.contains('10') ?? false) {
+          return 'Google Sign-In configuration error (ApiException 10). The app signing SHA-1 fingerprint must be added to Firebase Console under Project Settings.';
+        }
+        return 'Google Sign-In failed (${error.message ?? error.code}). Please verify your connection or sign in with your email/password.';
+      }
+      return error.message ?? 'A platform error occurred. Please try again.';
+    }
     if (error is FirebaseAuthException) {
       switch (error.code) {
         case 'user-not-found':

@@ -150,18 +150,19 @@ class AuthRepository {
   /// Sign in with Google Auth
   Future<UserProfile?> signInWithGoogle() async {
     try {
-      final GoogleSignIn googleSignIn = GoogleSignIn(
-        serverClientId: '290081663609-9af1iqk2uhk3ah244at9sioelhv16rda.apps.googleusercontent.com',
-      );
-      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
-      if (googleUser == null) {
-        // User aborted the sign-in modal
-        return null;
+      final GoogleSignInAccount googleUser;
+      try {
+        googleUser = await GoogleSignIn.instance.authenticate();
+      } on GoogleSignInException catch (e) {
+        if (e.code == GoogleSignInExceptionCode.canceled) {
+          // User aborted the sign-in modal
+          return null;
+        }
+        rethrow;
       }
 
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final GoogleSignInAuthentication googleAuth = googleUser.authentication;
       final fb.AuthCredential credential = fb.GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
@@ -197,10 +198,7 @@ class AuthRepository {
 
   Future<void> signOut() async {
     try {
-      final GoogleSignIn googleSignIn = GoogleSignIn();
-      if (await googleSignIn.isSignedIn()) {
-        await googleSignIn.signOut();
-      }
+      await GoogleSignIn.instance.signOut();
     } catch (e) {
       debugPrint('Google sign-out note: $e');
     }
@@ -246,18 +244,12 @@ class AuthRepository {
       final isGoogle = user.providerData.any((p) => p.providerId == 'google.com');
       if (isGoogle) {
         try {
-          final GoogleSignIn googleSignIn = GoogleSignIn(
-            serverClientId: '290081663609-9af1iqk2uhk3ah244at9sioelhv16rda.apps.googleusercontent.com',
+          final googleUser = await GoogleSignIn.instance.authenticate();
+          final googleAuth = googleUser.authentication;
+          final cred = fb.GoogleAuthProvider.credential(
+            idToken: googleAuth.idToken,
           );
-          final googleUser = await googleSignIn.signIn();
-          if (googleUser != null) {
-            final googleAuth = await googleUser.authentication;
-            final cred = fb.GoogleAuthProvider.credential(
-              accessToken: googleAuth.accessToken,
-              idToken: googleAuth.idToken,
-            );
-            await user.reauthenticateWithCredential(cred);
-          }
+          await user.reauthenticateWithCredential(cred);
         } catch (e) {
           debugPrint('Google re-authentication attempt notice: $e');
         }
@@ -362,10 +354,7 @@ class AuthRepository {
 
     // Clean up Google sign-in session
     try {
-      final GoogleSignIn googleSignIn = GoogleSignIn();
-      if (await googleSignIn.isSignedIn()) {
-        await googleSignIn.signOut();
-      }
+      await GoogleSignIn.instance.signOut();
     } catch (e) {
       debugPrint('Google sign-out note: $e');
     }

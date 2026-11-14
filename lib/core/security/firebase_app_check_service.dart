@@ -9,6 +9,13 @@ import 'package:firebase_app_check/firebase_app_check.dart';
 class FirebaseAppCheckService {
   static bool _isInitialized = false;
 
+  /// Global master switch for Firebase App Check.
+  ///
+  /// Keep `false` until the Google Play Console project is linked to Google Cloud
+  /// and the Play App Signing SHA-256 fingerprint is registered in Firebase Console (App Check > Apps).
+  /// Activating Play Integrity before console registration causes release builds on Play Store to crash.
+  static bool isEnabled = false;
+
   /// Whether App Check has been activated in the current session.
   static bool get isInitialized => _isInitialized;
 
@@ -21,15 +28,22 @@ class FirebaseAppCheckService {
   static Future<void> initialize({String? webRecaptchaSiteKey}) async {
     if (_isInitialized) return;
 
+    if (!isEnabled) {
+      if (kDebugMode) {
+        debugPrint('[AppCheck] Skipped: App Check is disabled until Play Integrity is registered in Firebase Console.');
+      }
+      return;
+    }
+
     try {
       await FirebaseAppCheck.instance.activate(
-        androidProvider: kDebugMode
-            ? AndroidProvider.debug
-            : AndroidProvider.playIntegrity,
-        appleProvider: kDebugMode
-            ? AppleProvider.debug
-            : AppleProvider.appAttestWithDeviceCheckFallback,
-        webProvider: webRecaptchaSiteKey != null
+        providerAndroid: kDebugMode
+            ? const AndroidDebugProvider()
+            : const AndroidPlayIntegrityProvider(),
+        providerApple: kDebugMode
+            ? const AppleDebugProvider()
+            : const AppleAppAttestWithDeviceCheckFallbackProvider(),
+        providerWeb: webRecaptchaSiteKey != null
             ? ReCaptchaV3Provider(webRecaptchaSiteKey)
             : null,
       );

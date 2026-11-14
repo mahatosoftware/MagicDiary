@@ -36,15 +36,13 @@ class NotificationFcmService {
 
       if (settings.authorizationStatus == AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional) {
-        final token = await _fcm.getToken();
-        if (token != null) {
-          await registerDeviceToken(userId, token);
-        }
-
-        // Listen for token refresh
-        _fcm.onTokenRefresh.listen((newToken) {
+        // Listen for FCM token registration & refresh
+        _fcm.onRegistered.listen((newToken) {
           registerDeviceToken(userId, newToken);
         });
+
+        // Register the current app instance with FCM
+        await _fcm.register();
 
         // Listen for foreground FCM messages
         FirebaseMessaging.onMessage.listen((RemoteMessage message) {

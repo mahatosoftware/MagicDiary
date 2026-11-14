@@ -36,27 +36,33 @@ class _AdBannerWidgetState extends State<AdBannerWidget> {
   void _loadBannerAd() {
     if (!AdMobConfig.isPlatformSupported || !AdMobConfig.globalAdsEnabled) return;
 
-    final adUnitId = AdMobConfig.getAdUnitIdForPlacement(widget.placement);
+    try {
+      final adUnitId = AdMobConfig.getAdUnitIdForPlacement(widget.placement);
 
-    _bannerAd = BannerAd(
-      adUnitId: adUnitId,
-      size: widget.adSize,
-      request: const AdRequest(),
-      listener: BannerAdListener(
-        onAdLoaded: (ad) {
-          if (mounted) setState(() => _isAdLoaded = true);
-        },
-        onAdFailedToLoad: (ad, error) {
-          if (kDebugMode) {
-            debugPrint('[AdMob] Banner failed to load (${widget.placement}): $error');
-          }
-          ad.dispose();
-          if (mounted) setState(() => _isAdLoaded = false);
-        },
-      ),
-    );
+      _bannerAd = BannerAd(
+        adUnitId: adUnitId,
+        size: widget.adSize,
+        request: const AdRequest(),
+        listener: BannerAdListener(
+          onAdLoaded: (ad) {
+            if (mounted) setState(() => _isAdLoaded = true);
+          },
+          onAdFailedToLoad: (ad, error) {
+            if (kDebugMode) {
+              debugPrint('[AdMob] Banner failed to load (${widget.placement}): $error');
+            }
+            ad.dispose();
+            if (mounted) setState(() => _isAdLoaded = false);
+          },
+        ),
+      );
 
-    _bannerAd!.load();
+      _bannerAd!.load();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AdMob] Exception loading banner (${widget.placement}): $e');
+      }
+    }
   }
 
   @override

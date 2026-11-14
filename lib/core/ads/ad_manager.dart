@@ -56,20 +56,24 @@ class AdManager {
   void loadInterstitialAd() {
     if (!_isInitialized || !AdMobConfig.isPlatformSupported || !AdMobConfig.globalAdsEnabled) return;
 
-    InterstitialAd.load(
-      adUnitId: AdMobConfig.interstitialAdUnitId,
-      request: const AdRequest(),
-      adLoadCallback: InterstitialAdLoadCallback(
-        onAdLoaded: (ad) {
-          _interstitialAd = ad;
-          if (kDebugMode) debugPrint('[AdMob] Interstitial ad loaded.');
-        },
-        onAdFailedToLoad: (error) {
-          _interstitialAd = null;
-          if (kDebugMode) debugPrint('[AdMob] Interstitial failed to load: $error');
-        },
-      ),
-    );
+    try {
+      InterstitialAd.load(
+        adUnitId: AdMobConfig.interstitialAdUnitId,
+        request: const AdRequest(),
+        adLoadCallback: InterstitialAdLoadCallback(
+          onAdLoaded: (ad) {
+            _interstitialAd = ad;
+            if (kDebugMode) debugPrint('[AdMob] Interstitial ad loaded.');
+          },
+          onAdFailedToLoad: (error) {
+            _interstitialAd = null;
+            if (kDebugMode) debugPrint('[AdMob] Interstitial failed to load: $error');
+          },
+        ),
+      );
+    } catch (e) {
+      if (kDebugMode) debugPrint('[AdMob] Exception loading interstitial ad: $e');
+    }
   }
 
   /// Displays an interstitial ad if ready and frequency cap allows.
@@ -117,21 +121,25 @@ class AdManager {
   void loadRewardedAd({VoidCallback? onLoaded}) {
     if (!_isInitialized || !AdMobConfig.isPlatformSupported || !AdMobConfig.globalAdsEnabled) return;
 
-    RewardedAd.load(
-      adUnitId: AdMobConfig.rewardedAdUnitId,
-      request: const AdRequest(),
-      rewardedAdLoadCallback: RewardedAdLoadCallback(
-        onAdLoaded: (ad) {
-          _rewardedAd = ad;
-          onLoaded?.call();
-          if (kDebugMode) debugPrint('[AdMob] Rewarded ad loaded.');
-        },
-        onAdFailedToLoad: (error) {
-          _rewardedAd = null;
-          if (kDebugMode) debugPrint('[AdMob] Rewarded ad failed to load: $error');
-        },
-      ),
-    );
+    try {
+      RewardedAd.load(
+        adUnitId: AdMobConfig.rewardedAdUnitId,
+        request: const AdRequest(),
+        rewardedAdLoadCallback: RewardedAdLoadCallback(
+          onAdLoaded: (ad) {
+            _rewardedAd = ad;
+            onLoaded?.call();
+            if (kDebugMode) debugPrint('[AdMob] Rewarded ad loaded.');
+          },
+          onAdFailedToLoad: (error) {
+            _rewardedAd = null;
+            if (kDebugMode) debugPrint('[AdMob] Rewarded ad failed to load: $error');
+          },
+        ),
+      );
+    } catch (e) {
+      if (kDebugMode) debugPrint('[AdMob] Exception loading rewarded ad: $e');
+    }
   }
 
   /// Shows a rewarded ad. Triggers [onUserEarnedReward] when reward is granted.

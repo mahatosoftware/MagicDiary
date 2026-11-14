@@ -55,6 +55,10 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 }
@@ -67,6 +71,10 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+configurations.all {
+    exclude(group = "com.google.android.gms", module = "play-services-safetynet")
 }
 
 dependencies {
