@@ -38,10 +38,31 @@ class PaymentsHubScreen extends ConsumerWidget {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 88.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Cash Commitment Forecast Shortcut Banner
+            Card(
+              elevation: 0,
+              color: Colors.blue.shade50,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: Colors.blue.shade200),
+              ),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.blue.shade100,
+                  child: const Icon(Icons.trending_up, color: Colors.blueAccent),
+                ),
+                title: const Text('Cash Commitment Forecast', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                subtitle: const Text('Understand upcoming cash needs before bills fall due & detect shortfalls', style: TextStyle(fontSize: 12)),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+                onTap: () => context.push('/cash-forecast'),
+              ),
+            ),
+            const SizedBox(height: 16),
+
             Text(
               'Bills & Subscriptions Due',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),

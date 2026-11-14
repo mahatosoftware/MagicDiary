@@ -5,6 +5,7 @@ import '../../../core/providers/app_providers.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/pdf_exporter.dart';
 import '../../../core/widgets/status_badge.dart';
+import '../models/school_fees_models.dart';
 
 class SchoolFeesDashboardScreen extends ConsumerStatefulWidget {
   const SchoolFeesDashboardScreen({super.key});
@@ -58,7 +59,7 @@ class _SchoolFeesDashboardScreenState extends ConsumerState<SchoolFeesDashboardS
         label: const Text('Setup Fee Schedule'),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 88.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -329,12 +330,29 @@ class _SchoolFeesDashboardScreenState extends ConsumerState<SchoolFeesDashboardS
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  const Icon(Icons.event, size: 13, color: Colors.grey),
-                                  const SizedBox(width: 4),
-                                  Text('Due Date: ${AppFormatters.date(inst.dueDate)}', style: const TextStyle(fontSize: 12)),
-                                ],
+                              InkWell(
+                                onTap: () => _showUpdateDueDateDialog(context, inst),
+                                borderRadius: BorderRadius.circular(4),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 2.0),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.event, size: 13, color: Colors.purple),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'Due: ${AppFormatters.date(inst.dueDate)}',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.purple,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      const Icon(Icons.edit, size: 12, color: Colors.purple),
+                                    ],
+                                  ),
+                                ),
                               ),
                               if (child?.grade != null && child!.grade!.isNotEmpty) ...[
                                 const SizedBox(height: 2),
@@ -356,7 +374,12 @@ class _SchoolFeesDashboardScreenState extends ConsumerState<SchoolFeesDashboardS
                                   StatusBadge(status: inst.status),
                                 ],
                               ),
-                              const SizedBox(width: 8),
+                              const SizedBox(width: 4),
+                              IconButton(
+                                icon: const Icon(Icons.edit_calendar, color: Colors.purple, size: 20),
+                                tooltip: 'Update Due Date',
+                                onPressed: () => _showUpdateDueDateDialog(context, inst),
+                              ),
                               if (isPending)
                                 IconButton(
                                   icon: const Icon(Icons.payment, color: Colors.blue),
@@ -376,9 +399,47 @@ class _SchoolFeesDashboardScreenState extends ConsumerState<SchoolFeesDashboardS
               loading: () => const CircularProgressIndicator(),
               error: (err, stack) => Text('Error: $err'),
             ),
+            const SizedBox(height: 80),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _showUpdateDueDateDialog(BuildContext context, FeeInstallment inst) async {
+    final user = ref.read(userProfileProvider);
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please log in to update installment due dates.')),
+      );
+      return;
+    }
+
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: inst.dueDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+      helpText: 'UPDATE DUE DATE (${inst.title})',
+      confirmText: 'SAVE DUE DATE',
+    );
+
+    if (pickedDate != null && pickedDate != inst.dueDate && context.mounted) {
+      final repo = ref.read(schoolFeesRepositoryProvider);
+      await repo.updateInstallmentDueDate(user.uid, inst.id, pickedDate);
+
+      ref.invalidate(feeInstallmentsProvider);
+      ref.invalidate(remindersProvider);
+      ref.invalidate(cashForecastSummaryProvider);
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Updated ${inst.title} due date to ${AppFormatters.date(pickedDate)}'),
+            backgroundColor: Colors.purple.shade700,
+          ),
+        );
+      }
+    }
   }
 }

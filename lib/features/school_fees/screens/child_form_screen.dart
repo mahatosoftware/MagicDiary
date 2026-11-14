@@ -131,7 +131,7 @@ class _ChildFormScreenState extends ConsumerState<ChildFormScreen> {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 88.0),
         child: Form(
           key: _formKey,
           child: Column(

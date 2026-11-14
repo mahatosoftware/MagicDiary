@@ -4,6 +4,8 @@ import 'package:uuid/uuid.dart';
 import '../../../core/financial/models/financial_category.dart';
 import '../../../core/financial/models/financial_transaction.dart';
 import '../../../core/financial/repositories/financial_transaction_repository.dart';
+import '../../reminders/models/reminder.dart';
+import '../../reminders/repositories/reminder_repository.dart';
 import '../models/vehicle_models.dart';
 
 class VehicleRepository {
@@ -274,75 +276,72 @@ class VehicleRepository {
   Future<void> _syncVehicleReminders(String userId, Vehicle vehicle) async {
     if (userId.isEmpty) return;
     try {
-      final reminderCol = firestore.collection('users').doc(userId).collection('reminders');
-      final now = DateTime.now();
+      final remRepo = ReminderRepository(firestore: firestore);
       final dateFormat = DateFormat('dd MMM yyyy');
 
       // 1. Insurance Renewal Reminder
-      final insDocId = 'reminder_veh_${vehicle.id}_insurance';
-      final insDocRef = reminderCol.doc(insDocId);
-      final insSnapshot = await insDocRef.get();
-      final insCreatedAt = insSnapshot.exists && insSnapshot.data()?['createdAt'] is Timestamp
-          ? (insSnapshot.data()!['createdAt'] as Timestamp)
-          : Timestamp.fromDate(now);
-
-      await insDocRef.set({
-        'id': insDocId,
-        'userId': userId,
-        'title': 'Vehicle Insurance: ${vehicle.name}',
-        'description':
-            'Insurance policy for ${vehicle.name} (${vehicle.registrationNumber}) expires on ${dateFormat.format(vehicle.insuranceExpiry)}. Renew to avoid penalty or loss of cover.',
-        'module': 'Vehicle',
-        'status': 'pending',
-        'dueDate': Timestamp.fromDate(vehicle.insuranceExpiry),
-        'relatedId': vehicle.id,
-        'createdAt': insCreatedAt,
-      }, SetOptions(merge: true));
+      await remRepo.syncReminder(
+        userId,
+        Reminder(
+          id: 'reminder_veh_${vehicle.id}_insurance',
+          userId: userId,
+          title: 'Vehicle Insurance: ${vehicle.name}',
+          description:
+              'Insurance policy for ${vehicle.name} (${vehicle.registrationNumber}) expires on ${dateFormat.format(vehicle.insuranceExpiry)}. Renew to avoid penalty or loss of cover.',
+          module: 'Vehicle',
+          status: 'pending',
+          dueDate: vehicle.insuranceExpiry,
+          relatedId: vehicle.id,
+          actionRoute: '/vehicle',
+          actionType: 'Renew',
+          priority: 'high',
+          createdAt: DateTime.now(),
+        ),
+      );
 
       // 2. PUCC Expiry Reminder
-      final pucDocId = 'reminder_veh_${vehicle.id}_pucc';
-      final pucDocRef = reminderCol.doc(pucDocId);
-      final pucSnapshot = await pucDocRef.get();
-      final pucCreatedAt = pucSnapshot.exists && pucSnapshot.data()?['createdAt'] is Timestamp
-          ? (pucSnapshot.data()!['createdAt'] as Timestamp)
-          : Timestamp.fromDate(now);
-
-      await pucDocRef.set({
-        'id': pucDocId,
-        'userId': userId,
-        'title': 'PUC Certificate: ${vehicle.name}',
-        'description':
-            'Pollution Under Control (PUC) certificate for ${vehicle.name} (${vehicle.registrationNumber}) expires on ${dateFormat.format(vehicle.pucExpiry)}.',
-        'module': 'Vehicle',
-        'status': 'pending',
-        'dueDate': Timestamp.fromDate(vehicle.pucExpiry),
-        'relatedId': vehicle.id,
-        'createdAt': pucCreatedAt,
-      }, SetOptions(merge: true));
+      await remRepo.syncReminder(
+        userId,
+        Reminder(
+          id: 'reminder_veh_${vehicle.id}_pucc',
+          userId: userId,
+          title: 'PUC Certificate: ${vehicle.name}',
+          description:
+              'Pollution Under Control (PUC) certificate for ${vehicle.name} (${vehicle.registrationNumber}) expires on ${dateFormat.format(vehicle.pucExpiry)}.',
+          module: 'Vehicle',
+          status: 'pending',
+          dueDate: vehicle.pucExpiry,
+          relatedId: vehicle.id,
+          actionRoute: '/vehicle',
+          actionType: 'Renew',
+          priority: 'medium',
+          createdAt: DateTime.now(),
+        ),
+      );
 
       // 3. Optional Routine Service Reminder
       final svcDocId = 'reminder_veh_${vehicle.id}_service';
-      final svcDocRef = reminderCol.doc(svcDocId);
       if (vehicle.nextServiceDate != null) {
-        final svcSnapshot = await svcDocRef.get();
-        final svcCreatedAt = svcSnapshot.exists && svcSnapshot.data()?['createdAt'] is Timestamp
-            ? (svcSnapshot.data()!['createdAt'] as Timestamp)
-            : Timestamp.fromDate(now);
-
-        await svcDocRef.set({
-          'id': svcDocId,
-          'userId': userId,
-          'title': 'Service Due: ${vehicle.name}',
-          'description':
-              'Scheduled periodic maintenance for ${vehicle.name} (${vehicle.registrationNumber}) on ${dateFormat.format(vehicle.nextServiceDate!)}.',
-          'module': 'Vehicle',
-          'status': 'pending',
-          'dueDate': Timestamp.fromDate(vehicle.nextServiceDate!),
-          'relatedId': vehicle.id,
-          'createdAt': svcCreatedAt,
-        }, SetOptions(merge: true));
+        await remRepo.syncReminder(
+          userId,
+          Reminder(
+            id: svcDocId,
+            userId: userId,
+            title: 'Service Due: ${vehicle.name}',
+            description:
+                'Scheduled periodic maintenance for ${vehicle.name} (${vehicle.registrationNumber}) on ${dateFormat.format(vehicle.nextServiceDate!)}.',
+            module: 'Vehicle',
+            status: 'pending',
+            dueDate: vehicle.nextServiceDate!,
+            relatedId: vehicle.id,
+            actionRoute: '/vehicle',
+            actionType: 'Schedule Service',
+            priority: 'medium',
+            createdAt: DateTime.now(),
+          ),
+        );
       } else {
-        await svcDocRef.delete().catchError((_) {});
+        await remRepo.deleteReminder(userId, svcDocId);
       }
     } catch (_) {}
   }

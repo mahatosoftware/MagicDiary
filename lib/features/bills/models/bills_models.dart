@@ -11,6 +11,10 @@ class BillAccount {
   final int dueDayOfMonth; // 1-31
   final double defaultAmount;
   final bool autoReminder;
+  final bool isAutopay;
+  final String? paymentMethod;
+  final bool isSubscription;
+  final bool isUnusedFlagged;
   final DateTime createdAt;
 
   BillAccount({
@@ -24,6 +28,10 @@ class BillAccount {
     required this.dueDayOfMonth,
     this.defaultAmount = 0.0,
     this.autoReminder = true,
+    this.isAutopay = false,
+    this.paymentMethod,
+    this.isSubscription = false,
+    this.isUnusedFlagged = false,
     required this.createdAt,
   });
 
@@ -39,6 +47,10 @@ class BillAccount {
       dueDayOfMonth: map['dueDayOfMonth'] ?? 10,
       defaultAmount: (map['defaultAmount'] ?? 0.0).toDouble(),
       autoReminder: map['autoReminder'] ?? true,
+      isAutopay: map['isAutopay'] ?? false,
+      paymentMethod: map['paymentMethod'],
+      isSubscription: map['isSubscription'] ?? false,
+      isUnusedFlagged: map['isUnusedFlagged'] ?? false,
       createdAt: map['createdAt'] is Timestamp
           ? (map['createdAt'] as Timestamp).toDate()
           : DateTime.tryParse(map['createdAt'].toString()) ?? DateTime.now(),
@@ -56,6 +68,10 @@ class BillAccount {
       'dueDayOfMonth': dueDayOfMonth,
       'defaultAmount': defaultAmount,
       'autoReminder': autoReminder,
+      'isAutopay': isAutopay,
+      if (paymentMethod != null) 'paymentMethod': paymentMethod,
+      'isSubscription': isSubscription,
+      'isUnusedFlagged': isUnusedFlagged,
       'createdAt': Timestamp.fromDate(createdAt),
     };
   }
@@ -69,6 +85,9 @@ class Bill {
   final DateTime billDate;
   final DateTime dueDate;
   final double amount;
+  final double? expectedAmount;
+  final double? previousAmount;
+  final double lateFee;
   final double minimumDue;
   final String status; // 'unpaid', 'paid', 'overdue', 'partially_paid'
   final String? invoiceDocumentId;
@@ -82,6 +101,9 @@ class Bill {
     required this.billDate,
     required this.dueDate,
     required this.amount,
+    this.expectedAmount,
+    this.previousAmount,
+    this.lateFee = 0.0,
     this.minimumDue = 0.0,
     this.status = 'unpaid',
     this.invoiceDocumentId,
@@ -101,6 +123,9 @@ class Bill {
           ? (map['dueDate'] as Timestamp).toDate()
           : DateTime.tryParse(map['dueDate'].toString()) ?? DateTime.now(),
       amount: (map['amount'] ?? 0.0).toDouble(),
+      expectedAmount: (map['expectedAmount'] as num?)?.toDouble(),
+      previousAmount: (map['previousAmount'] as num?)?.toDouble(),
+      lateFee: (map['lateFee'] as num?)?.toDouble() ?? 0.0,
       minimumDue: (map['minimumDue'] ?? 0.0).toDouble(),
       status: map['status'] ?? 'unpaid',
       invoiceDocumentId: map['invoiceDocumentId'],
@@ -116,6 +141,9 @@ class Bill {
       'billDate': Timestamp.fromDate(billDate),
       'dueDate': Timestamp.fromDate(dueDate),
       'amount': amount,
+      if (expectedAmount != null) 'expectedAmount': expectedAmount,
+      if (previousAmount != null) 'previousAmount': previousAmount,
+      'lateFee': lateFee,
       'minimumDue': minimumDue,
       'status': status,
       'invoiceDocumentId': invoiceDocumentId,

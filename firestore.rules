@@ -53,6 +53,33 @@ rules_version = '2';
 //   - financialObligations/{obligationId} (Canonical Financial Obligations)
 //   - recurringSchedules/{scheduleId} (Canonical Recurring Schedules)
 //   - financialCategories/{categoryId} (Standardized Financial Categories)
+//   - userHouseholds/{householdId} (Indexed Household Workspace Memberships)
+//   - domesticWorkers/{workerId} (Domestic Help & Staff Profiles)
+//   - workerAttendance/{attId} (Worker Attendance Ledger)
+//   - salaryAdvances/{advanceId} (Salary Advances & Recovery Tracking)
+//   - salaryAdjustments/{adjId} (Salary Bonuses, Deductions & Extra Work)
+//   - salaryStatements/{statementId} (Monthly Staff Salary Statements)
+//   - recurringServices/{serviceId} (Recurring Household Services & Vendors)
+//   - serviceEntries/{entryId} (Daily Service Delivery Log)
+//   - serviceBills/{billId} (Monthly Service Vendor Invoices)
+//   - notification_preferences/{prefType} & items/{itemId} (Global, Module & Category Preferences)
+//   - notification_overrides/{recordId} (Record-Level Individual Overrides)
+//   - notification_schedules/{scheduleId} (Notification Delivery Schedules)
+//   - notification_actions/{actionId} (User Notification Interaction Audit Log)
+//   - notification_history/{entryId} (Notification Delivery & Read History)
+//   - devices/{deviceId} (User FCM Push Notification Device Tokens)
+//   - diaries/{diaryId}/records/{recordId} (Universal Diary Records for 45 Life OS Subdiaries)
+//
+// Top-Level Collections:
+//   - /households/{householdId} (Shared Household Workspaces)
+//   - /household_invitations/{invitationId} (Household Member Invitations)
+//   - /household_tasks/{taskId} (Household Shared Tasks & Responsibilities)
+//   - /household_settlements/{settlementId} (Inter-Member Expense Reimbursements)
+//   - /circles/{circleId} (Magic Circles Workspaces)
+//     - Fields: id, name, category, ownerId, members, memberUids, sharedDiaryIds, coverImageUrl, description, createdAt, updatedAt, schemaVersion
+//     - tasks/{taskId} (Circle Shared Responsibilities & Action Items)
+//     - expenses/{expenseId} (Circle Shared Split Expenses)
+//   - /shared_diary_access/{shareId} (Granular Diary Sharing & Permissions)
 //
 // ===============================================================
 
@@ -101,6 +128,14 @@ service cloud.firestore {
 
     function isValidOptionalList(data, field, maxSize) {
       return !(field in data) || data[field] == null || (data[field] is list && data[field].size() <= maxSize);
+    }
+
+    function isValidOptionalBool(data, field) {
+      return !(field in data) || data[field] == null || data[field] is bool;
+    }
+
+    function isValidOptionalMap(data, field) {
+      return !(field in data) || data[field] == null || data[field] is map;
     }
 
     // ===============================================================
@@ -514,6 +549,558 @@ service cloud.firestore {
     }
 
     // ===============================================================
+    // Domestic Help & Recurring Services Validators
+    // ===============================================================
+
+    function isValidUserHousehold(data) {
+      return hasRequiredFields(data, ['householdId', 'householdName', 'role', 'joinedAt'])
+        && data.householdId is string && data.householdId.size() <= 100
+        && data.householdName is string && data.householdName.size() >= 1 && data.householdName.size() <= 150
+        && data.role in ['owner', 'admin', 'member', 'viewer']
+        && isTimestampOrDateString(data.joinedAt);
+    }
+
+    function isValidDomesticWorker(data) {
+      return hasRequiredFields(data, ['id', 'name', 'role', 'phone', 'startDate', 'salaryType', 'baseSalary', 'paymentDueDay', 'attendancePolicy'])
+        && data.id is string && data.id.size() <= 100
+        && isValidOptionalString(data, 'householdId', 100)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && isValidOptionalString(data, 'preferredName', 120)
+        && data.role is string && data.role.size() <= 50
+        && data.phone is string && data.phone.size() <= 30
+        && isValidOptionalString(data, 'emergencyContact', 30)
+        && isTimestampOrDateString(data.startDate)
+        && isValidOptionalDate(data, 'endDate')
+        && (!('isActive' in data) || data.isActive == null || data.isActive is bool)
+        && isValidOptionalList(data, 'workingDays', 7)
+        && isValidOptionalList(data, 'weeklyOff', 7)
+        && data.salaryType in ['monthlyFixed', 'dailyWage', 'hourly', 'perVisit']
+        && data.baseSalary is number && data.baseSalary >= 0
+        && data.paymentDueDay is number && data.paymentDueDay >= 1 && data.paymentDueDay <= 31
+        && data.attendancePolicy in ['deductUnpaidAbsence', 'fixedNoDeduction', 'customRule']
+        && isValidOptionalNumber(data, 'advanceBalance')
+        && isValidOptionalString(data, 'notes', 2000);
+    }
+
+    function isValidWorkerAttendance(data) {
+      return hasRequiredFields(data, ['id', 'workerId', 'date', 'status', 'timestamp'])
+        && data.id is string && data.id.size() <= 100
+        && data.workerId is string && data.workerId.size() <= 100
+        && isValidOptionalString(data, 'householdId', 100)
+        && isTimestampOrDateString(data.date)
+        && data.status in ['present', 'halfDay', 'absent', 'approvedLeave', 'unpaidLeave', 'notScheduled']
+        && isTimestampOrDateString(data.timestamp)
+        && isValidOptionalString(data, 'arrivalTime', 50)
+        && isValidOptionalString(data, 'recordedByUid', 100)
+        && isValidOptionalString(data, 'recordedByName', 100)
+        && isValidOptionalString(data, 'notes', 1000);
+    }
+
+    function isValidSalaryAdvance(data) {
+      return hasRequiredFields(data, ['id', 'workerId', 'amount', 'date', 'monthlyRecoveryAmount'])
+        && data.id is string && data.id.size() <= 100
+        && data.workerId is string && data.workerId.size() <= 100
+        && isValidOptionalString(data, 'householdId', 100)
+        && data.amount is number && data.amount >= 0
+        && isTimestampOrDateString(data.date)
+        && data.monthlyRecoveryAmount is number && data.monthlyRecoveryAmount >= 0
+        && isValidOptionalNumber(data, 'recoveredAmount')
+        && (!('isFullyRecovered' in data) || data.isFullyRecovered == null || data.isFullyRecovered is bool)
+        && isValidOptionalString(data, 'notes', 2000);
+    }
+
+    function isValidSalaryAdjustment(data) {
+      return hasRequiredFields(data, ['id', 'workerId', 'type', 'amount', 'date', 'reason'])
+        && data.id is string && data.id.size() <= 100
+        && data.workerId is string && data.workerId.size() <= 100
+        && isValidOptionalString(data, 'householdId', 100)
+        && data.type in ['bonus', 'deduction', 'extra_work']
+        && data.amount is number && data.amount >= 0
+        && isTimestampOrDateString(data.date)
+        && data.reason is string && data.reason.size() <= 500;
+    }
+
+    function isValidSalaryStatement(data) {
+      return hasRequiredFields(data, ['id', 'workerId', 'workerName', 'month', 'year', 'baseSalary', 'netPayable', 'status'])
+        && data.id is string && data.id.size() <= 100
+        && data.workerId is string && data.workerId.size() <= 100
+        && data.workerName is string && data.workerName.size() <= 120
+        && isValidOptionalString(data, 'householdId', 100)
+        && data.month is number && data.month >= 1 && data.month <= 12
+        && data.year is number && data.year >= 2000 && data.year <= 2100
+        && data.baseSalary is number && data.baseSalary >= 0
+        && isValidOptionalNumber(data, 'bonuses')
+        && isValidOptionalNumber(data, 'extraWorkPay')
+        && isValidOptionalNumber(data, 'deductions')
+        && isValidOptionalNumber(data, 'advanceRecovery')
+        && data.netPayable is number && data.netPayable >= 0
+        && isValidOptionalNumber(data, 'paidAmount')
+        && data.status in ['draft', 'approved', 'partially_paid', 'paid']
+        && isValidOptionalDate(data, 'paymentDate')
+        && isValidOptionalString(data, 'paymentMethod', 100)
+        && isValidOptionalString(data, 'paymentReference', 100)
+        && isValidOptionalString(data, 'financialTransactionId', 100);
+    }
+
+    function isValidRecurringService(data) {
+      return hasRequiredFields(data, ['id', 'name', 'serviceType', 'providerName', 'billingModel', 'unitRate'])
+        && data.id is string && data.id.size() <= 100
+        && isValidOptionalString(data, 'householdId', 100)
+        && data.name is string && data.name.size() <= 120
+        && data.serviceType is string && data.serviceType.size() <= 50
+        && data.providerName is string && data.providerName.size() <= 120
+        && isValidOptionalString(data, 'providerContact', 50)
+        && data.billingModel in ['perUnit', 'perDelivery', 'monthlyFixed']
+        && data.unitRate is number && data.unitRate >= 0
+        && isValidOptionalString(data, 'unitName', 50)
+        && isValidOptionalList(data, 'deliveryDays', 7)
+        && isValidOptionalNumber(data, 'defaultDailyQuantity')
+        && isValidOptionalNumber(data, 'unpaidBalance')
+        && (!('isActive' in data) || data.isActive == null || data.isActive is bool)
+        && isValidOptionalString(data, 'notes', 2000);
+    }
+
+    function isValidServiceEntry(data) {
+      return hasRequiredFields(data, ['id', 'serviceId', 'date', 'quantity', 'rate'])
+        && data.id is string && data.id.size() <= 100
+        && data.serviceId is string && data.serviceId.size() <= 100
+        && isValidOptionalString(data, 'householdId', 100)
+        && isTimestampOrDateString(data.date)
+        && data.quantity is number && data.quantity >= 0
+        && data.rate is number && data.rate >= 0
+        && (!('isDelivered' in data) || data.isDelivered == null || data.isDelivered is bool)
+        && isValidOptionalString(data, 'notes', 1000);
+    }
+
+    function isValidServiceBill(data) {
+      return hasRequiredFields(data, ['id', 'serviceId', 'serviceName', 'month', 'year', 'totalAmount', 'status'])
+        && data.id is string && data.id.size() <= 100
+        && data.serviceId is string && data.serviceId.size() <= 100
+        && data.serviceName is string && data.serviceName.size() <= 120
+        && isValidOptionalString(data, 'householdId', 100)
+        && data.month is number && data.month >= 1 && data.month <= 12
+        && data.year is number && data.year >= 2000 && data.year <= 2100
+        && isValidOptionalNumber(data, 'totalQuantity')
+        && data.totalAmount is number && data.totalAmount >= 0
+        && isValidOptionalNumber(data, 'paidAmount')
+        && data.status in ['pending', 'partially_paid', 'paid']
+        && isValidOptionalDate(data, 'paidDate')
+        && isValidOptionalString(data, 'financialTransactionId', 100);
+    }
+
+    // ===============================================================
+    // Notification Framework Validators
+    // ===============================================================
+
+    function isValidNotificationPreference(data, userId) {
+      return hasRequiredFields(data, ['id', 'userId', 'level'])
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 100
+        && data.userId == userId
+        && data.level in ['global', 'module', 'category', 'individual']
+        && isValidOptionalString(data, 'targetId', 100)
+        && isValidOptionalBool(data, 'isEnabled')
+        && isValidOptionalList(data, 'reminderIntervals', 20)
+        && isValidOptionalMap(data, 'preferredNotificationTime')
+        && isValidOptionalBool(data, 'quietHoursEnabled')
+        && isValidOptionalMap(data, 'quietHoursStart')
+        && isValidOptionalMap(data, 'quietHoursEnd')
+        && isValidOptionalBool(data, 'allowWeekendNotifications')
+        && isValidOptionalBool(data, 'soundEnabled')
+        && isValidOptionalBool(data, 'vibrationEnabled')
+        && (!('privacyMode' in data) || data.privacyMode == null || (data.privacyMode is string && data.privacyMode in ['detailed', 'masked', 'generic']))
+        && isValidOptionalBool(data, 'overdueAlertsEnabled')
+        && isValidOptionalList(data, 'overdueIntervalsDays', 20)
+        && isValidOptionalNumber(data, 'defaultSnoozeMinutes')
+        && isValidOptionalNumber(data, 'maxSnoozeCount')
+        && isValidOptionalMap(data, 'customOverrides')
+        && isValidOptionalDate(data, 'createdAt')
+        && isValidOptionalDate(data, 'updatedAt');
+    }
+
+    function isValidNotificationOverride(data, userId) {
+      return isValidNotificationPreference(data, userId) && data.level == 'individual';
+    }
+
+    function isValidNotificationSchedule(data, userId) {
+      return hasRequiredFields(data, ['id', 'userId', 'moduleId', 'categoryId', 'recordId', 'eventType', 'scheduledAt', 'originalScheduledAt', 'reminderOffset', 'localNotificationId', 'createdAt', 'updatedAt'])
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 100
+        && data.userId == userId
+        && data.moduleId is string && data.moduleId.size() >= 1 && data.moduleId.size() <= 100
+        && data.categoryId is string && data.categoryId.size() >= 1 && data.categoryId.size() <= 100
+        && data.recordId is string && data.recordId.size() >= 1 && data.recordId.size() <= 100
+        && data.eventType is string && data.eventType.size() >= 1 && data.eventType.size() <= 100
+        && isTimestampOrDateString(data.scheduledAt)
+        && isTimestampOrDateString(data.originalScheduledAt)
+        && data.reminderOffset is string && data.reminderOffset.size() >= 1 && data.reminderOffset.size() <= 50
+        && data.localNotificationId is int
+        && isTimestampOrDateString(data.createdAt)
+        && isTimestampOrDateString(data.updatedAt)
+        && isValidOptionalString(data, 'occurrenceId', 100)
+        && (!('notificationType' in data) || data.notificationType == null || (data.notificationType is string && data.notificationType in ['reminder', 'snooze', 'defer', 'overdue']))
+        && isValidOptionalString(data, 'timezone', 100)
+        && (!('status' in data) || data.status == null || (data.status is string && data.status in ['scheduled', 'claimed', 'sent', 'snoozed', 'deferred', 'cancelled', 'dismissed', 'failed', 'displayed', 'opened', 'completed']))
+        && (!('scheduleSource' in data) || data.scheduleSource == null || (data.scheduleSource is string && data.scheduleSource in ['defaultTemplate', 'moduleDefault', 'categoryDefault', 'categoryOverride', 'individualOverride', 'customUser', 'snooze', 'deferModeA', 'deferModeB', 'overdueAlert']))
+        && isValidOptionalBool(data, 'isSnoozed')
+        && isValidOptionalBool(data, 'isDeferred')
+        && isValidOptionalNumber(data, 'snoozeCount')
+        && isValidOptionalMap(data, 'payload')
+        && isValidOptionalString(data, 'deliveryKey', 200)
+        && isValidOptionalNumber(data, 'attemptCount')
+        && isValidOptionalDate(data, 'lastAttemptAt')
+        && isValidOptionalDate(data, 'sentAt')
+        && isValidOptionalDate(data, 'claimLeaseExpiresAt')
+        && isValidOptionalString(data, 'claimedByWorker', 100)
+        && isValidOptionalString(data, 'errorMessage', 1000);
+    }
+
+    function isValidNotificationAction(data) {
+      return hasRequiredFields(data, ['id', 'notificationId', 'recordId', 'actionType', 'performedAt', 'performedBy'])
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 100
+        && data.notificationId is string && data.notificationId.size() >= 1 && data.notificationId.size() <= 100
+        && data.recordId is string && data.recordId.size() >= 1 && data.recordId.size() <= 100
+        && data.actionType is string && data.actionType in ['SNOOZE', 'SNOOZE_10M', 'SNOOZE_30M', 'SNOOZE_1H', 'SNOOZE_3H', 'SNOOZE_TOMORROW', 'SNOOZE_CUSTOM', 'SNOOZE_MORE', 'DEFER', 'PAID', 'COMPLETE', 'OPEN', 'DISMISS']
+        && isTimestampOrDateString(data.performedAt)
+        && data.performedBy is string && data.performedBy.size() >= 1 && data.performedBy.size() <= 100
+        && isValidOptionalDate(data, 'originalDate')
+        && isValidOptionalDate(data, 'newDate')
+        && isValidOptionalNumber(data, 'snoozeDuration')
+        && isValidOptionalString(data, 'deferReason', 500)
+        && isValidOptionalString(data, 'occurrenceId', 100)
+        && isValidOptionalMap(data, 'metadata');
+    }
+
+    function isValidNotificationHistory(data) {
+      return hasRequiredFields(data, ['id', 'notificationId', 'recordId', 'moduleId', 'eventType', 'title', 'body', 'status', 'scheduledAt', 'createdAt'])
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 100
+        && data.notificationId is string && data.notificationId.size() >= 1 && data.notificationId.size() <= 100
+        && data.recordId is string && data.recordId.size() >= 1 && data.recordId.size() <= 100
+        && data.moduleId is string && data.moduleId.size() >= 1 && data.moduleId.size() <= 100
+        && data.eventType is string && data.eventType.size() >= 1 && data.eventType.size() <= 100
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && data.body is string && data.body.size() <= 2000
+        && data.status is string && data.status.size() <= 50 && data.status in ['scheduled', 'sent', 'snoozed', 'deferred', 'cancelled', 'dismissed', 'failed', 'displayed', 'opened', 'completed']
+        && isTimestampOrDateString(data.scheduledAt)
+        && isTimestampOrDateString(data.createdAt)
+        && isValidOptionalDate(data, 'deliveredAt')
+        && isValidOptionalDate(data, 'displayedAt')
+        && isValidOptionalDate(data, 'openedAt')
+        && isValidOptionalString(data, 'actionTaken', 100)
+        && isValidOptionalMap(data, 'metadata');
+    }
+
+    function isValidDevice(data, userId) {
+      return hasRequiredFields(data, ['id', 'userId', 'fcmToken', 'platform', 'deviceName', 'lastActiveAt', 'createdAt'])
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 100
+        && data.userId == userId
+        && data.fcmToken is string && data.fcmToken.size() >= 1 && data.fcmToken.size() <= 500
+        && data.platform is string && data.platform.size() >= 1 && data.platform.size() <= 50
+        && data.deviceName is string && data.deviceName.size() >= 1 && data.deviceName.size() <= 150
+        && isTimestampOrDateString(data.lastActiveAt)
+        && isTimestampOrDateString(data.createdAt)
+        && isValidOptionalString(data, 'appVersion', 50);
+    }
+
+    // ===============================================================
+    // Top-Level Household Workspaces Validators & Membership Helpers
+    // ===============================================================
+
+    function isValidHouseholdMember(m) {
+      return m is map
+        && hasRequiredFields(m, ['uid', 'email', 'displayName', 'role'])
+        && m.uid is string && m.uid.size() >= 1 && m.uid.size() <= 100
+        && m.email is string && m.email.size() <= 255
+        && m.displayName is string && m.displayName.size() >= 1 && m.displayName.size() <= 100
+        && m.role in ['owner', 'admin', 'member', 'viewer']
+        && (!('joinedAt' in m) || m.joinedAt == null || isTimestampOrDateString(m.joinedAt))
+        && (!('canRecordAttendance' in m) || m.canRecordAttendance == null || m.canRecordAttendance is bool)
+        && (!('canApproveSalary' in m) || m.canApproveSalary == null || m.canApproveSalary is bool)
+        && (!('canViewFinancials' in m) || m.canViewFinancials == null || m.canViewFinancials is bool)
+        && (!('canManageTasks' in m) || m.canManageTasks == null || m.canManageTasks is bool);
+    }
+
+    function isValidHousehold(data) {
+      return hasRequiredFields(data, ['id', 'name', 'ownerId', 'members', 'createdAt'])
+        && data.id is string && data.id.size() <= 100
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 150
+        && data.ownerId is string && data.ownerId.size() <= 100
+        && data.members is list && data.members.size() >= 1 && data.members.size() <= 50
+        && isTimestampOrDateString(data.createdAt)
+        && isValidOptionalString(data, 'timezone', 50);
+    }
+
+    function isMemberWithUid(members, uid) {
+      return (members.size() > 0 && members[0].uid == uid)
+          || (members.size() > 1 && members[1].uid == uid)
+          || (members.size() > 2 && members[2].uid == uid)
+          || (members.size() > 3 && members[3].uid == uid)
+          || (members.size() > 4 && members[4].uid == uid)
+          || (members.size() > 5 && members[5].uid == uid)
+          || (members.size() > 6 && members[6].uid == uid)
+          || (members.size() > 7 && members[7].uid == uid)
+          || (members.size() > 8 && members[8].uid == uid)
+          || (members.size() > 9 && members[9].uid == uid)
+          || (members.size() > 10 && members[10].uid == uid)
+          || (members.size() > 11 && members[11].uid == uid)
+          || (members.size() > 12 && members[12].uid == uid)
+          || (members.size() > 13 && members[13].uid == uid)
+          || (members.size() > 14 && members[14].uid == uid);
+    }
+
+    function isMemberAdmin(members, uid) {
+      return (members.size() > 0 && members[0].uid == uid && members[0].role in ['owner', 'admin'])
+          || (members.size() > 1 && members[1].uid == uid && members[1].role in ['owner', 'admin'])
+          || (members.size() > 2 && members[2].uid == uid && members[2].role in ['owner', 'admin'])
+          || (members.size() > 3 && members[3].uid == uid && members[3].role in ['owner', 'admin'])
+          || (members.size() > 4 && members[4].uid == uid && members[4].role in ['owner', 'admin'])
+          || (members.size() > 5 && members[5].uid == uid && members[5].role in ['owner', 'admin'])
+          || (members.size() > 6 && members[6].uid == uid && members[6].role in ['owner', 'admin'])
+          || (members.size() > 7 && members[7].uid == uid && members[7].role in ['owner', 'admin'])
+          || (members.size() > 8 && members[8].uid == uid && members[8].role in ['owner', 'admin'])
+          || (members.size() > 9 && members[9].uid == uid && members[9].role in ['owner', 'admin'])
+          || (members.size() > 10 && members[10].uid == uid && members[10].role in ['owner', 'admin'])
+          || (members.size() > 11 && members[11].uid == uid && members[11].role in ['owner', 'admin'])
+          || (members.size() > 12 && members[12].uid == uid && members[12].role in ['owner', 'admin'])
+          || (members.size() > 13 && members[13].uid == uid && members[13].role in ['owner', 'admin'])
+          || (members.size() > 14 && members[14].uid == uid && members[14].role in ['owner', 'admin']);
+    }
+
+    function isSelfJoiningHousehold(resourceData, requestData) {
+      return requestData.diff(resourceData).affectedKeys().hasOnly(['members'])
+        && requestData.members.size() == resourceData.members.size() + 1
+        && isMemberWithUid(requestData.members, request.auth.uid);
+    }
+
+    function isValidHouseholdInvitation(data) {
+      return hasRequiredFields(data, ['id', 'householdId', 'householdName', 'inviterUid', 'inviterName', 'inviteeEmail', 'role', 'token', 'status', 'expiresAt', 'createdAt'])
+        && data.id is string && data.id.size() <= 100
+        && data.householdId is string && data.householdId.size() <= 100
+        && data.householdName is string && data.householdName.size() >= 1 && data.householdName.size() <= 150
+        && data.inviterUid is string && data.inviterUid.size() <= 100
+        && data.inviterName is string && data.inviterName.size() >= 1 && data.inviterName.size() <= 100
+        && data.inviteeEmail is string && data.inviteeEmail.size() <= 255 && isValidEmail(data.inviteeEmail)
+        && data.role in ['admin', 'member', 'viewer']
+        && data.token is string && data.token.size() <= 100
+        && data.status in ['pending', 'accepted', 'declined', 'expired']
+        && isTimestampOrDateString(data.expiresAt)
+        && isTimestampOrDateString(data.createdAt);
+    }
+
+    function isValidHouseholdTask(data) {
+      return hasRequiredFields(data, ['id', 'householdId', 'title', 'dueDate', 'priority', 'isCompleted', 'createdByUid', 'createdAt'])
+        && data.id is string && data.id.size() <= 100
+        && data.householdId is string && data.householdId.size() <= 100
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && isValidOptionalString(data, 'description', 2000)
+        && isValidOptionalString(data, 'assignedToUid', 100)
+        && isValidOptionalString(data, 'assignedToName', 100)
+        && isTimestampOrDateString(data.dueDate)
+        && data.priority in ['high', 'medium', 'low']
+        && data.isCompleted is bool
+        && isValidOptionalDate(data, 'completedAt')
+        && isValidOptionalString(data, 'completedByUid', 100)
+        && data.createdByUid is string && data.createdByUid.size() <= 100
+        && isTimestampOrDateString(data.createdAt);
+    }
+
+    function isValidHouseholdSettlement(data) {
+      return hasRequiredFields(data, ['id', 'householdId', 'payerUid', 'payerName', 'receiverUid', 'receiverName', 'amount', 'reason', 'date', 'isSettled'])
+        && data.id is string && data.id.size() <= 100
+        && data.householdId is string && data.householdId.size() <= 100
+        && data.payerUid is string && data.payerUid.size() <= 100
+        && data.payerName is string && data.payerName.size() >= 1 && data.payerName.size() <= 100
+        && data.receiverUid is string && data.receiverUid.size() <= 100
+        && data.receiverName is string && data.receiverName.size() >= 1 && data.receiverName.size() <= 100
+        && data.amount is number && data.amount >= 0
+        && data.reason is string && data.reason.size() <= 500
+        && isTimestampOrDateString(data.date)
+        && data.isSettled is bool
+        && isValidOptionalDate(data, 'settledAt');
+    }
+
+    // ===============================================================
+    // Universal Diary Engine Validators
+    // ===============================================================
+
+    function isValidDiaryRecord(data, userId, diaryId) {
+      return hasRequiredFields(data, ['id', 'ownerId', 'sourceDiaryId', 'title', 'recordDate', 'createdAt', 'updatedAt'])
+        && data.id is string && data.id.size() <= 100
+        && data.ownerId == userId
+        && data.sourceDiaryId == diaryId
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && isTimestampOrDateString(data.recordDate)
+        && isTimestampOrDateString(data.createdAt)
+        && isTimestampOrDateString(data.updatedAt)
+        && isValidOptionalString(data, 'circleId', 100)
+        && isValidOptionalString(data, 'subtitle', 250)
+        && isValidOptionalNumber(data, 'amount')
+        && isValidOptionalString(data, 'currency', 10)
+        && (!('status' in data) || data.status == null || (data.status is string && data.status in ['active', 'completed', 'archived', 'pending']))
+        && isValidOptionalList(data, 'tags', 30)
+        && isValidOptionalMap(data, 'fields')
+        && isValidOptionalList(data, 'restrictedFields', 50)
+        && isValidOptionalBool(data, 'isPrivate')
+        && isValidOptionalList(data, 'attachmentIds', 50)
+        && isValidOptionalString(data, 'reminderId', 100)
+        && isValidOptionalString(data, 'createdBy', 100)
+        && isValidOptionalString(data, 'updatedBy', 100)
+        && (!('schemaVersion' in data) || data.schemaVersion == null || (data.schemaVersion is int && data.schemaVersion >= 0));
+    }
+
+    // ===============================================================
+    // Magic Circles & Shared Diary Access Validators & Helpers
+    // ===============================================================
+
+    function isValidCircleMember(m) {
+      return m is map
+        && hasRequiredFields(m, ['uid', 'email', 'displayName', 'role', 'joinedAt'])
+        && m.uid is string && m.uid.size() >= 1 && m.uid.size() <= 100
+        && m.email is string && m.email.size() <= 255
+        && m.displayName is string && m.displayName.size() >= 1 && m.displayName.size() <= 100
+        && m.role in ['owner', 'admin', 'editor', 'contributor', 'viewer']
+        && isTimestampOrDateString(m.joinedAt)
+        && (!('status' in m) || m.status == null || (m.status is string && m.status.size() <= 50));
+    }
+
+    function isValidCircle(data) {
+      return hasRequiredFields(data, ['id', 'name', 'category', 'ownerId', 'members', 'createdAt', 'updatedAt'])
+        && data.id is string && data.id.size() <= 100
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 150
+        && data.category is string && data.category in ['family', 'household', 'travel', 'business', 'education', 'seniorCare', 'propertyManagement', 'friends', 'custom']
+        && data.ownerId is string && data.ownerId.size() <= 100
+        && data.members is list && data.members.size() >= 1 && data.members.size() <= 50
+        && isTimestampOrDateString(data.createdAt)
+        && isTimestampOrDateString(data.updatedAt)
+        && isValidOptionalString(data, 'description', 2000)
+        && isValidOptionalList(data, 'sharedDiaryIds', 100)
+        && isValidOptionalString(data, 'coverImageUrl', 2048)
+        && isValidOptionalList(data, 'memberUids', 100)
+        && (!('schemaVersion' in data) || data.schemaVersion == null || (data.schemaVersion is int && data.schemaVersion >= 0));
+    }
+
+    function isCircleMember(members, uid) {
+      return (members.size() > 0 && members[0].uid == uid)
+          || (members.size() > 1 && members[1].uid == uid)
+          || (members.size() > 2 && members[2].uid == uid)
+          || (members.size() > 3 && members[3].uid == uid)
+          || (members.size() > 4 && members[4].uid == uid)
+          || (members.size() > 5 && members[5].uid == uid)
+          || (members.size() > 6 && members[6].uid == uid)
+          || (members.size() > 7 && members[7].uid == uid)
+          || (members.size() > 8 && members[8].uid == uid)
+          || (members.size() > 9 && members[9].uid == uid)
+          || (members.size() > 10 && members[10].uid == uid)
+          || (members.size() > 11 && members[11].uid == uid)
+          || (members.size() > 12 && members[12].uid == uid)
+          || (members.size() > 13 && members[13].uid == uid)
+          || (members.size() > 14 && members[14].uid == uid)
+          || (members.size() > 15 && members[15].uid == uid)
+          || (members.size() > 16 && members[16].uid == uid)
+          || (members.size() > 17 && members[17].uid == uid)
+          || (members.size() > 18 && members[18].uid == uid)
+          || (members.size() > 19 && members[19].uid == uid);
+    }
+
+    function isCircleAdmin(members, uid) {
+      return (members.size() > 0 && members[0].uid == uid && members[0].role in ['owner', 'admin'])
+          || (members.size() > 1 && members[1].uid == uid && members[1].role in ['owner', 'admin'])
+          || (members.size() > 2 && members[2].uid == uid && members[2].role in ['owner', 'admin'])
+          || (members.size() > 3 && members[3].uid == uid && members[3].role in ['owner', 'admin'])
+          || (members.size() > 4 && members[4].uid == uid && members[4].role in ['owner', 'admin'])
+          || (members.size() > 5 && members[5].uid == uid && members[5].role in ['owner', 'admin'])
+          || (members.size() > 6 && members[6].uid == uid && members[6].role in ['owner', 'admin'])
+          || (members.size() > 7 && members[7].uid == uid && members[7].role in ['owner', 'admin'])
+          || (members.size() > 8 && members[8].uid == uid && members[8].role in ['owner', 'admin'])
+          || (members.size() > 9 && members[9].uid == uid && members[9].role in ['owner', 'admin'])
+          || (members.size() > 10 && members[10].uid == uid && members[10].role in ['owner', 'admin'])
+          || (members.size() > 11 && members[11].uid == uid && members[11].role in ['owner', 'admin'])
+          || (members.size() > 12 && members[12].uid == uid && members[12].role in ['owner', 'admin'])
+          || (members.size() > 13 && members[13].uid == uid && members[13].role in ['owner', 'admin'])
+          || (members.size() > 14 && members[14].uid == uid && members[14].role in ['owner', 'admin'])
+          || (members.size() > 15 && members[15].uid == uid && members[15].role in ['owner', 'admin'])
+          || (members.size() > 16 && members[16].uid == uid && members[16].role in ['owner', 'admin'])
+          || (members.size() > 17 && members[17].uid == uid && members[17].role in ['owner', 'admin'])
+          || (members.size() > 18 && members[18].uid == uid && members[18].role in ['owner', 'admin'])
+          || (members.size() > 19 && members[19].uid == uid && members[19].role in ['owner', 'admin']);
+    }
+
+    function circleDocExists(circleId) {
+      return exists(/databases/$(database)/documents/circles/$(circleId));
+    }
+
+    function getCircleDoc(circleId) {
+      return get(/databases/$(database)/documents/circles/$(circleId));
+    }
+
+    function isCircleOwnerOrMember(circleId, uid) {
+      return circleDocExists(circleId) && (
+        getCircleDoc(circleId).data.ownerId == uid
+        || (getCircleDoc(circleId).data.memberUids is list && uid in getCircleDoc(circleId).data.memberUids)
+        || isCircleMember(getCircleDoc(circleId).data.members, uid)
+      );
+    }
+
+    function isCircleAdminOrOwner(circleId, uid) {
+      return circleDocExists(circleId) && (
+        getCircleDoc(circleId).data.ownerId == uid
+        || isCircleAdmin(getCircleDoc(circleId).data.members, uid)
+      );
+    }
+
+    function isValidCircleTask(data, circleId) {
+      return hasRequiredFields(data, ['id', 'circleId', 'title', 'createdByUid', 'dueDate', 'createdAt'])
+        && data.id is string && data.id.size() <= 100
+        && data.circleId == circleId
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && data.createdByUid is string && data.createdByUid.size() <= 100
+        && isTimestampOrDateString(data.dueDate)
+        && isTimestampOrDateString(data.createdAt)
+        && isValidOptionalString(data, 'description', 2000)
+        && isValidOptionalString(data, 'sourceDiaryId', 100)
+        && isValidOptionalString(data, 'sourceRecordId', 100)
+        && isValidOptionalString(data, 'assignedToUid', 100)
+        && isValidOptionalString(data, 'assignedToName', 100)
+        && (!('priority' in data) || data.priority == null || (data.priority is string && data.priority in ['high', 'medium', 'low']))
+        && (!('status' in data) || data.status == null || (data.status is string && data.status in ['open', 'assigned', 'in_progress', 'completed', 'overdue', 'cancelled']))
+        && isValidOptionalDate(data, 'completedAt');
+    }
+
+    function isValidCircleExpense(data, circleId) {
+      return hasRequiredFields(data, ['id', 'circleId', 'title', 'amount', 'paidByUid', 'expenseDate'])
+        && data.id is string && data.id.size() <= 100
+        && data.circleId == circleId
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && data.amount is number && data.amount >= 0
+        && data.paidByUid is string && data.paidByUid.size() <= 100
+        && isTimestampOrDateString(data.expenseDate)
+        && isValidOptionalString(data, 'currency', 10)
+        && isValidOptionalString(data, 'paidByName', 100)
+        && isValidOptionalList(data, 'participantUids', 50)
+        && (!('splitType' in data) || data.splitType == null || (data.splitType is string && data.splitType in ['equal', 'custom', 'percentage']))
+        && isValidOptionalMap(data, 'splitMatrix')
+        && (!('isSettled' in data) || data.isSettled == null || data.isSettled is bool);
+    }
+
+    function isValidSharedDiaryAccess(data) {
+      return hasRequiredFields(data, ['id', 'diaryId', 'diaryName', 'ownerUid', 'ownerName', 'sharedWithUid', 'sharedWithEmail', 'permission', 'createdAt', 'updatedAt'])
+        && data.id is string && data.id.size() <= 100
+        && data.diaryId is string && data.diaryId.size() <= 100
+        && data.diaryName is string && data.diaryName.size() >= 1 && data.diaryName.size() <= 150
+        && data.ownerUid is string && data.ownerUid.size() <= 100
+        && data.ownerName is string && data.ownerName.size() >= 1 && data.ownerName.size() <= 100
+        && data.sharedWithUid is string && data.sharedWithUid.size() <= 100
+        && data.sharedWithEmail is string && data.sharedWithEmail.size() <= 255 && isValidEmail(data.sharedWithEmail)
+        && data.permission in ['viewer', 'contributor', 'editor', 'admin']
+        && isTimestampOrDateString(data.createdAt)
+        && isTimestampOrDateString(data.updatedAt)
+        && isValidOptionalString(data, 'circleId', 100)
+        && isValidOptionalString(data, 'circleName', 150)
+        && isValidOptionalString(data, 'sharedWithName', 100)
+        && (!('shareEntireDiary' in data) || data.shareEntireDiary == null || data.shareEntireDiary is bool)
+        && isValidOptionalList(data, 'grantedRecordIds', 100)
+        && isValidOptionalDate(data, 'expiresAt');
+    }
+
+    // ===============================================================
     // Root User Profile Rule
     // ===============================================================
 
@@ -744,18 +1331,304 @@ service cloud.firestore {
                       && isValidFinancialCategory(request.resource.data, userId)
                       && areImmutableFieldsUnchanged(['id']);
       }
+
+      // --- Domestic Help & Workspace User Subcollections ---
+
+      match /userHouseholds/{householdId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidUserHousehold(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidUserHousehold(request.resource.data)
+                      && areImmutableFieldsUnchanged(['householdId']);
+      }
+
+      match /domesticWorkers/{workerId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidDomesticWorker(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidDomesticWorker(request.resource.data)
+                      && areImmutableFieldsUnchanged(['id']);
+      }
+
+      match /workerAttendance/{attId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidWorkerAttendance(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidWorkerAttendance(request.resource.data)
+                      && areImmutableFieldsUnchanged(['id', 'workerId']);
+      }
+
+      match /salaryAdvances/{advanceId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidSalaryAdvance(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidSalaryAdvance(request.resource.data)
+                      && areImmutableFieldsUnchanged(['id', 'workerId']);
+      }
+
+      match /salaryAdjustments/{adjId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidSalaryAdjustment(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidSalaryAdjustment(request.resource.data)
+                      && areImmutableFieldsUnchanged(['id', 'workerId']);
+      }
+
+      match /salaryStatements/{statementId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidSalaryStatement(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidSalaryStatement(request.resource.data)
+                      && areImmutableFieldsUnchanged(['id', 'workerId']);
+      }
+
+      match /recurringServices/{serviceId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidRecurringService(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidRecurringService(request.resource.data)
+                      && areImmutableFieldsUnchanged(['id']);
+      }
+
+      match /serviceEntries/{entryId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidServiceEntry(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidServiceEntry(request.resource.data)
+                      && areImmutableFieldsUnchanged(['id', 'serviceId']);
+      }
+
+      match /serviceBills/{billId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidServiceBill(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidServiceBill(request.resource.data)
+                      && areImmutableFieldsUnchanged(['id', 'serviceId']);
+      }
+
+      // --- Notification Framework Subcollections ---
+
+      match /notification_preferences/{prefType} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidNotificationPreference(request.resource.data, userId);
+        allow update: if isOwner(userId)
+                      && isValidNotificationPreference(request.resource.data, userId)
+                      && areImmutableFieldsUnchanged(['id', 'userId']);
+
+        match /items/{itemId} {
+          allow read, delete: if isOwner(userId);
+          allow create: if isOwner(userId)
+                        && prefType in ['modules', 'categories']
+                        && isValidNotificationPreference(request.resource.data, userId);
+          allow update: if isOwner(userId)
+                        && prefType in ['modules', 'categories']
+                        && isValidNotificationPreference(request.resource.data, userId)
+                        && areImmutableFieldsUnchanged(['id', 'userId']);
+        }
+      }
+
+      match /notification_overrides/{recordId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidNotificationOverride(request.resource.data, userId);
+        allow update: if isOwner(userId)
+                      && isValidNotificationOverride(request.resource.data, userId)
+                      && areImmutableFieldsUnchanged(['id', 'userId']);
+      }
+
+      match /notification_schedules/{scheduleId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidNotificationSchedule(request.resource.data, userId);
+        allow update: if isOwner(userId)
+                      && isValidNotificationSchedule(request.resource.data, userId)
+                      && areImmutableFieldsUnchanged(['id', 'userId', 'createdAt']);
+      }
+
+      match /notification_actions/{actionId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidNotificationAction(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidNotificationAction(request.resource.data)
+                      && areImmutableFieldsUnchanged(['id', 'performedAt']);
+      }
+
+      match /notification_history/{entryId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidNotificationHistory(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidNotificationHistory(request.resource.data)
+                      && areImmutableFieldsUnchanged(['id', 'createdAt']);
+      }
+
+      match /devices/{deviceId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidDevice(request.resource.data, userId);
+        allow update: if isOwner(userId)
+                      && isValidDevice(request.resource.data, userId)
+                      && areImmutableFieldsUnchanged(['id', 'userId', 'createdAt']);
+      }
+
+      // --- Universal Life OS Subdiaries & Records ---
+      match /diaries/{diaryId} {
+        allow read, write: if isOwner(userId);
+
+        match /records/{recordId} {
+          allow read, delete: if isOwner(userId);
+          allow create: if isOwner(userId) && isValidDiaryRecord(request.resource.data, userId, diaryId);
+          allow update: if isOwner(userId)
+                        && isValidDiaryRecord(request.resource.data, userId, diaryId)
+                        && areImmutableFieldsUnchanged(['id', 'ownerId', 'sourceDiaryId', 'createdAt']);
+        }
+      }
     }
 
     // ===============================================================
     // Username Registry (Safe Lookup without Profile Exposure)
     // ===============================================================
     match /usernames/{username} {
-      // Individual lookup by authenticated users; listing all usernames is forbidden
       allow get: if isAuthenticated();
       allow list: if false;
       allow create: if isAuthenticated() && isValidUsernameMapping(username, request.resource.data);
       allow update: if false;
       allow delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
+    }
+
+    // ===============================================================
+    // Shared Households Collection
+    // ===============================================================
+    match /households/{householdId} {
+      allow read: if isAuthenticated() && (
+        resource.data.ownerId == request.auth.uid
+        || isMemberWithUid(resource.data.members, request.auth.uid)
+      );
+      allow create: if isAuthenticated()
+                    && request.resource.data.ownerId == request.auth.uid
+                    && isValidHousehold(request.resource.data);
+      allow update: if isAuthenticated()
+                    && isValidHousehold(request.resource.data)
+                    && areImmutableFieldsUnchanged(['id', 'ownerId', 'createdAt'])
+                    && (
+                      resource.data.ownerId == request.auth.uid
+                      || isMemberAdmin(resource.data.members, request.auth.uid)
+                      || isSelfJoiningHousehold(resource.data, request.resource.data)
+                    );
+      allow delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
+    }
+
+    // ===============================================================
+    // Household Invitations Collection
+    // ===============================================================
+    match /household_invitations/{invitationId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.inviterUid
+        || (request.auth.token.email != null && request.auth.token.email.lower() == resource.data.inviteeEmail.lower())
+      );
+      allow create: if isAuthenticated()
+                    && request.resource.data.inviterUid == request.auth.uid
+                    && isValidHouseholdInvitation(request.resource.data);
+      allow update: if isAuthenticated()
+                    && isValidHouseholdInvitation(request.resource.data)
+                    && areImmutableFieldsUnchanged(['id', 'householdId', 'inviterUid', 'createdAt'])
+                    && (
+                      request.auth.uid == resource.data.inviterUid
+                      || (request.auth.token.email != null && request.auth.token.email.lower() == resource.data.inviteeEmail.lower())
+                    );
+      allow delete: if isAuthenticated() && resource.data.inviterUid == request.auth.uid;
+    }
+
+    // ===============================================================
+    // Household Shared Tasks Collection
+    // ===============================================================
+    match /household_tasks/{taskId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated()
+                    && request.resource.data.createdByUid == request.auth.uid
+                    && isValidHouseholdTask(request.resource.data);
+      allow update: if isAuthenticated()
+                    && isValidHouseholdTask(request.resource.data)
+                    && areImmutableFieldsUnchanged(['id', 'householdId', 'createdByUid', 'createdAt']);
+      allow delete: if isAuthenticated() && resource.data.createdByUid == request.auth.uid;
+    }
+
+    // ===============================================================
+    // Household Settlements (Inter-member Reimbursements) Collection
+    // ===============================================================
+    match /household_settlements/{settlementId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated()
+                    && (request.resource.data.payerUid == request.auth.uid || request.resource.data.receiverUid == request.auth.uid)
+                    && isValidHouseholdSettlement(request.resource.data);
+      allow update: if isAuthenticated()
+                    && isValidHouseholdSettlement(request.resource.data)
+                    && areImmutableFieldsUnchanged(['id', 'householdId', 'payerUid', 'receiverUid', 'date'])
+                    && (resource.data.payerUid == request.auth.uid || resource.data.receiverUid == request.auth.uid);
+      allow delete: if isAuthenticated() && resource.data.payerUid == request.auth.uid;
+    }
+
+    // ===============================================================
+    // Magic Circles Collection & Subcollections
+    // ===============================================================
+    match /circles/{circleId} {
+      allow read: if isAuthenticated() && (
+        resource.data.ownerId == request.auth.uid
+        || (resource.data.memberUids is list && request.auth.uid in resource.data.memberUids)
+        || isCircleMember(resource.data.members, request.auth.uid)
+      );
+      allow create: if isAuthenticated()
+                    && request.resource.data.ownerId == request.auth.uid
+                    && isValidCircle(request.resource.data);
+      allow update: if isAuthenticated()
+                    && isValidCircle(request.resource.data)
+                    && areImmutableFieldsUnchanged(['id', 'ownerId', 'createdAt'])
+                    && (
+                      resource.data.ownerId == request.auth.uid
+                      || isCircleAdmin(resource.data.members, request.auth.uid)
+                    );
+      allow delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
+
+      // Circle Tasks Subcollection
+      match /tasks/{taskId} {
+        allow read: if isAuthenticated() && isCircleOwnerOrMember(circleId, request.auth.uid);
+        allow create: if isAuthenticated()
+                      && isCircleOwnerOrMember(circleId, request.auth.uid)
+                      && isValidCircleTask(request.resource.data, circleId);
+        allow update: if isAuthenticated()
+                      && isCircleOwnerOrMember(circleId, request.auth.uid)
+                      && isValidCircleTask(request.resource.data, circleId)
+                      && areImmutableFieldsUnchanged(['id', 'circleId', 'createdByUid', 'createdAt']);
+        allow delete: if isAuthenticated() && isCircleOwnerOrMember(circleId, request.auth.uid);
+      }
+
+      // Circle Shared Expenses Subcollection
+      match /expenses/{expenseId} {
+        allow read: if isAuthenticated() && isCircleOwnerOrMember(circleId, request.auth.uid);
+        allow create: if isAuthenticated()
+                      && isCircleOwnerOrMember(circleId, request.auth.uid)
+                      && isValidCircleExpense(request.resource.data, circleId);
+        allow update: if isAuthenticated()
+                      && isCircleOwnerOrMember(circleId, request.auth.uid)
+                      && isValidCircleExpense(request.resource.data, circleId)
+                      && areImmutableFieldsUnchanged(['id', 'circleId']);
+        allow delete: if isAuthenticated() && isCircleOwnerOrMember(circleId, request.auth.uid);
+      }
+    }
+
+    // ===============================================================
+    // Shared Diary Access (Granular Diary Sharing & Permissions)
+    // ===============================================================
+    match /shared_diary_access/{shareId} {
+      allow read: if isAuthenticated() && (
+        resource.data.ownerUid == request.auth.uid
+        || resource.data.sharedWithUid == request.auth.uid
+        || (request.auth.token.email != null && resource.data.sharedWithEmail.lower() == request.auth.token.email.lower())
+      );
+      allow create: if isAuthenticated()
+                    && request.resource.data.ownerUid == request.auth.uid
+                    && isValidSharedDiaryAccess(request.resource.data);
+      allow update: if isAuthenticated()
+                    && resource.data.ownerUid == request.auth.uid
+                    && isValidSharedDiaryAccess(request.resource.data)
+                    && areImmutableFieldsUnchanged(['id', 'ownerUid', 'diaryId', 'createdAt']);
+      allow delete: if isAuthenticated() && resource.data.ownerUid == request.auth.uid;
     }
 
     // ===============================================================

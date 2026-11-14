@@ -86,7 +86,7 @@ class ProfileScreen extends ConsumerWidget {
         title: const Text('Profile & Settings'),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 88.0),
         child: Column(
           children: [
             Card(

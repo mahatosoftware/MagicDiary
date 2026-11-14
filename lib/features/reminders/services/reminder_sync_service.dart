@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../models/reminder.dart';
+import '../../../core/notifications/services/notification_manager.dart';
 
 /// Centralized service to standardize and synchronize reminders across all Magic Diary modules:
 /// - School Fees (Installments)
@@ -71,6 +72,8 @@ class ReminderSyncService {
           relatedId: doc.id,
           amount: amount,
           actionRoute: '/school-fees',
+          actionType: 'Pay',
+          priority: isPaid ? 'low' : 'high',
           createdAt: _resolveCreatedAt(existingData[docId], now),
           completedAt: isPaid ? _resolveCompletedAt(existingData[docId], now) : null,
         ));
@@ -119,13 +122,15 @@ class ReminderSyncService {
           relatedId: doc.id,
           amount: amount,
           actionRoute: '/bills',
+          actionType: 'Pay',
+          priority: isPaid ? 'low' : 'high',
           createdAt: _resolveCreatedAt(existingData[docId], now),
           completedAt: isPaid ? _resolveCompletedAt(existingData[docId], now) : null,
         ));
       }
     } catch (_) {}
 
-    // 3. VEHICLE: Insurance, PUCC, and Routine Servicing
+    // 3. VEHICLE: Insurance, PUCC, Routine Servicing & Odometer Milestones
     try {
       final vehiclesSnap = await _firestore.collection('users').doc(userId).collection('vehicles').get();
       for (final doc in vehiclesSnap.docs) {
@@ -149,6 +154,8 @@ class ReminderSyncService {
             dueDate: insExpiry,
             relatedId: doc.id,
             actionRoute: '/vehicle',
+            actionType: 'Renew',
+            priority: 'high',
             createdAt: _resolveCreatedAt(existingData[docId], now),
           ));
         }
@@ -169,11 +176,13 @@ class ReminderSyncService {
             dueDate: pucExpiry,
             relatedId: doc.id,
             actionRoute: '/vehicle',
+            actionType: 'Renew',
+            priority: 'medium',
             createdAt: _resolveCreatedAt(existingData[docId], now),
           ));
         }
 
-        // Next Scheduled Service
+        // Next Scheduled Service (Date based)
         if (d['nextServiceDate'] != null) {
           final serviceDate = d['nextServiceDate'] is Timestamp
               ? (d['nextServiceDate'] as Timestamp).toDate()
@@ -190,6 +199,60 @@ class ReminderSyncService {
               dueDate: serviceDate,
               relatedId: doc.id,
               actionRoute: '/vehicle',
+              actionType: 'Schedule Service',
+              priority: 'medium',
+              createdAt: _resolveCreatedAt(existingData[docId], now),
+            ));
+          }
+        }
+
+        // Driving License Expiry
+        if (d['drivingLicenseExpiry'] != null) {
+          final dlExpiry = d['drivingLicenseExpiry'] is Timestamp
+              ? (d['drivingLicenseExpiry'] as Timestamp).toDate()
+              : DateTime.tryParse(d['drivingLicenseExpiry'].toString());
+          if (dlExpiry != null) {
+            final docId = 'reminder_veh_${doc.id}_dl';
+            remindersToSync.add(Reminder(
+              id: docId,
+              userId: userId,
+              title: 'Driving License Expiry: $name',
+              description: 'Driving license linked with $name expires on ${dateFormat.format(dlExpiry)}. Renew promptly.',
+              module: 'Vehicle',
+              status: 'pending',
+              dueDate: dlExpiry,
+              relatedId: doc.id,
+              actionRoute: '/vehicle',
+              actionType: 'Renew',
+              priority: 'high',
+              createdAt: _resolveCreatedAt(existingData[docId], now),
+            ));
+          }
+        }
+
+        // Dual Service: Odometer-based Service Reminders
+        final serviceIntervalKm = (d['serviceIntervalKm'] as num?)?.toInt();
+        final lastServiceOdometer = (d['lastServiceOdometer'] as num?)?.toInt() ?? 0;
+        final currentOdometer = (d['currentOdometer'] as num?)?.toInt() ?? 0;
+        if (serviceIntervalKm != null && serviceIntervalKm > 0) {
+          final nextServiceOdo = lastServiceOdometer + serviceIntervalKm;
+          final kmUntil = nextServiceOdo - currentOdometer;
+          if (kmUntil <= 500) {
+            final docId = 'reminder_veh_${doc.id}_odo_service';
+            remindersToSync.add(Reminder(
+              id: docId,
+              userId: userId,
+              title: 'Odometer Service Due: $name',
+              description: kmUntil <= 0
+                  ? 'Vehicle $name has exceeded its service milestone at $nextServiceOdo km (current: $currentOdometer km).'
+                  : 'Vehicle $name is due for service in $kmUntil km ($currentOdometer / $nextServiceOdo km).',
+              module: 'Vehicle',
+              status: 'pending',
+              dueDate: now.add(const Duration(days: 3)),
+              relatedId: doc.id,
+              actionRoute: '/vehicle',
+              actionType: 'Schedule Service',
+              priority: 'high',
               createdAt: _resolveCreatedAt(existingData[docId], now),
             ));
           }
@@ -228,13 +291,15 @@ class ReminderSyncService {
           relatedId: doc.id,
           amount: amount,
           actionRoute: '/household',
+          actionType: 'Pay',
+          priority: isPaid ? 'low' : 'medium',
           createdAt: _resolveCreatedAt(existingData[docId], now),
           completedAt: isPaid ? _resolveCompletedAt(existingData[docId], now) : null,
         ));
       }
     } catch (_) {}
 
-    // 5. PROPERTY: Property Tax & Dues
+    // 5. PROPERTY: Property Tax, Dues & Lease End
     try {
       final propSnap = await _firestore.collection('users').doc(userId).collection('properties').get();
       for (final doc in propSnap.docs) {
@@ -248,24 +313,56 @@ class ReminderSyncService {
               ? (d['taxDueDate'] as Timestamp).toDate()
               : DateTime.tryParse(d['taxDueDate'].toString()) ?? now;
           final docId = 'reminder_prop_${doc.id}_tax';
+          final status = _resolveStatus(existingData[docId], 'pending', taxDueDate);
           remindersToSync.add(Reminder(
             id: docId,
             userId: userId,
             title: 'Property Tax: $title',
             description: '$taxFreq municipal property tax of ₹${taxAmount.toStringAsFixed(0)} for $title.',
             module: 'Property',
-            status: 'pending',
+            status: status,
             dueDate: taxDueDate,
             relatedId: doc.id,
             amount: taxAmount,
             actionRoute: '/property',
+            actionType: 'Pay',
+            priority: 'medium',
             createdAt: _resolveCreatedAt(existingData[docId], now),
+            completedAt: status == 'completed' ? _resolveCompletedAt(existingData[docId], now) : null,
+            snoozedUntil: status == 'snoozed' ? _resolveSnoozedUntil(existingData[docId]) : null,
           ));
+        }
+
+        if (d['leaseEndDate'] != null) {
+          final leaseEnd = d['leaseEndDate'] is Timestamp
+              ? (d['leaseEndDate'] as Timestamp).toDate()
+              : DateTime.tryParse(d['leaseEndDate'].toString());
+          if (leaseEnd != null) {
+            final docId = 'reminder_prop_${doc.id}_lease';
+            final tenant = d['tenantName'] as String? ?? 'Tenant';
+            final status = _resolveStatus(existingData[docId], 'pending', leaseEnd);
+            remindersToSync.add(Reminder(
+              id: docId,
+              userId: userId,
+              title: 'Lease Expiry: $title',
+              description: 'Lease agreement with $tenant for $title expires on ${dateFormat.format(leaseEnd)}.',
+              module: 'Property',
+              status: status,
+              dueDate: leaseEnd,
+              relatedId: doc.id,
+              actionRoute: '/property',
+              actionType: 'Renew',
+              priority: 'medium',
+              createdAt: _resolveCreatedAt(existingData[docId], now),
+              completedAt: status == 'completed' ? _resolveCompletedAt(existingData[docId], now) : null,
+              snoozedUntil: status == 'snoozed' ? _resolveSnoozedUntil(existingData[docId]) : null,
+            ));
+          }
         }
       }
     } catch (_) {}
 
-    // 6. WARRANTY: Expiring Product Warranties
+    // 6. WARRANTY: Expiring Product Warranties & Return Windows
     try {
       final prodSnap = await _firestore.collection('users').doc(userId).collection('products').get();
       for (final doc in prodSnap.docs) {
@@ -290,6 +387,31 @@ class ReminderSyncService {
               dueDate: warrantyEnd,
               relatedId: doc.id,
               actionRoute: '/warranty',
+              actionType: 'Renew',
+              priority: 'medium',
+              createdAt: _resolveCreatedAt(existingData[docId], now),
+            ));
+          }
+        }
+
+        if (d['returnDeadline'] != null) {
+          final returnDeadline = d['returnDeadline'] is Timestamp
+              ? (d['returnDeadline'] as Timestamp).toDate()
+              : DateTime.tryParse(d['returnDeadline'].toString());
+          if (returnDeadline != null) {
+            final docId = 'reminder_prod_${doc.id}_return';
+            remindersToSync.add(Reminder(
+              id: docId,
+              userId: userId,
+              title: 'Return Window Closing: $name',
+              description: 'Return/replacement window for $brand $name closes on ${dateFormat.format(returnDeadline)}.',
+              module: 'Warranty',
+              status: 'pending',
+              dueDate: returnDeadline,
+              relatedId: doc.id,
+              actionRoute: '/warranty',
+              actionType: 'Review',
+              priority: 'high',
               createdAt: _resolveCreatedAt(existingData[docId], now),
             ));
           }
@@ -329,6 +451,105 @@ class ReminderSyncService {
           dueDate: eventDate,
           relatedId: doc.id,
           actionRoute: '/personal',
+          actionType: 'Review',
+          priority: 'medium',
+          createdAt: _resolveCreatedAt(existingData[docId], now),
+        ));
+      }
+    } catch (_) {}
+
+    // 8. DOCUMENTS: Expiring Identity & Vault Records
+    try {
+      final docsSnap = await _firestore.collection('users').doc(userId).collection('documents').get();
+      for (final doc in docsSnap.docs) {
+        final d = doc.data();
+        final title = d['title'] as String? ?? 'Document';
+        final category = d['category'] as String? ?? 'General';
+        if (d['expiryDate'] != null) {
+          final expDate = d['expiryDate'] is Timestamp
+              ? (d['expiryDate'] as Timestamp).toDate()
+              : DateTime.tryParse(d['expiryDate'].toString());
+          if (expDate != null) {
+            final docId = 'reminder_doc_${doc.id}_exp';
+            remindersToSync.add(Reminder(
+              id: docId,
+              userId: userId,
+              title: 'Document Expiry: $title',
+              description: '$category document ($title) expires on ${dateFormat.format(expDate)}. Renew or update.',
+              module: 'General',
+              status: 'pending',
+              dueDate: expDate,
+              relatedId: doc.id,
+              actionRoute: '/documents',
+              actionType: 'Renew',
+              priority: 'high',
+              createdAt: _resolveCreatedAt(existingData[docId], now),
+            ));
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 9. DOMESTIC HELP: Staff Salaries & Recurring Services
+    try {
+      final workersSnap = await _firestore.collection('users').doc(userId).collection('domesticWorkers').get();
+      for (final doc in workersSnap.docs) {
+        final d = doc.data();
+        final isActive = d['isActive'] as bool? ?? true;
+        if (!isActive) continue;
+
+        final name = d['name'] as String? ?? 'Staff';
+        final role = d['role'] as String? ?? 'Domestic Help';
+        final baseSalary = (d['baseSalary'] as num?)?.toDouble() ?? 0.0;
+        final dueDay = (d['paymentDueDay'] as num?)?.toInt() ?? 5;
+
+        final salaryDueDate = DateTime(now.year, now.month, dueDay.clamp(1, 28));
+        final docId = 'reminder_staff_${doc.id}_${now.month}';
+
+        remindersToSync.add(Reminder(
+          id: docId,
+          userId: userId,
+          title: '$role Salary: $name',
+          description: 'Monthly salary of ₹${baseSalary.toStringAsFixed(0)} for $name ($role) is due.',
+          module: 'Household',
+          status: 'pending',
+          dueDate: salaryDueDate,
+          relatedId: doc.id,
+          amount: baseSalary,
+          actionRoute: '/domestic-help',
+          actionType: 'Pay',
+          priority: 'high',
+          createdAt: _resolveCreatedAt(existingData[docId], now),
+        ));
+      }
+
+      final servicesSnap = await _firestore.collection('users').doc(userId).collection('recurringServices').get();
+      for (final doc in servicesSnap.docs) {
+        final d = doc.data();
+        final isActive = d['isActive'] as bool? ?? true;
+        if (!isActive) continue;
+
+        final name = d['name'] as String? ?? 'Service';
+        final unitRate = (d['unitRate'] as num?)?.toDouble() ?? 0.0;
+        final defaultQty = (d['defaultDailyQuantity'] as num?)?.toDouble() ?? 1.0;
+        final estMonthly = defaultQty * unitRate * 30;
+
+        final docId = 'reminder_serv_${doc.id}_${now.month}';
+        final serviceDueDate = DateTime(now.year, now.month, 28);
+
+        remindersToSync.add(Reminder(
+          id: docId,
+          userId: userId,
+          title: 'Vendor Bill: $name',
+          description: 'Estimated monthly delivery bill of ₹${estMonthly.toStringAsFixed(0)} for $name.',
+          module: 'Household',
+          status: 'pending',
+          dueDate: serviceDueDate,
+          relatedId: doc.id,
+          amount: estMonthly,
+          actionRoute: '/domestic-help',
+          actionType: 'Pay',
+          priority: 'medium',
           createdAt: _resolveCreatedAt(existingData[docId], now),
         ));
       }
@@ -351,7 +572,87 @@ class ReminderSyncService {
       await batch.commit();
     }
 
+    // Standardize & schedule notifications through Central Notification Framework
+    try {
+      final notifManager = NotificationManager();
+      for (final rem in remindersToSync) {
+        if (rem.isCompleted) {
+          await notifManager.onRecordPaidOrCompleted(
+            userId: userId,
+            recordId: rem.id,
+            moduleId: _mapModule(rem.module),
+          );
+        } else {
+          await notifManager.scheduleForRecord(
+            userId: userId,
+            recordId: rem.id,
+            moduleId: _mapModule(rem.module),
+            categoryId: _mapCategory(rem.module),
+            eventType: _mapEventType(rem.title, rem.module),
+            title: rem.title,
+            dueDate: rem.dueDate,
+            amount: rem.amount,
+            currency: rem.currencyCode ?? 'INR',
+            actionRoute: rem.actionRoute,
+            tokenData: {'description': rem.description},
+          );
+        }
+      }
+    } catch (_) {}
+
     return syncedCount;
+  }
+
+  String _mapModule(String module) {
+    switch (module.toLowerCase().trim()) {
+      case 'schoolfees':
+      case 'school_fees':
+        return 'school_fees';
+      case 'bills':
+        return 'bills';
+      case 'vehicle':
+        return 'vehicle';
+      case 'household':
+        return 'household';
+      case 'property':
+        return 'property';
+      case 'warranty':
+        return 'warranty';
+      case 'finance':
+        return 'finance';
+      case 'domestichelp':
+      case 'domestic_help':
+        return 'domestic_help';
+      case 'personal':
+      default:
+        return 'personal';
+    }
+  }
+
+  String _mapCategory(String module) => _mapModule(module);
+
+  String _mapEventType(String title, String module) {
+    final t = title.toLowerCase();
+    if (t.contains('electricity')) return 'electricity_bill';
+    if (t.contains('water')) return 'water_bill';
+    if (t.contains('internet') || t.contains('broadband')) return 'internet_bill';
+    if (t.contains('mobile') || t.contains('recharge')) return 'mobile_bill';
+    if (t.contains('gas')) return 'gas_bill';
+    if (t.contains('credit card')) return 'credit_card';
+    if (t.contains('loan') || t.contains('emi')) return 'loan_emi';
+    if (t.contains('insurance')) {
+      return module.toLowerCase() == 'vehicle' ? 'vehicle_insurance' : 'insurance_premium';
+    }
+    if (t.contains('puc')) return 'vehicle_puc';
+    if (t.contains('service') || t.contains('maintenance')) {
+      return module.toLowerCase() == 'vehicle' ? 'vehicle_servicing' : 'appliance_servicing';
+    }
+    if (t.contains('warranty')) return 'product_warranty';
+    if (t.contains('rent')) return 'rent';
+    if (t.contains('tax')) return 'property_tax';
+    if (t.contains('school fee')) return 'school_fees';
+    if (t.contains('salary')) return 'monthly_salary';
+    return 'general';
   }
 
   DateTime _resolveCreatedAt(Map<String, dynamic>? existing, DateTime now) {
@@ -372,5 +673,33 @@ class ReminderSyncService {
       return DateTime.tryParse(existing['completedAt'].toString()) ?? now;
     }
     return now;
+  }
+
+  String _resolveStatus(Map<String, dynamic>? existing, String defaultStatus, DateTime newDueDate) {
+    if (existing != null) {
+      final existingStatus = existing['status'] as String?;
+      if (existingStatus == 'completed' || existingStatus == 'snoozed') {
+        final existingDueDate = existing['dueDate'] is Timestamp
+            ? (existing['dueDate'] as Timestamp).toDate()
+            : (existing['dueDate'] != null ? DateTime.tryParse(existing['dueDate'].toString()) : null);
+        if (existingDueDate != null &&
+            existingDueDate.year == newDueDate.year &&
+            existingDueDate.month == newDueDate.month &&
+            existingDueDate.day == newDueDate.day) {
+          return existingStatus!;
+        }
+      }
+    }
+    return defaultStatus;
+  }
+
+  DateTime? _resolveSnoozedUntil(Map<String, dynamic>? existing) {
+    if (existing != null && existing['snoozedUntil'] != null) {
+      if (existing['snoozedUntil'] is Timestamp) {
+        return (existing['snoozedUntil'] as Timestamp).toDate();
+      }
+      return DateTime.tryParse(existing['snoozedUntil'].toString());
+    }
+    return null;
   }
 }

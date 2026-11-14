@@ -78,7 +78,7 @@ class PersonalDashboardScreen extends ConsumerWidget {
         label: const Text('Add to Diary'),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 88.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -538,7 +538,7 @@ class PersonalDashboardScreen extends ConsumerWidget {
               error: (err, stack) => Text('Error loading journals: $err'),
             ),
 
-            const SizedBox(height: 60),
+            const SizedBox(height: 80),
           ],
         ),
       ),
@@ -716,6 +716,7 @@ class PersonalDashboardScreen extends ConsumerWidget {
                         ),
                       );
                       ref.invalidate(specialEventsProvider);
+                      ref.invalidate(remindersProvider);
                       Navigator.pop(ctx);
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text('Life event "${titleController.text.trim()}" added!')),
@@ -748,6 +749,7 @@ class PersonalDashboardScreen extends ConsumerWidget {
                 final repo = ref.read(personalRepositoryProvider);
                 repo.deleteEvent(user.uid, event.id);
                 ref.invalidate(specialEventsProvider);
+                ref.invalidate(remindersProvider);
               }
               Navigator.pop(ctx);
             },
@@ -888,6 +890,7 @@ class PersonalDashboardScreen extends ConsumerWidget {
                         ),
                       );
                       ref.invalidate(personalGoalsProvider);
+                      ref.invalidate(remindersProvider);
                       Navigator.pop(ctx);
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text('Goal "${titleController.text.trim()}" created!')),
@@ -937,6 +940,7 @@ class PersonalDashboardScreen extends ConsumerWidget {
                         final repo = ref.read(personalRepositoryProvider);
                         repo.deleteGoal(user.uid, goal.id);
                         ref.invalidate(personalGoalsProvider);
+                      ref.invalidate(remindersProvider);
                       }
                       Navigator.pop(ctx);
                     },
@@ -1027,6 +1031,7 @@ class PersonalDashboardScreen extends ConsumerWidget {
                       final repo = ref.read(personalRepositoryProvider);
                       repo.updateGoalProgress(user.uid, goal.id, currentProgress, isCompleted);
                       ref.invalidate(personalGoalsProvider);
+                      ref.invalidate(remindersProvider);
                     }
                     Navigator.pop(ctx);
                   },

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
 import 'config/theme.dart';
 import 'config/routes.dart';
 import 'core/ads/ad_manager.dart';
+import 'core/notifications/services/notification_manager.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -12,6 +14,10 @@ void main() async {
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
+    );
+    FirebaseFirestore.instance.settings = const Settings(
+      persistenceEnabled: true,
+      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
     );
   } catch (e) {
     debugPrint('Firebase initialization note: $e');
@@ -22,6 +28,17 @@ void main() async {
     await AdManager.instance.initialize();
   } catch (e) {
     debugPrint('AdMob initialization note: $e');
+  }
+
+  // Initialize Central Notification Framework
+  try {
+    await NotificationManager().initialize(
+      navigationHandler: (route, {extra}) {
+        router.push(route, extra: extra);
+      },
+    );
+  } catch (e) {
+    debugPrint('NotificationManager initialization note: $e');
   }
 
   runApp(

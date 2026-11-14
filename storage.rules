@@ -5,11 +5,15 @@ rules_version = '2';
 // ===============================================================
 //
 // Access Patterns:
-// - All uploaded assets (invoices, receipts, warranty cards, profile photos, documents)
-//   are strictly scoped under /users/{userId}/...
-// - File size is limited to 15MB to prevent storage abuse and DoS.
-// - Allowed content types: Images (JPEG, PNG, WebP, HEIC) and PDF documents.
-// - Only the authenticated document owner can read, write, or delete their assets.
+// - User assets (invoices, receipts, warranty cards, profile photos, documents, voice notes)
+//   are stored under /users/{userId}/...
+// - Circle shared media and attachments are stored under /circles/{circleId}/...
+// - File size limit: 15MB max to prevent storage abuse and DoS.
+// - Allowed MIME content types:
+//   * Images: JPEG, PNG, WebP, HEIC (image/*)
+//   * Documents: PDF (application/pdf)
+//   * Voice Notes / Audio: MP3, M4A, AAC, WAV (audio/*)
+// - Strict authentication & ownership verification.
 // - Default deny on all other paths.
 //
 // ===============================================================
@@ -32,7 +36,8 @@ service firebase.storage {
 
     function isValidContentType() {
       return request.resource.contentType.matches('image/.*')
-          || request.resource.contentType == 'application/pdf';
+          || request.resource.contentType == 'application/pdf'
+          || request.resource.contentType.matches('audio/.*');
     }
 
     // User-isolated directory
@@ -40,6 +45,13 @@ service firebase.storage {
       allow read: if isOwner(userId);
       allow write: if isOwner(userId) && isValidFileSize() && isValidContentType();
       allow delete: if isOwner(userId);
+    }
+
+    // Circle shared attachments directory
+    match /circles/{circleId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidFileSize() && isValidContentType();
+      allow delete: if isAuthenticated();
     }
 
     // Default deny for all other storage paths

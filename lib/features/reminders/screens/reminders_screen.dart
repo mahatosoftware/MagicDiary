@@ -37,12 +37,27 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> with SingleTi
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncAllDiariesSilently();
+    });
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  Future<void> _syncAllDiariesSilently() async {
+    final user = ref.read(userProfileProvider);
+    if (user == null) return;
+    try {
+      final syncService = ref.read(reminderSyncServiceProvider);
+      await syncService.syncAllDiaries(user.uid);
+      if (mounted) {
+        ref.invalidate(remindersProvider);
+      }
+    } catch (_) {}
   }
 
   Future<void> _syncAllDiaries() async {
@@ -802,7 +817,7 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> with SingleTi
                       child: todayReminders.isEmpty
                           ? _buildEmptyState('No reminders due today!', Icons.event_available)
                           : ListView.builder(
-                              padding: const EdgeInsets.all(16.0),
+                              padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 88.0),
                               itemCount: todayReminders.length,
                               itemBuilder: (ctx, i) => _buildReminderCard(ctx, todayReminders[i], now),
                             ),
@@ -814,7 +829,7 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> with SingleTi
                       child: overdueReminders.isEmpty
                           ? _buildEmptyState('Great! No overdue reminders.', Icons.thumb_up_alt_outlined)
                           : ListView.builder(
-                              padding: const EdgeInsets.all(16.0),
+                              padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 88.0),
                               itemCount: overdueReminders.length,
                               itemBuilder: (ctx, i) => _buildReminderCard(ctx, overdueReminders[i], now),
                             ),
@@ -826,7 +841,7 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> with SingleTi
                       child: completedReminders.isEmpty
                           ? _buildEmptyState('No completed reminders yet.', Icons.check_circle_outline)
                           : ListView.builder(
-                              padding: const EdgeInsets.all(16.0),
+                              padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 88.0),
                               itemCount: completedReminders.length,
                               itemBuilder: (ctx, i) => _buildReminderCard(ctx, completedReminders[i], now),
                             ),

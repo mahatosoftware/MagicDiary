@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/financial/models/financial_category.dart';
 import '../../../core/financial/models/financial_transaction.dart';
 import '../../../core/financial/repositories/financial_transaction_repository.dart';
+import '../../reminders/models/reminder.dart';
+import '../../reminders/repositories/reminder_repository.dart';
 import '../models/property_models.dart';
 
 class PropertyRepository {
@@ -49,22 +51,51 @@ class PropertyRepository {
         .doc(property.id)
         .set(property.toJson());
 
-    // Sync property tax reminder
+    // Sync property tax and lease reminders
     try {
-      final remRef = firestore.collection('users').doc(userId).collection('reminders').doc('reminder_prop_${property.id}_tax');
-      await remRef.set({
-        'id': 'reminder_prop_${property.id}_tax',
-        'userId': userId,
-        'title': 'Property Tax: ${property.title}',
-        'description': '${property.propertyTaxFrequency} property tax of ₹${property.propertyTaxAmount.toStringAsFixed(0)} for ${property.address}.',
-        'module': 'Property',
-        'status': 'pending',
-        'dueDate': Timestamp.fromDate(property.taxDueDate),
-        'relatedId': property.id,
-        'amount': property.propertyTaxAmount,
-        'actionRoute': '/property',
-        'createdAt': Timestamp.fromDate(DateTime.now()),
-      }, SetOptions(merge: true));
+      final remRepo = ReminderRepository(firestore: firestore);
+      await remRepo.syncReminder(
+        userId,
+        Reminder(
+          id: 'reminder_prop_${property.id}_tax',
+          userId: userId,
+          title: 'Property Tax: ${property.title}',
+          description: '${property.propertyTaxFrequency} property tax of ₹${property.propertyTaxAmount.toStringAsFixed(0)} for ${property.address}.',
+          module: 'Property',
+          status: 'pending',
+          dueDate: property.taxDueDate,
+          relatedId: property.id,
+          amount: property.propertyTaxAmount,
+          actionRoute: '/property',
+          actionType: 'Pay',
+          priority: 'medium',
+          createdAt: DateTime.now(),
+        ),
+      );
+
+      final leaseRemId = 'reminder_prop_${property.id}_lease';
+      if (property.leaseEndDate != null) {
+        final tenantInfo = property.tenantName != null && property.tenantName!.isNotEmpty ? ' (${property.tenantName})' : '';
+        await remRepo.syncReminder(
+          userId,
+          Reminder(
+            id: leaseRemId,
+            userId: userId,
+            title: 'Lease Expiry: ${property.title}',
+            description: 'Lease agreement$tenantInfo for ${property.address} expires on ${property.leaseEndDate!.day}/${property.leaseEndDate!.month}/${property.leaseEndDate!.year}.',
+            module: 'Property',
+            status: 'pending',
+            dueDate: property.leaseEndDate!,
+            relatedId: property.id,
+            actionRoute: '/property',
+            actionType: 'Renew',
+            priority: 'high',
+            createdAt: DateTime.now(),
+          ),
+        );
+      } else {
+        await remRepo.deleteReminder(userId, leaseRemId);
+      }
     } catch (_) {}
   }
 
@@ -108,8 +139,9 @@ class PropertyRepository {
         .delete();
 
     try {
-      final remRef = firestore.collection('users').doc(userId).collection('reminders').doc('reminder_prop_${propertyId}_tax');
-      await remRef.delete();
+      final remRepo = ReminderRepository(firestore: firestore);
+      await remRepo.deleteReminder(userId, 'reminder_prop_${propertyId}_tax');
+      await remRepo.deleteReminder(userId, 'reminder_prop_${propertyId}_lease');
     } catch (_) {}
   }
 

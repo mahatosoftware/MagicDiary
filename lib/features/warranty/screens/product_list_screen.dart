@@ -133,6 +133,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                   }
 
                   return ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 88.0),
                     itemCount: filtered.length,
                     itemBuilder: (context, index) {
                       final p = filtered[index];
@@ -268,6 +269,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                                         Navigator.pop(dialogContext);
                                         await ref.read(productRepositoryProvider).deleteProduct(user.uid, p.id);
                                         ref.invalidate(productsProvider);
+                                        ref.invalidate(remindersProvider);
                                         if (context.mounted) {
                                           ScaffoldMessenger.of(context).showSnackBar(
                                             const SnackBar(content: Text('Product deleted successfully')),

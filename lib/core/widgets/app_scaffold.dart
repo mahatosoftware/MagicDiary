@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/app_providers.dart';
+import '../notifications/providers/notification_providers.dart';
 
 class AppScaffold extends ConsumerStatefulWidget {
   final Widget child;
@@ -19,10 +20,10 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
   static int _calculateSelectedIndex(BuildContext context) {
     final String location = GoRouterState.of(context).uri.path;
     if (location == '/') return 0;
-    if (location.startsWith('/diaries')) return 1;
-    if (location.startsWith('/payments')) return 2;
-    if (location.startsWith('/reports') || location.startsWith('/documents')) return 3;
-    if (location.startsWith('/reminders')) return 4;
+    if (location.startsWith('/diaries') || location.startsWith('/diary-records')) return 1;
+    if (location.startsWith('/shared-diaries')) return 2;
+    if (location.startsWith('/circles')) return 3;
+    if (location.startsWith('/reminders') || location.startsWith('/calendar')) return 4;
     return 0; // Default to My Day
   }
 
@@ -35,10 +36,10 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
         context.go('/diaries');
         break;
       case 2:
-        context.go('/payments');
+        context.go('/shared-diaries');
         break;
       case 3:
-        context.go('/reports');
+        context.go('/circles');
         break;
       case 4:
         context.go('/reminders');
@@ -51,6 +52,7 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
     final isWide = MediaQuery.of(context).size.width >= 900;
     final selectedIndex = _calculateSelectedIndex(context);
     final user = ref.watch(userProfileProvider);
+    final notificationCount = ref.watch(notificationBadgeCountProvider);
 
     return PopScope(
       canPop: false,
@@ -87,6 +89,10 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
           context.go('/bills');
           return;
         }
+        if (currentLocation.startsWith('/diaries/category/')) {
+          context.go('/diaries');
+          return;
+        }
 
         // Specialized diary modules -> navigate back to Diaries Hub
         const specializedDiaries = [
@@ -98,6 +104,9 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
           '/property',
           '/warranty',
           '/bills',
+          '/domestic-help',
+          '/cash-forecast',
+          '/family-workspace',
         ];
         if (specializedDiaries.contains(currentLocation)) {
           context.go('/diaries');
@@ -106,6 +115,9 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
 
         // Secondary hub screens -> navigate back to My Day (Home)
         if (currentLocation == '/diaries' ||
+            currentLocation == '/shared-diaries' ||
+            currentLocation == '/circles' ||
+            currentLocation == '/calendar' ||
             currentLocation == '/payments' ||
             currentLocation == '/reports' ||
             currentLocation == '/documents' ||
@@ -165,13 +177,48 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
               ),
             ),
 
-            // 5 Core Hubs
+            // The 3 Primary Pillars
             const Padding(
               padding: EdgeInsets.only(left: 16, top: 8, bottom: 4),
-              child: Text('CORE HUBS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
+              child: Text('PRIMARY PLATFORM', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
             ),
             ListTile(
-              leading: const Icon(Icons.today_rounded, color: Colors.blue),
+              leading: const Icon(Icons.auto_stories_rounded, color: Colors.purple),
+              title: const Text('My Diaries'),
+              subtitle: const Text('45 predefined & custom personal diaries'),
+              selected: selectedIndex == 1,
+              onTap: () {
+                Navigator.pop(context);
+                context.go('/diaries');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.share_rounded, color: Colors.blue),
+              title: const Text('Shared Diaries'),
+              subtitle: const Text('Shared with me & shared by me'),
+              selected: selectedIndex == 2,
+              onTap: () {
+                Navigator.pop(context);
+                context.go('/shared-diaries');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.groups_rounded, color: Colors.deepPurple),
+              title: const Text('Magic Circles'),
+              subtitle: const Text('Family, Household, Travel & group collaboration'),
+              selected: selectedIndex == 3,
+              onTap: () {
+                Navigator.pop(context);
+                context.go('/circles');
+              },
+            ),
+            const Divider(),
+            const Padding(
+              padding: EdgeInsets.only(left: 16, top: 4, bottom: 4),
+              child: Text('CORE SERVICES & HUBS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
+            ),
+            ListTile(
+              leading: const Icon(Icons.today_rounded, color: Colors.teal),
               title: const Text('My Day'),
               subtitle: const Text('Today\'s reminders, payments & activities'),
               selected: selectedIndex == 0,
@@ -181,33 +228,12 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.auto_stories_rounded, color: Colors.purple),
-              title: const Text('My Diaries'),
-              subtitle: const Text('Vehicle, Finance, Home, Education, Personal'),
-              selected: selectedIndex == 1,
+              leading: const Icon(Icons.calendar_month_rounded, color: Colors.indigo),
+              title: const Text('Universal Calendar'),
+              subtitle: const Text('All events, deadlines & schedules'),
               onTap: () {
                 Navigator.pop(context);
-                context.go('/diaries');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.payment_rounded, color: Colors.orange),
-              title: const Text('My Payments'),
-              subtitle: const Text('Bills, EMIs, subscriptions & history'),
-              selected: selectedIndex == 2,
-              onTap: () {
-                Navigator.pop(context);
-                context.go('/payments');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.analytics_rounded, color: Colors.indigo),
-              title: const Text('Reports & Analytics'),
-              subtitle: const Text('Financial summary, trends & budgets'),
-              selected: selectedIndex == 3,
-              onTap: () {
-                Navigator.pop(context);
-                context.go('/reports');
+                context.push('/calendar');
               },
             ),
             ListTile(
@@ -218,6 +244,42 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
               onTap: () {
                 Navigator.pop(context);
                 context.go('/reminders');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.payment_rounded, color: Colors.orange),
+              title: const Text('My Payments'),
+              subtitle: const Text('Bills, EMIs, subscriptions & history'),
+              onTap: () {
+                Navigator.pop(context);
+                context.push('/payments');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.analytics_rounded, color: Colors.cyan),
+              title: const Text('Reports & Analytics'),
+              subtitle: const Text('Financial summary, trends & budgets'),
+              onTap: () {
+                Navigator.pop(context);
+                context.push('/reports');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.notifications_active_rounded, color: Colors.deepPurple),
+              title: const Text('Notification Centre'),
+              subtitle: const Text('Centralized inbox, overdue & snooze'),
+              onTap: () {
+                Navigator.pop(context);
+                context.push('/notifications');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.tune_rounded, color: Colors.blueGrey),
+              title: const Text('Notification Settings'),
+              subtitle: const Text('Intervals, quiet hours, sound & privacy'),
+              onTap: () {
+                Navigator.pop(context);
+                context.push('/notification-settings');
               },
             ),
 
@@ -258,6 +320,30 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
               onTap: () {
                 Navigator.pop(context);
                 context.push('/household');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.clean_hands_rounded, color: Colors.cyan),
+              title: const Text('Domestic Help & Services'),
+              onTap: () {
+                Navigator.pop(context);
+                context.push('/domestic-help');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.family_restroom_rounded, color: Colors.amber),
+              title: const Text('Family Workspace'),
+              onTap: () {
+                Navigator.pop(context);
+                context.push('/family-workspace');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.trending_up_rounded, color: Colors.blueAccent),
+              title: const Text('Cash Commitment Forecast'),
+              onTap: () {
+                Navigator.pop(context);
+                context.push('/cash-forecast');
               },
             ),
             ListTile(
@@ -327,24 +413,27 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
             children: [
               IconButton(
                 icon: const Icon(Icons.notifications_outlined),
-                tooltip: 'Reminders',
-                onPressed: () => context.go('/reminders'),
+                tooltip: 'Notification Centre',
+                onPressed: () => context.push('/notifications'),
               ),
-              Positioned(
-                right: 8,
-                top: 8,
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: const BoxDecoration(
-                    color: Colors.red,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Text(
-                    '3',
-                    style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+              if (notificationCount > 0)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                    constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                    alignment: Alignment.center,
+                    child: Text(
+                      '$notificationCount',
+                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
           const SizedBox(width: 8),
@@ -390,24 +479,30 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
                   label: Text('My Diaries'),
                 ),
                 NavigationRailDestination(
-                  icon: Icon(Icons.payment_outlined),
-                  selectedIcon: Icon(Icons.payment_rounded),
-                  label: Text('My Payments'),
+                  icon: Icon(Icons.share_outlined),
+                  selectedIcon: Icon(Icons.share_rounded),
+                  label: Text('Shared'),
                 ),
                 NavigationRailDestination(
-                  icon: Icon(Icons.analytics_outlined),
-                  selectedIcon: Icon(Icons.analytics_rounded),
-                  label: Text('Reports'),
+                  icon: Icon(Icons.groups_outlined),
+                  selectedIcon: Icon(Icons.groups_rounded),
+                  label: Text('Circles'),
                 ),
                 NavigationRailDestination(
                   icon: Icon(Icons.alarm_outlined),
                   selectedIcon: Icon(Icons.alarm_rounded),
-                  label: Text('My Reminders'),
+                  label: Text('Reminders'),
                 ),
               ],
             ),
           if (isWide) const VerticalDivider(thickness: 1, width: 1),
-          Expanded(child: widget.child),
+          Expanded(
+            child: SafeArea(
+              top: false,
+              bottom: true,
+              child: widget.child,
+            ),
+          ),
         ],
       ),
       bottomNavigationBar: isWide
@@ -430,14 +525,14 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
                   label: 'My Diaries',
                 ),
                 BottomNavigationBarItem(
-                  icon: Icon(Icons.payment_outlined),
-                  activeIcon: Icon(Icons.payment_rounded),
-                  label: 'Payments',
+                  icon: Icon(Icons.share_outlined),
+                  activeIcon: Icon(Icons.share_rounded),
+                  label: 'Shared',
                 ),
                 BottomNavigationBarItem(
-                  icon: Icon(Icons.analytics_outlined),
-                  activeIcon: Icon(Icons.analytics_rounded),
-                  label: 'Reports',
+                  icon: Icon(Icons.groups_outlined),
+                  activeIcon: Icon(Icons.groups_rounded),
+                  label: 'Circles',
                 ),
                 BottomNavigationBarItem(
                   icon: Icon(Icons.alarm_outlined),

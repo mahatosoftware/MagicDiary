@@ -245,6 +245,8 @@ class FeeInstallment {
   final int installmentNumber;
   final String title;
   final double amount;
+  final double concessionAmount;
+  final double refundAmount;
   final DateTime dueDate;
   final String status; // 'pending', 'paid', 'overdue', 'partially_paid'
   final double paidAmount;
@@ -257,11 +259,48 @@ class FeeInstallment {
     required this.installmentNumber,
     required this.title,
     required this.amount,
+    this.concessionAmount = 0.0,
+    this.refundAmount = 0.0,
     required this.dueDate,
     this.status = 'pending',
     this.paidAmount = 0.0,
     this.paidDate,
   });
+
+  double get billedAmount => amount;
+  double get netPayable => (amount - concessionAmount).clamp(0.0, double.infinity);
+  double get outstandingBalance => (netPayable - paidAmount + refundAmount).clamp(0.0, double.infinity);
+  bool get isSettled => outstandingBalance <= 0.0;
+
+  FeeInstallment copyWith({
+    String? id,
+    String? feeStructureId,
+    String? childId,
+    int? installmentNumber,
+    String? title,
+    double? amount,
+    double? concessionAmount,
+    double? refundAmount,
+    DateTime? dueDate,
+    String? status,
+    double? paidAmount,
+    DateTime? paidDate,
+  }) {
+    return FeeInstallment(
+      id: id ?? this.id,
+      feeStructureId: feeStructureId ?? this.feeStructureId,
+      childId: childId ?? this.childId,
+      installmentNumber: installmentNumber ?? this.installmentNumber,
+      title: title ?? this.title,
+      amount: amount ?? this.amount,
+      concessionAmount: concessionAmount ?? this.concessionAmount,
+      refundAmount: refundAmount ?? this.refundAmount,
+      dueDate: dueDate ?? this.dueDate,
+      status: status ?? this.status,
+      paidAmount: paidAmount ?? this.paidAmount,
+      paidDate: paidDate ?? this.paidDate,
+    );
+  }
 
   factory FeeInstallment.fromMap(Map<String, dynamic> map, String id) {
     return FeeInstallment(
@@ -271,6 +310,8 @@ class FeeInstallment {
       installmentNumber: map['installmentNumber'] ?? 1,
       title: map['title'] ?? '',
       amount: (map['amount'] ?? 0.0).toDouble(),
+      concessionAmount: (map['concessionAmount'] ?? 0.0).toDouble(),
+      refundAmount: (map['refundAmount'] ?? 0.0).toDouble(),
       dueDate: map['dueDate'] is Timestamp
           ? (map['dueDate'] as Timestamp).toDate()
           : DateTime.tryParse(map['dueDate'].toString()) ?? DateTime.now(),
@@ -289,6 +330,8 @@ class FeeInstallment {
       'installmentNumber': installmentNumber,
       'title': title,
       'amount': amount,
+      'concessionAmount': concessionAmount,
+      'refundAmount': refundAmount,
       'dueDate': Timestamp.fromDate(dueDate),
       'status': status,
       'paidAmount': paidAmount,

@@ -9,6 +9,11 @@ class DocumentRecord {
   final String? storagePath;
   final String mimeType;
   final int fileSizeBytes;
+  final String? folder;
+  final DateTime? expiryDate;
+  final bool isIdentityDocument;
+  final String? extractedText;
+  final String? fileHash;
   final String? relatedProductId;
   final String? relatedInstallmentId;
   final String? relatedBillId;
@@ -25,6 +30,11 @@ class DocumentRecord {
     this.storagePath,
     required this.mimeType,
     required this.fileSizeBytes,
+    this.folder,
+    this.expiryDate,
+    this.isIdentityDocument = false,
+    this.extractedText,
+    this.fileHash,
     this.relatedProductId,
     this.relatedInstallmentId,
     this.relatedBillId,
@@ -32,6 +42,8 @@ class DocumentRecord {
     this.notes,
     required this.createdAt,
   });
+
+  bool get isExpired => expiryDate != null && expiryDate!.isBefore(DateTime.now());
 
   factory DocumentRecord.fromMap(Map<String, dynamic> map, String id) {
     return DocumentRecord(
@@ -43,6 +55,13 @@ class DocumentRecord {
       storagePath: map['storagePath'],
       mimeType: map['mimeType'] ?? 'application/pdf',
       fileSizeBytes: map['fileSizeBytes'] ?? 0,
+      folder: map['folder'] as String?,
+      expiryDate: map['expiryDate'] is Timestamp
+          ? (map['expiryDate'] as Timestamp).toDate()
+          : (map['expiryDate'] != null ? DateTime.tryParse(map['expiryDate'].toString()) : null),
+      isIdentityDocument: map['isIdentityDocument'] as bool? ?? false,
+      extractedText: map['extractedText'] as String?,
+      fileHash: map['fileHash'] as String?,
       relatedProductId: map['relatedProductId'],
       relatedInstallmentId: map['relatedInstallmentId'],
       relatedBillId: map['relatedBillId'],
@@ -63,6 +82,11 @@ class DocumentRecord {
       'storagePath': storagePath,
       'mimeType': mimeType,
       'fileSizeBytes': fileSizeBytes,
+      if (folder != null) 'folder': folder,
+      if (expiryDate != null) 'expiryDate': Timestamp.fromDate(expiryDate!),
+      'isIdentityDocument': isIdentityDocument,
+      if (extractedText != null) 'extractedText': extractedText,
+      if (fileHash != null) 'fileHash': fileHash,
       'relatedProductId': relatedProductId,
       'relatedInstallmentId': relatedInstallmentId,
       'relatedBillId': relatedBillId,

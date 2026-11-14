@@ -72,6 +72,7 @@ class _FeeStructureFormScreenState extends ConsumerState<FeeStructureFormScreen>
     );
 
     ref.invalidate(feeInstallmentsProvider);
+    ref.invalidate(remindersProvider);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -104,7 +105,7 @@ class _FeeStructureFormScreenState extends ConsumerState<FeeStructureFormScreen>
         title: const Text('Setup Fee Structure'),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 88.0),
         child: Form(
           key: _formKey,
           child: Column(

@@ -102,6 +102,7 @@ class _DocumentLibraryScreenState extends ConsumerState<DocumentLibraryScreen> {
                   }
 
                   return ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 88.0),
                     itemCount: filtered.length,
                     itemBuilder: (context, index) {
                       final doc = filtered[index];

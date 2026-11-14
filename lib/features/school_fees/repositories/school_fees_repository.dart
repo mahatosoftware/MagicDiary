@@ -3,6 +3,8 @@ import 'package:uuid/uuid.dart';
 import '../../../core/utils/date_calculators.dart';
 import '../../../core/financial/models/financial_transaction.dart';
 import '../../../core/financial/repositories/financial_transaction_repository.dart';
+import '../../reminders/models/reminder.dart';
+import '../../reminders/repositories/reminder_repository.dart';
 import '../models/school_fees_models.dart';
 
 class SchoolFeesRepository {
@@ -166,20 +168,25 @@ class SchoolFeesRepository {
       await _firestore.collection('users').doc(userId).collection('feeInstallments').doc(inst.id).set(inst.toMap());
       // Sync reminder
       try {
-        final remRef = _firestore.collection('users').doc(userId).collection('reminders').doc('reminder_school_${inst.id}');
-        await remRef.set({
-          'id': 'reminder_school_${inst.id}',
-          'userId': userId,
-          'title': 'School Fee: ${inst.title}',
-          'description': 'Fee installment #${inst.installmentNumber} of ₹${inst.amount.toStringAsFixed(0)} due.',
-          'module': 'SchoolFees',
-          'status': 'pending',
-          'dueDate': Timestamp.fromDate(inst.dueDate),
-          'relatedId': inst.id,
-          'amount': inst.amount,
-          'actionRoute': '/school-fees',
-          'createdAt': Timestamp.fromDate(DateTime.now()),
-        }, SetOptions(merge: true));
+        final remRepo = ReminderRepository(firestore: _firestore);
+        await remRepo.syncReminder(
+          userId,
+          Reminder(
+            id: 'reminder_school_${inst.id}',
+            userId: userId,
+            title: 'School Fee: ${inst.title}',
+            description: 'Fee installment #${inst.installmentNumber} of ₹${inst.amount.toStringAsFixed(0)} due.',
+            module: 'SchoolFees',
+            status: 'pending',
+            dueDate: inst.dueDate,
+            relatedId: inst.id,
+            amount: inst.amount,
+            actionRoute: '/school-fees',
+            actionType: 'Pay',
+            priority: 'high',
+            createdAt: DateTime.now(),
+          ),
+        );
       } catch (_) {}
     }
     return newFs;
@@ -264,5 +271,35 @@ class SchoolFeesRepository {
     }
 
     return newPayment;
+  }
+
+  Future<void> updateInstallmentDueDate(String userId, String installmentId, DateTime newDueDate) async {
+    if (userId.isEmpty || installmentId.isEmpty) return;
+
+    final instRef = _firestore
+        .collection('users')
+        .doc(userId)
+        .collection('feeInstallments')
+        .doc(installmentId);
+
+    await instRef.update({
+      'dueDate': Timestamp.fromDate(newDueDate),
+    });
+
+    // Also update associated reminder if one exists
+    try {
+      final remRef = _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('reminders')
+          .doc('reminder_school_$installmentId');
+
+      final remDoc = await remRef.get();
+      if (remDoc.exists) {
+        await remRef.update({
+          'dueDate': Timestamp.fromDate(newDueDate),
+        });
+      }
+    } catch (_) {}
   }
 }

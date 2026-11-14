@@ -192,7 +192,7 @@ class _VehicleFormScreenState extends ConsumerState<VehicleFormScreen> {
             : 'Add Vehicle to Garage'),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.fromLTRB(20.0, 20.0, 20.0, 88.0),
         child: Center(
           child: Container(
             constraints: const BoxConstraints(maxWidth: 600),

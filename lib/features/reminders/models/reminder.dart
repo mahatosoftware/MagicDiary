@@ -12,6 +12,9 @@ class Reminder {
   final double? amount;
   final String? currencyCode;
   final String? actionRoute;
+  final String actionType; // 'Pay', 'Renew', 'Schedule Service', 'Upload Receipt', 'Review', 'Complete', 'Snooze'
+  final String priority; // 'high', 'medium', 'low'
+  final String? assignedTo; // For household / family delegation
   final DateTime? snoozedUntil;
   final DateTime? completedAt;
   final DateTime createdAt;
@@ -28,6 +31,9 @@ class Reminder {
     this.amount,
     this.currencyCode = 'INR',
     this.actionRoute,
+    this.actionType = 'Complete',
+    this.priority = 'medium',
+    this.assignedTo,
     this.snoozedUntil,
     this.completedAt,
     required this.createdAt,
@@ -75,6 +81,9 @@ class Reminder {
       amount: (map['amount'] as num?)?.toDouble(),
       currencyCode: map['currencyCode'] as String? ?? 'INR',
       actionRoute: map['actionRoute'] as String?,
+      actionType: map['actionType'] as String? ?? 'Complete',
+      priority: map['priority'] as String? ?? 'medium',
+      assignedTo: map['assignedTo'] as String?,
       snoozedUntil: map['snoozedUntil'] is Timestamp
           ? (map['snoozedUntil'] as Timestamp).toDate()
           : (map['snoozedUntil'] != null ? DateTime.tryParse(map['snoozedUntil'].toString()) : null),
@@ -100,6 +109,9 @@ class Reminder {
       if (amount != null) 'amount': amount,
       if (currencyCode != null) 'currencyCode': currencyCode,
       if (actionRoute != null) 'actionRoute': actionRoute,
+      'actionType': actionType,
+      'priority': priority,
+      if (assignedTo != null) 'assignedTo': assignedTo,
       'snoozedUntil': snoozedUntil != null ? Timestamp.fromDate(snoozedUntil!) : null,
       'completedAt': completedAt != null ? Timestamp.fromDate(completedAt!) : null,
       'createdAt': Timestamp.fromDate(createdAt),
@@ -118,6 +130,9 @@ class Reminder {
     double? amount,
     String? currencyCode,
     String? actionRoute,
+    String? actionType,
+    String? priority,
+    String? assignedTo,
     DateTime? snoozedUntil,
     DateTime? completedAt,
     DateTime? createdAt,
@@ -134,6 +149,9 @@ class Reminder {
       amount: amount ?? this.amount,
       currencyCode: currencyCode ?? this.currencyCode,
       actionRoute: actionRoute ?? this.actionRoute,
+      actionType: actionType ?? this.actionType,
+      priority: priority ?? this.priority,
+      assignedTo: assignedTo ?? this.assignedTo,
       snoozedUntil: snoozedUntil ?? this.snoozedUntil,
       completedAt: completedAt ?? this.completedAt,
       createdAt: createdAt ?? this.createdAt,

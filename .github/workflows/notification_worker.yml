@@ -1,0 +1,68 @@
+name: Scheduled Notification Worker
+
+on:
+  schedule:
+    # Run every 15 minutes (24/7, within GitHub Actions free tier)
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Simulate without sending push or updating Firestore'
+        type: boolean
+        required: false
+        default: false
+      lookahead_minutes:
+        description: 'Minutes in advance to search for eligible schedules'
+        type: number
+        required: false
+        default: 30
+
+concurrency:
+  group: notification-worker-execution
+  cancel-in-progress: false
+
+jobs:
+  run-worker:
+    name: Execute Notification Worker
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r notification_worker/requirements.txt
+
+      - name: Run Worker Unit Tests
+        run: |
+          pytest notification_worker/tests -v --durations=10
+
+      - name: Execute Notification Worker
+        env:
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          LOOKAHEAD_MINUTES: ${{ github.event.inputs.lookahead_minutes || 30 }}
+          BATCH_SIZE: 150
+          MAX_RETRIES: 3
+          CLAIM_LEASE_SECONDS: 300
+        run: |
+          python -m notification_worker.main
+
+      - name: Generate Job Summary
+        if: always()
+        run: |
+          echo "### 🚀 Magic Diary Notification Worker Run Complete" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Dry Run**: ${{ github.event.inputs.dry_run || 'false' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Lookahead**: ${{ github.event.inputs.lookahead_minutes || 30 }} minutes" >> $GITHUB_STEP_SUMMARY
+          echo "- **Timestamp**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY

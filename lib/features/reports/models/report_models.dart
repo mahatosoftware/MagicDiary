@@ -39,13 +39,9 @@ class ReportDateRange {
   /// Robust calendar-day boundary check immune to UTC/Local timezone and millisecond variations
   bool contains(DateTime date) {
     if (periodType == ReportPeriodType.allTime) return true;
-    final d = date.toLocal();
-    final s = start.toLocal();
-    final e = end.toLocal();
-
-    final dateDay = DateTime(d.year, d.month, d.day);
-    final startDay = DateTime(s.year, s.month, s.day);
-    final endDay = DateTime(e.year, e.month, e.day);
+    final dateDay = DateTime(date.year, date.month, date.day);
+    final startDay = DateTime(start.year, start.month, start.day);
+    final endDay = DateTime(end.year, end.month, end.day);
 
     return (dateDay.isAtSameMomentAs(startDay) || dateDay.isAfter(startDay)) &&
            (dateDay.isAtSameMomentAs(endDay) || dateDay.isBefore(endDay));

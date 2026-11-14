@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uuid/uuid.dart';
+import '../../reminders/models/reminder.dart';
+import '../../reminders/repositories/reminder_repository.dart';
 import '../models/product.dart';
 import '../models/service_record.dart';
 
@@ -91,21 +93,59 @@ class ProductRepository {
         .set(newProduct.toMap());
 
     // Sync warranty expiry reminder if active
+    final remRepo = ReminderRepository(firestore: _firestore);
+    final warrantyRemId = 'reminder_prod_${newId}_warranty';
     if (newProduct.hasWarranty && newProduct.warrantyEndDate != null) {
       try {
-        final remRef = _firestore.collection('users').doc(userId).collection('reminders').doc('reminder_prod_${newId}_warranty');
-        await remRef.set({
-          'id': 'reminder_prod_${newId}_warranty',
-          'userId': userId,
-          'title': 'Warranty Expiring: ${newProduct.name}',
-          'description': 'Warranty for ${newProduct.brand} ${newProduct.name} (${newProduct.category}) ends soon.',
-          'module': 'Warranty',
-          'status': 'pending',
-          'dueDate': Timestamp.fromDate(newProduct.warrantyEndDate!),
-          'relatedId': newId,
-          'actionRoute': '/warranty',
-          'createdAt': Timestamp.fromDate(DateTime.now()),
-        }, SetOptions(merge: true));
+        await remRepo.syncReminder(
+          userId,
+          Reminder(
+            id: warrantyRemId,
+            userId: userId,
+            title: 'Warranty Ending: ${newProduct.name}',
+            description: 'Warranty for ${newProduct.brand} ${newProduct.name} (${newProduct.category}) ends soon.',
+            module: 'Warranty',
+            status: 'pending',
+            dueDate: newProduct.warrantyEndDate!,
+            relatedId: newId,
+            actionRoute: '/warranty',
+            actionType: 'Renew',
+            priority: 'medium',
+            createdAt: DateTime.now(),
+          ),
+        );
+      } catch (_) {}
+    } else {
+      try {
+        await remRepo.deleteReminder(userId, warrantyRemId);
+      } catch (_) {}
+    }
+
+    // Sync return deadline reminder if active
+    final returnRemId = 'reminder_prod_${newId}_return';
+    if (newProduct.returnDeadline != null) {
+      try {
+        await remRepo.syncReminder(
+          userId,
+          Reminder(
+            id: returnRemId,
+            userId: userId,
+            title: 'Return Window Closing: ${newProduct.name}',
+            description: 'Return/replacement window for ${newProduct.brand} ${newProduct.name} closes soon.',
+            module: 'Warranty',
+            status: 'pending',
+            dueDate: newProduct.returnDeadline!,
+            relatedId: newId,
+            actionRoute: '/warranty',
+            actionType: 'Review',
+            priority: 'high',
+            createdAt: DateTime.now(),
+          ),
+        );
+      } catch (_) {}
+    } else {
+      try {
+        await remRepo.deleteReminder(userId, returnRemId);
       } catch (_) {}
     }
 
@@ -120,21 +160,58 @@ class ProductRepository {
         .doc(product.id)
         .update(product.toMap());
 
+    final remRepo = ReminderRepository(firestore: _firestore);
+    final warrantyRemId = 'reminder_prod_${product.id}_warranty';
     if (product.hasWarranty && product.warrantyEndDate != null) {
       try {
-        final remRef = _firestore.collection('users').doc(userId).collection('reminders').doc('reminder_prod_${product.id}_warranty');
-        await remRef.set({
-          'id': 'reminder_prod_${product.id}_warranty',
-          'userId': userId,
-          'title': 'Warranty Expiring: ${product.name}',
-          'description': 'Warranty for ${product.brand} ${product.name} (${product.category}) ends soon.',
-          'module': 'Warranty',
-          'status': 'pending',
-          'dueDate': Timestamp.fromDate(product.warrantyEndDate!),
-          'relatedId': product.id,
-          'actionRoute': '/warranty',
-          'createdAt': Timestamp.fromDate(DateTime.now()),
-        }, SetOptions(merge: true));
+        await remRepo.syncReminder(
+          userId,
+          Reminder(
+            id: warrantyRemId,
+            userId: userId,
+            title: 'Warranty Ending: ${product.name}',
+            description: 'Warranty for ${product.brand} ${product.name} (${product.category}) ends soon.',
+            module: 'Warranty',
+            status: 'pending',
+            dueDate: product.warrantyEndDate!,
+            relatedId: product.id,
+            actionRoute: '/warranty',
+            actionType: 'Renew',
+            priority: 'medium',
+            createdAt: DateTime.now(),
+          ),
+        );
+      } catch (_) {}
+    } else {
+      try {
+        await remRepo.deleteReminder(userId, warrantyRemId);
+      } catch (_) {}
+    }
+
+    final returnRemId = 'reminder_prod_${product.id}_return';
+    if (product.returnDeadline != null) {
+      try {
+        await remRepo.syncReminder(
+          userId,
+          Reminder(
+            id: returnRemId,
+            userId: userId,
+            title: 'Return Window Closing: ${product.name}',
+            description: 'Return/replacement window for ${product.brand} ${product.name} closes soon.',
+            module: 'Warranty',
+            status: 'pending',
+            dueDate: product.returnDeadline!,
+            relatedId: product.id,
+            actionRoute: '/warranty',
+            actionType: 'Review',
+            priority: 'high',
+            createdAt: DateTime.now(),
+          ),
+        );
+      } catch (_) {}
+    } else {
+      try {
+        await remRepo.deleteReminder(userId, returnRemId);
       } catch (_) {}
     }
   }
@@ -148,8 +225,9 @@ class ProductRepository {
         .delete();
 
     try {
-      final remRef = _firestore.collection('users').doc(userId).collection('reminders').doc('reminder_prod_${productId}_warranty');
-      await remRef.delete();
+      final remRepo = ReminderRepository(firestore: _firestore);
+      await remRepo.deleteReminder(userId, 'reminder_prod_${productId}_warranty');
+      await remRepo.deleteReminder(userId, 'reminder_prod_${productId}_return');
     } catch (_) {}
   }
 

@@ -49,6 +49,7 @@ class _RecordBillPaymentScreenState extends ConsumerState<RecordBillPaymentScree
 
     await repo.recordBillPayment(user.uid, payment);
     ref.invalidate(billsProvider);
+    ref.invalidate(remindersProvider);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -79,7 +80,7 @@ class _RecordBillPaymentScreenState extends ConsumerState<RecordBillPaymentScree
         title: const Text('Record Bill Payment'),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 88.0),
         child: Form(
           key: _formKey,
           child: Column(

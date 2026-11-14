@@ -238,6 +238,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     }
 
     ref.invalidate(productsProvider);
+    ref.invalidate(remindersProvider);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -272,7 +273,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
         title: Text(isEditing ? 'Edit Purchased Product' : 'Add Purchased Product'),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 88.0),
         child: Form(
           key: _formKey,
           child: Column(

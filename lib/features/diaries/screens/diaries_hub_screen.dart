@@ -23,7 +23,7 @@ class DiariesHubScreen extends StatelessWidget {
         title: const Text('My Diaries 📔'),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 88.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -69,10 +69,24 @@ class DiariesHubScreen extends StatelessWidget {
                 ),
                 _DiaryCategoryCard(
                   title: 'Household Diary',
-                  subtitle: 'Electricity, water, gas, internet & maid salaries',
+                  subtitle: 'Electricity, water, gas, internet & utilities',
                   icon: Icons.home_work_rounded,
                   color: Colors.teal,
                   onTap: () => context.push('/household'),
+                ),
+                _DiaryCategoryCard(
+                  title: 'Domestic Help & Services',
+                  subtitle: 'Maid, cook, driver attendance, salary & daily milk/news',
+                  icon: Icons.clean_hands_rounded,
+                  color: Colors.cyan.shade700,
+                  onTap: () => context.push('/domestic-help'),
+                ),
+                _DiaryCategoryCard(
+                  title: 'Family Workspace',
+                  subtitle: 'Coordinate chores, member roles & split expenses',
+                  icon: Icons.family_restroom_rounded,
+                  color: Colors.amber.shade800,
+                  onTap: () => context.push('/family-workspace'),
                 ),
                 _DiaryCategoryCard(
                   title: 'Education Diary',

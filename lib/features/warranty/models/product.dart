@@ -17,10 +17,16 @@ class Product {
   final DateTime? warrantyEndDate;
   final int warrantyDurationMonths;
   final bool extendedWarranty;
+  final String? extendedWarrantyProvider;
+  final DateTime? extendedWarrantyExpiry;
+  final int? returnWindowDays;
+  final DateTime? returnDeadline;
+  final String status; // 'active', 'transferred', 'disposed', 'archived'
   final bool isCustomWarranty;
   final String? warrantyType;
   final String? invoiceDocumentId;
   final String? warrantyCardDocumentId;
+  final String? manualDocumentId;
   final List<String> imageUrls;
   final String? notes;
   final List<String> tags;
@@ -44,10 +50,16 @@ class Product {
     this.warrantyEndDate,
     this.warrantyDurationMonths = 12,
     this.extendedWarranty = false,
+    this.extendedWarrantyProvider,
+    this.extendedWarrantyExpiry,
+    this.returnWindowDays,
+    this.returnDeadline,
+    this.status = 'active',
     this.isCustomWarranty = false,
     this.warrantyType,
     this.invoiceDocumentId,
     this.warrantyCardDocumentId,
+    this.manualDocumentId,
     this.imageUrls = const [],
     this.notes,
     this.tags = const [],
@@ -79,10 +91,20 @@ class Product {
           : (map['warrantyEndDate'] != null ? DateTime.tryParse(map['warrantyEndDate'].toString()) : null),
       warrantyDurationMonths: map['warrantyDurationMonths'] ?? 12,
       extendedWarranty: map['extendedWarranty'] ?? false,
+      extendedWarrantyProvider: map['extendedWarrantyProvider'],
+      extendedWarrantyExpiry: map['extendedWarrantyExpiry'] is Timestamp
+          ? (map['extendedWarrantyExpiry'] as Timestamp).toDate()
+          : (map['extendedWarrantyExpiry'] != null ? DateTime.tryParse(map['extendedWarrantyExpiry'].toString()) : null),
+      returnWindowDays: map['returnWindowDays'] as int?,
+      returnDeadline: map['returnDeadline'] is Timestamp
+          ? (map['returnDeadline'] as Timestamp).toDate()
+          : (map['returnDeadline'] != null ? DateTime.tryParse(map['returnDeadline'].toString()) : null),
+      status: map['status'] as String? ?? 'active',
       isCustomWarranty: map['isCustomWarranty'] ?? false,
       warrantyType: map['warrantyType'],
       invoiceDocumentId: map['invoiceDocumentId'],
       warrantyCardDocumentId: map['warrantyCardDocumentId'],
+      manualDocumentId: map['manualDocumentId'],
       imageUrls: List<String>.from(map['imageUrls'] ?? []),
       notes: map['notes'],
       tags: List<String>.from(map['tags'] ?? []),
@@ -112,10 +134,16 @@ class Product {
       'warrantyEndDate': warrantyEndDate != null ? Timestamp.fromDate(warrantyEndDate!) : null,
       'warrantyDurationMonths': warrantyDurationMonths,
       'extendedWarranty': extendedWarranty,
+      'extendedWarrantyProvider': extendedWarrantyProvider,
+      'extendedWarrantyExpiry': extendedWarrantyExpiry != null ? Timestamp.fromDate(extendedWarrantyExpiry!) : null,
+      'returnWindowDays': returnWindowDays,
+      'returnDeadline': returnDeadline != null ? Timestamp.fromDate(returnDeadline!) : null,
+      'status': status,
       'isCustomWarranty': isCustomWarranty,
       'warrantyType': warrantyType,
       'invoiceDocumentId': invoiceDocumentId,
       'warrantyCardDocumentId': warrantyCardDocumentId,
+      'manualDocumentId': manualDocumentId,
       'imageUrls': imageUrls,
       'notes': notes,
       'tags': tags,
@@ -139,10 +167,16 @@ class Product {
     DateTime? warrantyEndDate,
     int? warrantyDurationMonths,
     bool? extendedWarranty,
+    String? extendedWarrantyProvider,
+    DateTime? extendedWarrantyExpiry,
+    int? returnWindowDays,
+    DateTime? returnDeadline,
+    String? status,
     bool? isCustomWarranty,
     String? warrantyType,
     String? invoiceDocumentId,
     String? warrantyCardDocumentId,
+    String? manualDocumentId,
     List<String>? imageUrls,
     String? notes,
     List<String>? tags,
@@ -164,10 +198,16 @@ class Product {
       warrantyEndDate: warrantyEndDate ?? this.warrantyEndDate,
       warrantyDurationMonths: warrantyDurationMonths ?? this.warrantyDurationMonths,
       extendedWarranty: extendedWarranty ?? this.extendedWarranty,
+      extendedWarrantyProvider: extendedWarrantyProvider ?? this.extendedWarrantyProvider,
+      extendedWarrantyExpiry: extendedWarrantyExpiry ?? this.extendedWarrantyExpiry,
+      returnWindowDays: returnWindowDays ?? this.returnWindowDays,
+      returnDeadline: returnDeadline ?? this.returnDeadline,
+      status: status ?? this.status,
       isCustomWarranty: isCustomWarranty ?? this.isCustomWarranty,
       warrantyType: warrantyType ?? this.warrantyType,
       invoiceDocumentId: invoiceDocumentId ?? this.invoiceDocumentId,
       warrantyCardDocumentId: warrantyCardDocumentId ?? this.warrantyCardDocumentId,
+      manualDocumentId: manualDocumentId ?? this.manualDocumentId,
       imageUrls: imageUrls ?? this.imageUrls,
       notes: notes ?? this.notes,
       tags: tags ?? this.tags,

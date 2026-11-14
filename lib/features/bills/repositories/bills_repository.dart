@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/financial/models/financial_transaction.dart';
 import '../../../core/financial/repositories/financial_transaction_repository.dart';
+import '../../reminders/models/reminder.dart';
+import '../../reminders/repositories/reminder_repository.dart';
 import '../models/bills_models.dart';
 
 class BillsRepository {
@@ -96,23 +98,37 @@ class BillsRepository {
 
     // Sync reminder
     try {
-      final remRef = _firestore.collection('users').doc(userId).collection('reminders').doc('reminder_bill_$newId');
-      await remRef.set({
-        'id': 'reminder_bill_$newId',
-        'userId': userId,
-        'title': 'Bill Due: ${newBill.billPeriod}',
-        'description': 'Bill payment of ₹${newBill.amount.toStringAsFixed(0)} due.',
-        'module': 'Bills',
-        'status': newBill.status == 'paid' ? 'completed' : 'pending',
-        'dueDate': Timestamp.fromDate(newBill.dueDate),
-        'relatedId': newId,
-        'amount': newBill.amount,
-        'actionRoute': '/bills',
-        'createdAt': Timestamp.fromDate(DateTime.now()),
-      }, SetOptions(merge: true));
+      final remRepo = ReminderRepository(firestore: _firestore);
+      await remRepo.syncReminder(
+        userId,
+        Reminder(
+          id: 'reminder_bill_$newId',
+          userId: userId,
+          title: 'Bill Due: ${newBill.billPeriod}',
+          description: 'Bill payment of ₹${newBill.amount.toStringAsFixed(0)} due.',
+          module: 'Bills',
+          status: newBill.status == 'paid' ? 'completed' : 'pending',
+          dueDate: newBill.dueDate,
+          relatedId: newId,
+          amount: newBill.amount,
+          actionRoute: '/bills',
+          actionType: 'Pay',
+          priority: newBill.status == 'paid' ? 'low' : 'high',
+          createdAt: DateTime.now(),
+        ),
+      );
     } catch (_) {}
 
     return newBill;
+  }
+
+  Future<void> deleteBill(String userId, String billId) async {
+    if (userId.isEmpty || billId.isEmpty) return;
+    await _firestore.collection('users').doc(userId).collection('bills').doc(billId).delete();
+    try {
+      final remRepo = ReminderRepository(firestore: _firestore);
+      await remRepo.deleteReminder(userId, 'reminder_bill_$billId');
+    } catch (_) {}
   }
 
   Future<BillPayment> recordBillPayment(String userId, BillPayment payment) async {

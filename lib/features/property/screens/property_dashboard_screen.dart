@@ -270,6 +270,7 @@ class PropertyDashboardScreen extends ConsumerWidget {
                     final repo = ref.read(propertyRepositoryProvider);
                     await repo.addProperty(user.uid, savedProperty);
                     ref.invalidate(propertiesProvider);
+                    ref.invalidate(remindersProvider);
 
                     if (ctx.mounted) {
                       Navigator.pop(ctx);
@@ -537,6 +538,7 @@ class PropertyDashboardScreen extends ConsumerWidget {
               final repo = ref.read(propertyRepositoryProvider);
               await repo.deleteProperty(user.uid, property.id);
               ref.invalidate(propertiesProvider);
+              ref.invalidate(remindersProvider);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text('Property "${property.title}" deleted.')),
@@ -674,7 +676,7 @@ class PropertyDashboardScreen extends ConsumerWidget {
         label: const Text('Add to Diary'),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 88.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1053,6 +1055,7 @@ class PropertyDashboardScreen extends ConsumerWidget {
               loading: () => const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator())),
               error: (err, stack) => Text('Error loading maintenance: $err'),
             ),
+            const SizedBox(height: 80),
           ],
         ),
       ),

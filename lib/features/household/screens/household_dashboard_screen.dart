@@ -251,6 +251,7 @@ class _HouseholdDashboardScreenState extends ConsumerState<HouseholdDashboardScr
                     final repo = ref.read(householdRepositoryProvider);
                     await repo.addExpense(user.uid, newExp);
                     ref.invalidate(householdExpensesProvider);
+                    ref.invalidate(remindersProvider);
 
                     if (ctx.mounted) {
                       Navigator.pop(ctx);
@@ -297,6 +298,7 @@ class _HouseholdDashboardScreenState extends ConsumerState<HouseholdDashboardScr
               final repo = ref.read(householdRepositoryProvider);
               await repo.deleteExpense(user.uid, expense.id);
               ref.invalidate(householdExpensesProvider);
+              ref.invalidate(remindersProvider);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Household expense removed.')),
@@ -318,6 +320,7 @@ class _HouseholdDashboardScreenState extends ConsumerState<HouseholdDashboardScr
     final repo = ref.read(householdRepositoryProvider);
     await repo.updateExpenseStatus(user.uid, expense.id, newStatus);
     ref.invalidate(householdExpensesProvider);
+    ref.invalidate(remindersProvider);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -364,7 +367,7 @@ class _HouseholdDashboardScreenState extends ConsumerState<HouseholdDashboardScr
         label: const Text('Add Expense'),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 88.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -730,6 +733,7 @@ class _HouseholdDashboardScreenState extends ConsumerState<HouseholdDashboardScr
               loading: () => const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator())),
               error: (err, stack) => Text('Error loading household expenses: $err'),
             ),
+            const SizedBox(height: 80),
           ],
         ),
       ),

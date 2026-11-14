@@ -646,7 +646,7 @@ class FinanceDashboardScreen extends ConsumerWidget {
         label: const Text('Record Finance'),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 88.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1034,6 +1034,7 @@ class FinanceDashboardScreen extends ConsumerWidget {
               loading: () => const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator())),
               error: (err, stack) => Text('Error loading transactions: $err'),
             ),
+            const SizedBox(height: 80),
           ],
         ),
       ),

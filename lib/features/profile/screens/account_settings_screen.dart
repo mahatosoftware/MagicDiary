@@ -373,7 +373,7 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
         title: const Text('Account Settings'),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 88.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

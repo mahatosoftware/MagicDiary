@@ -6,6 +6,13 @@ class Property {
     'Monthly',
   ];
 
+  static const List<String> occupancyStatuses = [
+    'Self-Occupied',
+    'Rented',
+    'Vacant',
+    'Under Construction',
+  ];
+
   final String id;
   final String title; // "Green Glen Apartment 302"
   final String propertyType; // "Apartment", "Villa", "Commercial", "Plot"
@@ -16,6 +23,13 @@ class Property {
   final String propertyTaxFrequency;
   final DateTime taxDueDate;
   final double? monthlyRentIncome;
+  final String occupancyStatus;
+  final String? tenantName;
+  final String? tenantContact;
+  final DateTime? leaseStartDate;
+  final DateTime? leaseEndDate;
+  final double? depositAmount;
+  final double ownershipSharePercentage;
 
   Property({
     required this.id,
@@ -28,7 +42,16 @@ class Property {
     this.propertyTaxFrequency = 'Annual',
     required this.taxDueDate,
     this.monthlyRentIncome,
+    this.occupancyStatus = 'Self-Occupied',
+    this.tenantName,
+    this.tenantContact,
+    this.leaseStartDate,
+    this.leaseEndDate,
+    this.depositAmount,
+    this.ownershipSharePercentage = 100.0,
   });
+
+  bool get isRented => occupancyStatus == 'Rented';
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -41,6 +64,13 @@ class Property {
         'propertyTaxFrequency': propertyTaxFrequency,
         'taxDueDate': taxDueDate.toIso8601String(),
         'monthlyRentIncome': monthlyRentIncome,
+        'occupancyStatus': occupancyStatus,
+        'tenantName': tenantName,
+        'tenantContact': tenantContact,
+        'leaseStartDate': leaseStartDate?.toIso8601String(),
+        'leaseEndDate': leaseEndDate?.toIso8601String(),
+        'depositAmount': depositAmount,
+        'ownershipSharePercentage': ownershipSharePercentage,
       };
 
   factory Property.fromJson(Map<String, dynamic> json) => Property(
@@ -54,6 +84,13 @@ class Property {
         propertyTaxFrequency: json['propertyTaxFrequency'] as String? ?? 'Annual',
         taxDueDate: DateTime.parse(json['taxDueDate'] as String),
         monthlyRentIncome: (json['monthlyRentIncome'] as num?)?.toDouble(),
+        occupancyStatus: json['occupancyStatus'] as String? ?? 'Self-Occupied',
+        tenantName: json['tenantName'] as String?,
+        tenantContact: json['tenantContact'] as String?,
+        leaseStartDate: json['leaseStartDate'] != null ? DateTime.parse(json['leaseStartDate'] as String) : null,
+        leaseEndDate: json['leaseEndDate'] != null ? DateTime.parse(json['leaseEndDate'] as String) : null,
+        depositAmount: (json['depositAmount'] as num?)?.toDouble(),
+        ownershipSharePercentage: (json['ownershipSharePercentage'] as num?)?.toDouble() ?? 100.0,
       );
 
   Property copyWith({
@@ -67,6 +104,13 @@ class Property {
     String? propertyTaxFrequency,
     DateTime? taxDueDate,
     double? monthlyRentIncome,
+    String? occupancyStatus,
+    String? tenantName,
+    String? tenantContact,
+    DateTime? leaseStartDate,
+    DateTime? leaseEndDate,
+    double? depositAmount,
+    double? ownershipSharePercentage,
   }) {
     return Property(
       id: id ?? this.id,
@@ -79,6 +123,13 @@ class Property {
       propertyTaxFrequency: propertyTaxFrequency ?? this.propertyTaxFrequency,
       taxDueDate: taxDueDate ?? this.taxDueDate,
       monthlyRentIncome: monthlyRentIncome ?? this.monthlyRentIncome,
+      occupancyStatus: occupancyStatus ?? this.occupancyStatus,
+      tenantName: tenantName ?? this.tenantName,
+      tenantContact: tenantContact ?? this.tenantContact,
+      leaseStartDate: leaseStartDate ?? this.leaseStartDate,
+      leaseEndDate: leaseEndDate ?? this.leaseEndDate,
+      depositAmount: depositAmount ?? this.depositAmount,
+      ownershipSharePercentage: ownershipSharePercentage ?? this.ownershipSharePercentage,
     );
   }
 }
@@ -91,6 +142,8 @@ class PropertyMaintenance {
   final double cost;
   final DateTime date;
   final String contractorName;
+  final String? contractorPhone;
+  final String? invoiceDocumentId;
 
   PropertyMaintenance({
     required this.id,
@@ -100,6 +153,8 @@ class PropertyMaintenance {
     required this.cost,
     required this.date,
     required this.contractorName,
+    this.contractorPhone,
+    this.invoiceDocumentId,
   });
 
   Map<String, dynamic> toJson() => {
@@ -110,6 +165,8 @@ class PropertyMaintenance {
         'cost': cost,
         'date': date.toIso8601String(),
         'contractorName': contractorName,
+        'contractorPhone': contractorPhone,
+        'invoiceDocumentId': invoiceDocumentId,
       };
 
   factory PropertyMaintenance.fromJson(Map<String, dynamic> json) =>
@@ -121,5 +178,7 @@ class PropertyMaintenance {
         cost: (json['cost'] as num).toDouble(),
         date: DateTime.parse(json['date'] as String),
         contractorName: json['contractorName'] as String,
+        contractorPhone: json['contractorPhone'] as String?,
+        invoiceDocumentId: json['invoiceDocumentId'] as String?,
       );
 }

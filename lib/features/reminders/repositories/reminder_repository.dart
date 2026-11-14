@@ -105,10 +105,51 @@ class ReminderRepository {
     final snap = await docRef.get();
     final createdAt = snap.exists && snap.data()?['createdAt'] is Timestamp
         ? (snap.data()!['createdAt'] as Timestamp)
-        : Timestamp.fromDate(DateTime.now());
+        : Timestamp.fromDate(reminder.createdAt);
+
+    String status = reminder.status;
+    DateTime? completedAt = reminder.completedAt;
+    DateTime? snoozedUntil = reminder.snoozedUntil;
+
+    if (snap.exists) {
+      final existingData = snap.data();
+      final existingStatus = existingData?['status'] as String? ?? 'pending';
+      final existingDueDate = existingData?['dueDate'] is Timestamp
+          ? (existingData!['dueDate'] as Timestamp).toDate()
+          : (existingData?['dueDate'] != null ? DateTime.tryParse(existingData!['dueDate'].toString()) : null);
+
+      final isDueDateChanged = existingDueDate != null &&
+          (existingDueDate.year != reminder.dueDate.year ||
+              existingDueDate.month != reminder.dueDate.month ||
+              existingDueDate.day != reminder.dueDate.day);
+
+      // If user had marked it completed or snoozed:
+      // If caller passed 'pending' (default) but user completed it, and due date hasn't changed, keep completed.
+      // But if due date changed to a new date, reset to 'pending'.
+      if (reminder.status == 'pending' && existingStatus == 'completed') {
+        if (!isDueDateChanged) {
+          status = 'completed';
+          if (existingData?['completedAt'] is Timestamp) {
+            completedAt = (existingData!['completedAt'] as Timestamp).toDate();
+          }
+        }
+      } else if (reminder.status == 'pending' && existingStatus == 'snoozed') {
+        if (!isDueDateChanged) {
+          status = 'snoozed';
+          if (existingData?['snoozedUntil'] is Timestamp) {
+            snoozedUntil = (existingData!['snoozedUntil'] as Timestamp).toDate();
+          }
+        }
+      }
+    }
 
     final map = reminder.toMap();
+    map['userId'] = userId;
+    map['status'] = status;
+    map['completedAt'] = completedAt != null ? Timestamp.fromDate(completedAt) : null;
+    map['snoozedUntil'] = snoozedUntil != null ? Timestamp.fromDate(snoozedUntil) : null;
     map['createdAt'] = createdAt;
+
     await docRef.set(map, SetOptions(merge: true));
   }
 }

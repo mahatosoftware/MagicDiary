@@ -12,6 +12,10 @@ class Vehicle {
   final double? loanEmiAmount;
   final DateTime? nextServiceDate;
   final String? fastagId;
+  final int serviceIntervalKm;
+  final int serviceIntervalMonths;
+  final int lastServiceOdometer;
+  final DateTime? drivingLicenseExpiry;
 
   Vehicle({
     required this.id,
@@ -27,7 +31,15 @@ class Vehicle {
     this.loanEmiAmount,
     this.nextServiceDate,
     this.fastagId,
+    this.serviceIntervalKm = 10000,
+    this.serviceIntervalMonths = 6,
+    this.lastServiceOdometer = 0,
+    this.drivingLicenseExpiry,
   });
+
+  int get nextServiceOdometer => lastServiceOdometer + serviceIntervalKm;
+  int get kmUntilNextService => nextServiceOdometer - currentOdometer;
+  bool get isOdometerServiceDue => kmUntilNextService <= 500;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -43,6 +55,10 @@ class Vehicle {
         'loanEmiAmount': loanEmiAmount,
         'nextServiceDate': nextServiceDate?.toIso8601String(),
         'fastagId': fastagId,
+        'serviceIntervalKm': serviceIntervalKm,
+        'serviceIntervalMonths': serviceIntervalMonths,
+        'lastServiceOdometer': lastServiceOdometer,
+        'drivingLicenseExpiry': drivingLicenseExpiry?.toIso8601String(),
       };
 
   factory Vehicle.fromJson(Map<String, dynamic> json) => Vehicle(
@@ -61,6 +77,12 @@ class Vehicle {
             ? DateTime.parse(json['nextServiceDate'] as String)
             : null,
         fastagId: json['fastagId'] as String?,
+        serviceIntervalKm: (json['serviceIntervalKm'] as num?)?.toInt() ?? 10000,
+        serviceIntervalMonths: (json['serviceIntervalMonths'] as num?)?.toInt() ?? 6,
+        lastServiceOdometer: (json['lastServiceOdometer'] as num?)?.toInt() ?? 0,
+        drivingLicenseExpiry: json['drivingLicenseExpiry'] != null
+            ? DateTime.parse(json['drivingLicenseExpiry'] as String)
+            : null,
       );
 
   Vehicle copyWith({
@@ -77,6 +99,10 @@ class Vehicle {
     double? loanEmiAmount,
     DateTime? nextServiceDate,
     String? fastagId,
+    int? serviceIntervalKm,
+    int? serviceIntervalMonths,
+    int? lastServiceOdometer,
+    DateTime? drivingLicenseExpiry,
   }) {
     return Vehicle(
       id: id ?? this.id,
@@ -92,6 +118,10 @@ class Vehicle {
       loanEmiAmount: loanEmiAmount ?? this.loanEmiAmount,
       nextServiceDate: nextServiceDate ?? this.nextServiceDate,
       fastagId: fastagId ?? this.fastagId,
+      serviceIntervalKm: serviceIntervalKm ?? this.serviceIntervalKm,
+      serviceIntervalMonths: serviceIntervalMonths ?? this.serviceIntervalMonths,
+      lastServiceOdometer: lastServiceOdometer ?? this.lastServiceOdometer,
+      drivingLicenseExpiry: drivingLicenseExpiry ?? this.drivingLicenseExpiry,
     );
   }
 }
@@ -160,4 +190,48 @@ class ServiceRecord {
       serviceCenter: serviceCenter ?? this.serviceCenter,
     );
   }
+}
+
+class FuelEntry {
+  final String id;
+  final String vehicleId;
+  final DateTime date;
+  final int odometer;
+  final double fuelLiters;
+  final double totalCost;
+  final bool isFullTank;
+  final double? kmPerLiter;
+
+  FuelEntry({
+    required this.id,
+    required this.vehicleId,
+    required this.date,
+    required this.odometer,
+    required this.fuelLiters,
+    required this.totalCost,
+    this.isFullTank = true,
+    this.kmPerLiter,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'vehicleId': vehicleId,
+        'date': date.toIso8601String(),
+        'odometer': odometer,
+        'fuelLiters': fuelLiters,
+        'totalCost': totalCost,
+        'isFullTank': isFullTank,
+        'kmPerLiter': kmPerLiter,
+      };
+
+  factory FuelEntry.fromJson(Map<String, dynamic> json) => FuelEntry(
+        id: json['id'] as String,
+        vehicleId: json['vehicleId'] as String,
+        date: DateTime.parse(json['date'] as String),
+        odometer: (json['odometer'] as num).toInt(),
+        fuelLiters: (json['fuelLiters'] as num).toDouble(),
+        totalCost: (json['totalCost'] as num).toDouble(),
+        isFullTank: json['isFullTank'] as bool? ?? true,
+        kmPerLiter: (json['kmPerLiter'] as num?)?.toDouble(),
+      );
 }

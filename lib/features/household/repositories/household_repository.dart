@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/financial/models/financial_category.dart';
 import '../../../core/financial/models/financial_transaction.dart';
 import '../../../core/financial/repositories/financial_transaction_repository.dart';
+import '../../reminders/models/reminder.dart';
+import '../../reminders/repositories/reminder_repository.dart';
 import '../models/household_models.dart';
 
 class HouseholdRepository {
@@ -60,21 +62,26 @@ class HouseholdRepository {
     // Sync reminder
     try {
       final isPaid = expense.status.toLowerCase() == 'paid';
-      final remRef = firestore.collection('users').doc(userId).collection('reminders').doc('reminder_hh_${expense.id}');
-      await remRef.set({
-        'id': 'reminder_hh_${expense.id}',
-        'userId': userId,
-        'title': 'Household: ${expense.category} (${expense.providerName})',
-        'description': 'Household expense of ₹${expense.amount.toStringAsFixed(0)} for ${expense.period}.',
-        'module': 'Household',
-        'status': isPaid ? 'completed' : 'pending',
-        'dueDate': Timestamp.fromDate(expense.dueDate),
-        'relatedId': expense.id,
-        'amount': expense.amount,
-        'actionRoute': '/household',
-        'createdAt': Timestamp.fromDate(DateTime.now()),
-        'completedAt': isPaid ? Timestamp.fromDate(DateTime.now()) : null,
-      }, SetOptions(merge: true));
+      final remRepo = ReminderRepository(firestore: firestore);
+      await remRepo.syncReminder(
+        userId,
+        Reminder(
+          id: 'reminder_hh_${expense.id}',
+          userId: userId,
+          title: 'Household: ${expense.category} (${expense.providerName})',
+          description: 'Household expense of ₹${expense.amount.toStringAsFixed(0)} for ${expense.period}.',
+          module: 'Household',
+          status: isPaid ? 'completed' : 'pending',
+          dueDate: expense.dueDate,
+          relatedId: expense.id,
+          amount: expense.amount,
+          actionRoute: '/household',
+          actionType: 'Pay',
+          priority: isPaid ? 'low' : 'high',
+          createdAt: DateTime.now(),
+          completedAt: isPaid ? DateTime.now() : null,
+        ),
+      );
     } catch (_) {}
   }
 
@@ -115,11 +122,8 @@ class HouseholdRepository {
 
       // Mark reminder completed
       try {
-        final remRef = firestore.collection('users').doc(userId).collection('reminders').doc('reminder_hh_$expenseId');
-        await remRef.update({
-          'status': 'completed',
-          'completedAt': Timestamp.fromDate(DateTime.now()),
-        });
+        final remRepo = ReminderRepository(firestore: firestore);
+        await remRepo.completeReminder(userId, 'reminder_hh_$expenseId');
       } catch (_) {}
     } else {
       try {
@@ -147,8 +151,8 @@ class HouseholdRepository {
         .delete();
 
     try {
-      final remRef = firestore.collection('users').doc(userId).collection('reminders').doc('reminder_hh_$expenseId');
-      await remRef.delete();
+      final remRepo = ReminderRepository(firestore: firestore);
+      await remRepo.deleteReminder(userId, 'reminder_hh_$expenseId');
     } catch (_) {}
 
     try {
@@ -156,5 +160,87 @@ class HouseholdRepository {
       final detId = FinancialTransaction.generateDeterministicId('household', expenseId);
       await txRepo.deleteTransaction(userId, detId, softDelete: false);
     } catch (_) {}
+  }
+
+  // --- Household Budgets ---
+  Future<List<HouseholdBudget>> getBudgets(String userId) async {
+    if (userId.isEmpty) return const [];
+    try {
+      final snapshot = await firestore
+          .collection('users')
+          .doc(userId)
+          .collection('householdBudgets')
+          .get();
+      return snapshot.docs.map((doc) => HouseholdBudget.fromJson(doc.data())).toList();
+    } catch (e) {
+      return const [];
+    }
+  }
+
+  Future<void> setBudget(String userId, HouseholdBudget budget) async {
+    if (userId.isEmpty) return;
+    await firestore
+        .collection('users')
+        .doc(userId)
+        .collection('householdBudgets')
+        .doc(budget.id)
+        .set(budget.toJson());
+  }
+
+  Future<void> deleteBudget(String userId, String budgetId) async {
+    if (userId.isEmpty || budgetId.isEmpty) return;
+    await firestore
+        .collection('users')
+        .doc(userId)
+        .collection('householdBudgets')
+        .doc(budgetId)
+        .delete();
+  }
+
+  // --- Shopping List Items ---
+  Future<List<ShoppingItem>> getShoppingItems(String userId) async {
+    if (userId.isEmpty) return const [];
+    try {
+      final snapshot = await firestore
+          .collection('users')
+          .doc(userId)
+          .collection('shoppingList')
+          .get();
+      final list = snapshot.docs.map((doc) => ShoppingItem.fromJson(doc.data())).toList();
+      list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return list;
+    } catch (e) {
+      return const [];
+    }
+  }
+
+  Future<void> addShoppingItem(String userId, ShoppingItem item) async {
+    if (userId.isEmpty) return;
+    await firestore
+        .collection('users')
+        .doc(userId)
+        .collection('shoppingList')
+        .doc(item.id)
+        .set(item.toJson());
+  }
+
+  Future<void> toggleShoppingItem(String userId, String itemId, bool isPurchased) async {
+    if (userId.isEmpty || itemId.isEmpty) return;
+    await firestore
+        .collection('users')
+        .doc(userId)
+        .collection('shoppingList')
+        .doc(itemId)
+        .update({'isPurchased': isPurchased});
+  }
+
+  Future<void> deleteShoppingItem(String userId, String itemId) async {
+    if (userId.isEmpty || itemId.isEmpty) return;
+    await firestore
+        .collection('users')
+        .doc(userId)
+        .collection('shoppingList')
+        .doc(itemId)
+        .delete();
   }
 }

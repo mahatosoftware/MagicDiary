@@ -130,5 +130,100 @@ void main() {
       expect(completed.amount, equals(850.0));
       expect(completed.module, equals('Household'));
     });
+
+    test('Updating diary entries synchronizes reminder details and preserves immutable fields', () {
+      final initialDueDate = DateTime(2026, 11, 15);
+      final initialTaxReminder = Reminder(
+        id: 'reminder_prop_p1_tax',
+        userId: 'user_123',
+        title: 'Property Tax: Sunrise Apartment',
+        description: 'Annual property tax of ₹12000 for Flat 402, Sunrise.',
+        module: 'Property',
+        status: 'pending',
+        dueDate: initialDueDate,
+        relatedId: 'p1',
+        amount: 12000.0,
+        actionRoute: '/property',
+        actionType: 'Pay',
+        priority: 'medium',
+        createdAt: now,
+      );
+
+      // User updates Property: changes title, address, tax amount, and tax due date
+      final updatedDueDate = DateTime(2026, 12, 1);
+      final updatedTaxReminder = initialTaxReminder.copyWith(
+        title: 'Property Tax: Sunrise Villa 402',
+        description: 'Annual property tax of ₹15000 for Villa 402, Sunrise.',
+        amount: 15000.0,
+        dueDate: updatedDueDate,
+      );
+
+      expect(updatedTaxReminder.id, equals('reminder_prop_p1_tax'));
+      expect(updatedTaxReminder.userId, equals('user_123'));
+      expect(updatedTaxReminder.createdAt, equals(now)); // Immutable createdAt preserved
+      expect(updatedTaxReminder.title, equals('Property Tax: Sunrise Villa 402'));
+      expect(updatedTaxReminder.amount, equals(15000.0));
+      expect(updatedTaxReminder.dueDate, equals(updatedDueDate));
+      expect(updatedTaxReminder.description, contains('₹15000'));
+    });
+
+    test('Updating vehicle service or insurance updates reminder metadata', () {
+      final oldExpiry = DateTime(2026, 11, 20);
+      final initialInsurance = Reminder(
+        id: 'reminder_veh_v1_insurance',
+        userId: 'u1',
+        title: 'Vehicle Insurance: Honda City',
+        description: 'Insurance policy for Honda City (KA01AB1234) expires on 20 Nov 2026.',
+        module: 'Vehicle',
+        status: 'pending',
+        dueDate: oldExpiry,
+        relatedId: 'v1',
+        actionRoute: '/vehicle',
+        actionType: 'Renew',
+        priority: 'high',
+        createdAt: now,
+      );
+
+      // Vehicle renewed for next year
+      final newExpiry = DateTime(2027, 11, 20);
+      final updatedInsurance = initialInsurance.copyWith(
+        title: 'Vehicle Insurance: Honda City ZX',
+        description: 'Insurance policy for Honda City ZX (KA01AB1234) expires on 20 Nov 2027.',
+        dueDate: newExpiry,
+        status: 'pending',
+      );
+
+      expect(updatedInsurance.id, equals('reminder_veh_v1_insurance'));
+      expect(updatedInsurance.dueDate, equals(newExpiry));
+      expect(updatedInsurance.title, contains('ZX'));
+      expect(updatedInsurance.createdAt, equals(now));
+    });
+
+    test('Updating product warranty details synchronizes reminder properly', () {
+      final initialWarranty = Reminder(
+        id: 'reminder_prod_prod1_warranty',
+        userId: 'u1',
+        title: 'Warranty Ending: Microwave Oven',
+        description: 'Manufacturer warranty for Samsung Microwave Oven expires soon.',
+        module: 'Warranty',
+        status: 'pending',
+        dueDate: DateTime(2026, 12, 10),
+        relatedId: 'prod1',
+        actionRoute: '/warranty',
+        actionType: 'Renew',
+        createdAt: now,
+      );
+
+      // Extended warranty purchased: updated end date and title
+      final extendedDate = DateTime(2028, 12, 10);
+      final updatedWarranty = initialWarranty.copyWith(
+        title: 'Warranty Ending: Samsung Convection Microwave',
+        dueDate: extendedDate,
+      );
+
+      expect(updatedWarranty.dueDate, equals(extendedDate));
+      expect(updatedWarranty.title, contains('Samsung Convection'));
+      expect(updatedWarranty.createdAt, equals(now));
+    });
   });
 }
