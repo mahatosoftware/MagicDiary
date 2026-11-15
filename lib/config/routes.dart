@@ -11,6 +11,7 @@ import '../features/my_diaries/screens/diary_category_detail_screen.dart';
 import '../features/shared_diaries/screens/shared_diaries_screen.dart';
 import '../features/shared_diaries/screens/manage_diary_shares_screen.dart';
 import '../features/shared_diaries/screens/record_selection_screen.dart';
+import '../features/shared_diaries/screens/claim_share_invite_screen.dart';
 import '../features/shared_diaries/models/shared_diary_models.dart';
 import '../features/magic_circles/screens/magic_circles_screen.dart';
 import '../features/magic_circles/screens/create_circle_screen.dart';
@@ -186,6 +187,12 @@ final router = GoRouter(
             diaryTitle: state.uri.queryParameters['title'] ?? 'Select Records',
             initiallySelectedRecordIds: (state.extra as Map<String, dynamic>?)?['selected'] as Set<String>? ?? {},
             recipientName: state.uri.queryParameters['recipient'],
+          ),
+        ),
+        GoRoute(
+          path: '/share/invite/:token',
+          builder: (context, state) => ClaimShareInviteScreen(
+            token: state.pathParameters['token']!,
           ),
         ),
 

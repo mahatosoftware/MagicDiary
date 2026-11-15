@@ -5,6 +5,9 @@ import 'package:uuid/uuid.dart';
 import '../models/magic_circle_models.dart';
 import 'magic_circles_screen.dart';
 import '../../../core/providers/app_providers.dart';
+import '../../shared_diaries/models/frequent_contact.dart';
+import '../../shared_diaries/repositories/frequent_contacts_repository.dart';
+import '../../shared_diaries/widgets/frequent_contact_suggestions.dart';
 
 class CreateCircleScreen extends ConsumerStatefulWidget {
   const CreateCircleScreen({super.key});
@@ -33,6 +36,11 @@ class _CreateCircleScreenState extends ConsumerState<CreateCircleScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final currentUser = ref.watch(userProfileProvider);
+    final frequentContactsAsync = currentUser != null
+        ? ref.watch(frequentContactsStreamProvider(currentUser.uid))
+        : const AsyncValue<List<FrequentContact>>.data([]);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Create Magic Circle'),
@@ -103,6 +111,32 @@ class _CreateCircleScreenState extends ConsumerState<CreateCircleScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
+
+                  // Frequent Contacts Quick Suggestions
+                  frequentContactsAsync.maybeWhen(
+                    data: (contacts) {
+                      final available = contacts
+                          .where((c) => !_pendingMemberEmails.contains(c.email))
+                          .take(6)
+                          .toList();
+                      if (available.isEmpty) return const SizedBox.shrink();
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10.0),
+                        child: FrequentContactChipsRow(
+                          contacts: available,
+                          onContactSelected: (c) {
+                            if (!_pendingMemberEmails.contains(c.email)) {
+                              setState(() {
+                                _pendingMemberEmails.add(c.email);
+                              });
+                            }
+                          },
+                        ),
+                      );
+                    },
+                    orElse: () => const SizedBox.shrink(),
+                  ),
+
                   Row(
                     children: [
                       Expanded(
@@ -217,6 +251,16 @@ class _CreateCircleScreenState extends ConsumerState<CreateCircleScreen> {
 
       final repo = ref.read(magicCircleRepositoryProvider);
       await repo.createCircle(circle);
+
+      // Record contact usage for future lookup suggestions
+      for (final email in _pendingMemberEmails) {
+        try {
+          await ref.read(frequentContactsRepositoryProvider).recordContactUsage(
+                userId: user.uid,
+                email: email,
+              );
+        } catch (_) {}
+      }
 
       if (mounted) {
         context.pop();

@@ -57,6 +57,10 @@
 			</array>
 		</dict>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Magic Diary uses camera access to scan QR codes for sharing diaries and connecting with members.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Magic Diary uses photo library access to scan QR code images and attach receipts.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

@@ -23,8 +23,11 @@ rules_version = '2';
 // Document ID: username
 // Fields:
 //   - uid: string (required, matches request.auth.uid)
-//   - email: string (required, matches request.auth.token.email)
+//   - username: string (optional, max: 30)
+//   - displayName: string (optional, max: 100)
+//   - email: string (optional, format: email, max: 255)
 //   - createdAt: timestamp (optional)
+//   (Note: contains minimal metadata for fast recipient resolution and pre-registration availability checks)
 //
 // Subcollections under /users/{userId}/... (Strict User Ownership):
 //   - products/{productId} & serviceRecords/{recordId} (Warranty & Product Management)
@@ -71,6 +74,8 @@ rules_version = '2';
 //   - sessions/{sessionId} (Active Device Sessions)
 //   - security_logs/{logId} (Append-only Security Audit Log)
 //   - security_settings/{settingId} (Security & Privacy Settings)
+//   - frequent_contacts/{contactId} (Frequent Used Contacts for Share Suggestions)
+//     - Fields: id (optional, max: 500), userId (required, matches auth.uid, immutable), email (required, format: email, max: 255), name (optional, max: 100), username (optional, max: 50), photoUrl (optional, max: 2048), useCount (required, >= 1), lastUsedAt (required, timestamp), createdAt (required, timestamp, immutable), updatedAt (optional, timestamp)
 //   - diaries/{diaryId}/records/{recordId} (Universal Diary Records for 45 Life OS Subdiaries)
 //
 // Top-Level Collections:
@@ -86,6 +91,9 @@ rules_version = '2';
 //   - /shared_diary_access/{shareId} (Granular Diary Sharing & Permissions)
 //     - Document ID format: {shareId} or {ownerUid}_{diaryId}_{sharedWithUid} or {ownerUid}_{diaryId}_{sharedWithEmail}
 //     - Fields: id, diaryId, diaryName, ownerUid, ownerName, sharedWithUid, sharedWithEmail, permission, createdAt, updatedAt, circleId, circleName, sharedWithName, shareEntireDiary, grantedRecordIds, expiresAt, schemaVersion, recipientType, sharingMode, futureRecordPolicy, snapshotCutoffTime, allowAttachments, allowComments, allowExport, restrictedFields, status
+//   - /share_invitations/{inviteId} (One-Time Shared Diary Deep Link Invitations)
+//     - Document ID format: {inviteId} (unique invite token)
+//     - Fields: id, diaryId, diaryName, ownerUid, ownerName, permission, sharingMode, grantedRecordIds, allowAttachments, allowComments, allowExport, restrictedFields, isOneTime, isClaimed, claimedByUid, claimedByEmail, claimedByName, claimedAt, expiresAt, createdAt, updatedAt
 //
 // ===============================================================
 
@@ -162,10 +170,13 @@ service cloud.firestore {
     }
 
     function isValidUsernameMapping(username, data) {
-      return hasRequiredFields(data, ['uid', 'email'])
+      return hasRequiredFields(data, ['uid'])
         && data.uid == request.auth.uid
-        && data.email == request.auth.token.email
+        && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128
         && username is string && username.size() >= 3 && username.size() <= 30
+        && isValidOptionalString(data, 'displayName', 100)
+        && isValidOptionalString(data, 'username', 30)
+        && (!('email' in data) || data.email == null || (data.email is string && data.email.size() <= 255 && isValidEmail(data.email)))
         && (!('createdAt' in data) || data.createdAt is timestamp);
     }
 
@@ -849,6 +860,20 @@ service cloud.firestore {
         && isValidOptionalDate(data, 'createdAt');
     }
 
+    function isValidFrequentContact(data, userId) {
+      return hasRequiredFields(data, ['userId', 'email', 'useCount', 'lastUsedAt', 'createdAt'])
+        && data.userId == userId
+        && isValidOptionalString(data, 'id', 500)
+        && data.email is string && data.email.size() <= 255 && isValidEmail(data.email)
+        && isValidOptionalString(data, 'name', 100)
+        && isValidOptionalString(data, 'username', 50)
+        && isValidOptionalString(data, 'photoUrl', 2048)
+        && (data.useCount is int || data.useCount is number) && data.useCount >= 1
+        && isTimestampOrDateString(data.lastUsedAt)
+        && isTimestampOrDateString(data.createdAt)
+        && isValidOptionalDate(data, 'updatedAt');
+    }
+
     // ===============================================================
     // Top-Level Household Workspaces Validators & Membership Helpers
     // ===============================================================
@@ -1157,13 +1182,16 @@ service cloud.firestore {
 
     function isValidSharedDiaryAccess(data) {
       return hasRequiredFields(data, ['id', 'diaryId', 'diaryName', 'ownerUid', 'ownerName', 'sharedWithUid', 'sharedWithEmail', 'permission', 'createdAt', 'updatedAt'])
-        && data.id is string && data.id.size() <= 100
+        // Deterministic share IDs include owner UID, diary ID and a recipient
+        // UID/email. They can legitimately be longer than 100 characters.
+        // Firestore permits document IDs up to 1,500 bytes.
+        && data.id is string && data.id.size() <= 500
         && data.diaryId is string && data.diaryId.size() <= 100
         && data.diaryName is string && data.diaryName.size() >= 1 && data.diaryName.size() <= 150
         && data.ownerUid is string && data.ownerUid.size() <= 100
         && data.ownerName is string && data.ownerName.size() >= 1 && data.ownerName.size() <= 100
-        && data.sharedWithUid is string && data.sharedWithUid.size() <= 100
-        && data.sharedWithEmail is string && data.sharedWithEmail.size() <= 255 && isValidEmail(data.sharedWithEmail)
+        && data.sharedWithUid is string && data.sharedWithUid.size() <= 255
+        && data.sharedWithEmail is string && data.sharedWithEmail.size() <= 255 && (data.sharedWithEmail.size() == 0 || isValidEmail(data.sharedWithEmail))
         && data.permission in ['viewer', 'contributor', 'editor', 'admin']
         && isTimestampOrDateString(data.createdAt)
         && isTimestampOrDateString(data.updatedAt)
@@ -1171,7 +1199,7 @@ service cloud.firestore {
         && isValidOptionalString(data, 'circleName', 150)
         && isValidOptionalString(data, 'sharedWithName', 100)
         && (!('shareEntireDiary' in data) || data.shareEntireDiary == null || data.shareEntireDiary is bool)
-        && isValidOptionalList(data, 'grantedRecordIds', 100)
+        && isValidOptionalList(data, 'grantedRecordIds', 500)
         && isValidOptionalDate(data, 'expiresAt')
         && (!('recipientType' in data) || data.recipientType == null || (data.recipientType is string && data.recipientType in ['user', 'circle']))
         && (!('sharingMode' in data) || data.sharingMode == null || (data.sharingMode is string && data.sharingMode in ['entire', 'selected']))
@@ -1185,11 +1213,42 @@ service cloud.firestore {
         && (!('schemaVersion' in data) || data.schemaVersion == null || (data.schemaVersion is int && data.schemaVersion >= 0));
     }
 
+    function isValidShareInvitation(data) {
+      return hasRequiredFields(data, ['id', 'diaryId', 'diaryName', 'ownerUid', 'ownerName', 'permission', 'sharingMode', 'isOneTime', 'isClaimed', 'createdAt'])
+        && data.keys().hasOnly(['id', 'diaryId', 'diaryName', 'ownerUid', 'ownerName', 'permission', 'sharingMode', 'grantedRecordIds', 'allowAttachments', 'allowComments', 'allowExport', 'restrictedFields', 'isOneTime', 'isClaimed', 'claimedByUid', 'claimedByEmail', 'claimedByName', 'claimedAt', 'expiresAt', 'createdAt', 'updatedAt'])
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 100
+        && data.diaryId is string && data.diaryId.size() >= 1 && data.diaryId.size() <= 100
+        && data.diaryName is string && data.diaryName.size() >= 1 && data.diaryName.size() <= 120
+        && data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 100
+        && data.ownerName is string && data.ownerName.size() >= 1 && data.ownerName.size() <= 100
+        && data.permission in ['viewer', 'contributor', 'editor', 'admin']
+        && data.sharingMode in ['entire', 'selected']
+        && data.isOneTime is bool && data.isOneTime == true
+        && data.isClaimed is bool
+        && isTimestampOrDateString(data.createdAt)
+        && isValidOptionalList(data, 'grantedRecordIds', 500)
+        && isValidOptionalBool(data, 'allowAttachments')
+        && isValidOptionalBool(data, 'allowComments')
+        && isValidOptionalBool(data, 'allowExport')
+        && isValidOptionalList(data, 'restrictedFields', 50)
+        && isValidOptionalString(data, 'claimedByUid', 128)
+        && (!('claimedByEmail' in data) || data.claimedByEmail == null || (data.claimedByEmail is string && data.claimedByEmail.size() <= 255 && (data.claimedByEmail.size() == 0 || isValidEmail(data.claimedByEmail))))
+        && isValidOptionalString(data, 'claimedByName', 100)
+        && isValidOptionalDate(data, 'claimedAt')
+        && isValidOptionalDate(data, 'expiresAt')
+        && isValidOptionalDate(data, 'updatedAt');
+    }
+
     function hasSharedDiaryAccess(ownerId, diaryId) {
-      let uidPath = /databases/$(database)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.uid);
+      let uidExactPath = /databases/$(database)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.uid);
+      let uidLowerPath = /databases/$(database)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.uid.lower());
       let emailLower = request.auth.token.email != null ? request.auth.token.email.lower() : '';
       let emailPath = /databases/$(database)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + emailLower);
-      let shareDoc = exists(uidPath) ? get(uidPath) : (request.auth.token.email != null && exists(emailPath) ? get(emailPath) : null);
+      let shareDoc = exists(uidExactPath) ? get(uidExactPath) : (
+        exists(uidLowerPath) ? get(uidLowerPath) : (
+          request.auth.token.email != null && exists(emailPath) ? get(emailPath) : null
+        )
+      );
       return isAuthenticated()
         && shareDoc != null
         && (!('status' in shareDoc.data) || shareDoc.data.status == null || shareDoc.data.status == 'active')
@@ -1197,10 +1256,15 @@ service cloud.firestore {
     }
 
     function canReadSharedRecord(ownerId, diaryId, recordId, recordCreatedAt) {
-      let uidPath = /databases/$(database)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.uid);
+      let uidExactPath = /databases/$(database)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.uid);
+      let uidLowerPath = /databases/$(database)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.uid.lower());
       let emailLower = request.auth.token.email != null ? request.auth.token.email.lower() : '';
       let emailPath = /databases/$(database)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + emailLower);
-      let shareDoc = exists(uidPath) ? get(uidPath) : (request.auth.token.email != null && exists(emailPath) ? get(emailPath) : null);
+      let shareDoc = exists(uidExactPath) ? get(uidExactPath) : (
+        exists(uidLowerPath) ? get(uidLowerPath) : (
+          request.auth.token.email != null && exists(emailPath) ? get(emailPath) : null
+        )
+      );
       return isAuthenticated()
         && shareDoc != null
         && (!('status' in shareDoc.data) || shareDoc.data.status == null || shareDoc.data.status == 'active')
@@ -1224,10 +1288,15 @@ service cloud.firestore {
     }
 
     function hasSharedDiaryWriteAccess(ownerId, diaryId) {
-      let uidPath = /databases/$(database)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.uid);
+      let uidExactPath = /databases/$(database)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.uid);
+      let uidLowerPath = /databases/$(database)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.uid.lower());
       let emailLower = request.auth.token.email != null ? request.auth.token.email.lower() : '';
       let emailPath = /databases/$(database)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + emailLower);
-      let shareDoc = exists(uidPath) ? get(uidPath) : (request.auth.token.email != null && exists(emailPath) ? get(emailPath) : null);
+      let shareDoc = exists(uidExactPath) ? get(uidExactPath) : (
+        exists(uidLowerPath) ? get(uidLowerPath) : (
+          request.auth.token.email != null && exists(emailPath) ? get(emailPath) : null
+        )
+      );
       return isAuthenticated()
         && shareDoc != null
         && (!('status' in shareDoc.data) || shareDoc.data.status == null || shareDoc.data.status == 'active')
@@ -1240,7 +1309,8 @@ service cloud.firestore {
     // ===============================================================
 
     match /users/{userId} {
-      allow read: if isOwner(userId);
+      allow get: if isAuthenticated();
+      allow list: if isOwner(userId) || (isAuthenticated() && request.query.limit <= 5);
       allow create: if isOwner(userId) && isValidUserProfile(request.resource.data);
       allow update: if isOwner(userId)
                     && isValidUserProfile(request.resource.data)
@@ -1627,13 +1697,22 @@ service cloud.firestore {
                       && areImmutableFieldsUnchanged(['id', 'userId']);
       }
 
+      match /frequent_contacts/{contactId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidFrequentContact(request.resource.data, userId);
+        allow update: if isOwner(userId)
+                      && isValidFrequentContact(request.resource.data, userId)
+                      && areImmutableFieldsUnchanged(['userId', 'createdAt']);
+      }
+
       // --- Universal Life OS Subdiaries & Records ---
       match /diaries/{diaryId} {
         allow read: if isOwner(userId) || hasSharedDiaryAccess(userId, diaryId);
         allow write: if isOwner(userId);
 
         match /records/{recordId} {
-          allow read: if isOwner(userId) || canReadSharedRecord(userId, diaryId, recordId, resource.data.createdAt);
+          allow get: if isOwner(userId) || canReadSharedRecord(userId, diaryId, recordId, resource.data.createdAt);
+          allow list: if isOwner(userId) || hasSharedDiaryAccess(userId, diaryId);
           allow create: if (isOwner(userId) || hasSharedDiaryWriteAccess(userId, diaryId))
                         && isValidDiaryRecord(request.resource.data, userId, diaryId);
           allow update: if (isOwner(userId) || hasSharedDiaryWriteAccess(userId, diaryId))
@@ -1648,13 +1727,19 @@ service cloud.firestore {
     }
 
     // ===============================================================
-    // Username Registry (Safe Lookup without Profile Exposure)
+    // Username Registry (Safe Lookup for Recipient Resolution & Availability)
     // ===============================================================
     match /usernames/{username} {
-      allow get: if isAuthenticated();
+      // Unauthenticated single-document get allows pre-registration availability checks.
+      // List is strictly forbidden to prevent scraping/enumeration of the user registry.
+      allow get: if true;
       allow list: if false;
       allow create: if isAuthenticated() && isValidUsernameMapping(username, request.resource.data);
-      allow update: if false;
+      allow update: if isAuthenticated()
+                    && resource.data.uid == request.auth.uid
+                    && request.resource.data.uid == request.auth.uid
+                    && isValidUsernameMapping(username, request.resource.data)
+                    && areImmutableFieldsUnchanged(['uid', 'createdAt']);
       allow delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
     }
 
@@ -1815,6 +1900,7 @@ service cloud.firestore {
       allow read: if isAuthenticated() && (
         resource.data.ownerUid == request.auth.uid
         || resource.data.sharedWithUid == request.auth.uid
+        || (resource.data.sharedWithUid is string && resource.data.sharedWithUid.lower() == request.auth.uid.lower())
         || (request.auth.token.email != null && resource.data.sharedWithEmail == request.auth.token.email)
         || (request.auth.token.email != null && resource.data.sharedWithEmail == request.auth.token.email.lower())
       );
@@ -1826,7 +1912,7 @@ service cloud.firestore {
         (
           resource.data.ownerUid == request.auth.uid
           && isValidSharedDiaryAccess(request.resource.data)
-          && areImmutableFieldsUnchanged(['id', 'ownerUid', 'diaryId', 'createdAt'])
+          && areImmutableFieldsUnchanged(['ownerUid', 'diaryId'])
         )
         ||
         // Recipient claiming pending invitation (transitioning sharedWithUid to request.auth.uid)
@@ -1834,10 +1920,11 @@ service cloud.firestore {
           resource.data.ownerUid != request.auth.uid
           && (
             resource.data.sharedWithUid == request.auth.uid
+            || (resource.data.sharedWithUid is string && resource.data.sharedWithUid.lower() == request.auth.uid.lower())
             || (request.auth.token.email != null && resource.data.sharedWithEmail == request.auth.token.email)
             || (request.auth.token.email != null && resource.data.sharedWithEmail == request.auth.token.email.lower())
           )
-          && request.resource.data.sharedWithUid == request.auth.uid
+          && (request.resource.data.sharedWithUid == request.auth.uid || (request.resource.data.sharedWithUid is string && request.resource.data.sharedWithUid.lower() == request.auth.uid.lower()))
           && isValidSharedDiaryAccess(request.resource.data)
           && areImmutableFieldsUnchanged(['id', 'ownerUid', 'ownerName', 'diaryId', 'diaryName', 'permission', 'createdAt', 'sharedWithEmail', 'recipientType', 'sharingMode', 'futureRecordPolicy', 'snapshotCutoffTime', 'allowAttachments', 'allowComments', 'allowExport', 'restrictedFields', 'status', 'expiresAt', 'shareEntireDiary', 'grantedRecordIds'])
         )
@@ -1845,9 +1932,51 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && (
         resource.data.ownerUid == request.auth.uid
         || resource.data.sharedWithUid == request.auth.uid
+        || (resource.data.sharedWithUid is string && resource.data.sharedWithUid.lower() == request.auth.uid.lower())
         || (request.auth.token.email != null && resource.data.sharedWithEmail == request.auth.token.email)
         || (request.auth.token.email != null && resource.data.sharedWithEmail == request.auth.token.email.lower())
       );
+    }
+
+    // ===============================================================
+    // Share Invitations (One-Time Shared Diary Deep Link Invitations)
+    // ===============================================================
+    match /share_invitations/{inviteId} {
+      // Any authenticated user can read details to preview an invite before claiming
+      allow get: if isAuthenticated();
+
+      // Listing invitations is restricted to the owner's own documents
+      allow list: if isAuthenticated() && resource.data.ownerUid == request.auth.uid;
+
+      allow create: if isAuthenticated()
+                    && request.resource.data.ownerUid == request.auth.uid
+                    && request.resource.data.id == inviteId
+                    && request.resource.data.isClaimed == false
+                    && isValidShareInvitation(request.resource.data);
+
+      allow update: if isAuthenticated() && (
+        // a) Owner updating settings or expiry before claim
+        (
+          resource.data.ownerUid == request.auth.uid
+          && resource.data.isClaimed == false
+          && isValidShareInvitation(request.resource.data)
+          && areImmutableFieldsUnchanged(['id', 'ownerUid', 'diaryId', 'createdAt', 'isOneTime'])
+        )
+        ||
+        // b) Recipient claiming the one-time invite
+        (
+          request.auth.uid != resource.data.ownerUid
+          && resource.data.isClaimed == false
+          && request.resource.data.isClaimed == true
+          && request.resource.data.claimedByUid == request.auth.uid
+          && (!('expiresAt' in resource.data) || resource.data.expiresAt == null || request.time < resource.data.expiresAt)
+          && isValidShareInvitation(request.resource.data)
+          && areImmutableFieldsUnchanged(['id', 'ownerUid', 'diaryId', 'diaryName', 'permission', 'sharingMode', 'grantedRecordIds', 'isOneTime', 'createdAt', 'expiresAt'])
+        )
+      );
+
+      // Only the owner can delete the invitation
+      allow delete: if isAuthenticated() && resource.data.ownerUid == request.auth.uid;
     }
 
     // ===============================================================

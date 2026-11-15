@@ -22,6 +22,23 @@ class AuthRepository {
 
   fb.User? get currentFirebaseUser => _auth.currentUser;
 
+  /// Checks whether a username already exists in the database.
+  Future<bool> isUsernameTaken(String username) async {
+    return UserProfile.isUsernameTaken(username, firestore: _firestore);
+  }
+
+  /// Generates a unique 7-character username by regenerating until a non-existing username is found in the db.
+  Future<String> generateUniqueUsername({
+    int maxAttempts = 100,
+    Future<bool> Function(String username)? isTakenFn,
+  }) async {
+    return UserProfile.generateUniqueUsername(
+      firestore: _firestore,
+      maxAttempts: maxAttempts,
+      isTakenFn: isTakenFn ?? isUsernameTaken,
+    );
+  }
+
   Stream<UserProfile?> get authStateChanges {
     return _auth.authStateChanges().asyncMap((fbUser) async {
       if (fbUser == null) {
@@ -29,7 +46,7 @@ class AuthRepository {
       }
       var profile = await getUserProfile(fbUser.uid);
       if (profile == null) {
-        final username = UserProfile.generate7CharUsername();
+        final username = await generateUniqueUsername();
         profile = UserProfile(
           uid: fbUser.uid,
           email: fbUser.email ?? '',
@@ -44,7 +61,7 @@ class AuthRepository {
         );
         try {
           await _firestore.collection('users').doc(fbUser.uid).set(profile.toMap());
-          await _reserveUsername(username, fbUser.uid, fbUser.email ?? '');
+          await reserveUsername(username, fbUser.uid, displayName: profile.displayName, email: profile.email);
         } catch (e) {
           debugPrint('Error creating user profile in Firestore: $e');
         }
@@ -58,16 +75,19 @@ class AuthRepository {
       final doc = await _firestore.collection('users').doc(uid).get();
       if (doc.exists && doc.data() != null) {
         final profile = UserProfile.fromMap(doc.data()!, uid);
-        if (profile.username.trim().isEmpty) {
-          final newUsername = UserProfile.generate7CharUsername();
+        if (profile.username.trim().isEmpty || UserProfile.hasConfusingChars(profile.username)) {
+          final newUsername = await generateUniqueUsername();
           final updated = profile.copyWith(username: newUsername);
           try {
             await _firestore.collection('users').doc(uid).update({'username': newUsername});
-            await _reserveUsername(newUsername, uid, profile.email);
+            await reserveUsername(newUsername, uid, displayName: profile.displayName, email: profile.email);
           } catch (e) {
             debugPrint('Note backfilling username: $e');
           }
           return updated;
+        } else {
+          // Self-heal & ensure username is in public /usernames collection for fast O(1) lookup
+          reserveUsername(profile.username, uid, displayName: profile.displayName, email: profile.email);
         }
         return profile;
       }
@@ -83,21 +103,29 @@ class AuthRepository {
 
     // If identifier is not an email, lookup user by username or fallback to internal email domain
     if (!emailToUse.contains('@')) {
-      final cleanUsername = emailToUse.toLowerCase();
+      final upperUsername = emailToUse.replaceAll('@', '').toUpperCase();
+      final lowerUsername = emailToUse.replaceAll('@', '').toLowerCase();
       try {
-        final query = await _firestore
+        var query = await _firestore
             .collection('users')
-            .where('username', isEqualTo: cleanUsername)
+            .where('username', isEqualTo: upperUsername)
             .limit(1)
             .get();
+        if (query.docs.isEmpty && upperUsername != lowerUsername) {
+          query = await _firestore
+              .collection('users')
+              .where('username', isEqualTo: lowerUsername)
+              .limit(1)
+              .get();
+        }
         if (query.docs.isNotEmpty) {
           emailToUse = query.docs.first.data()['email'] as String? ?? emailToUse;
         } else {
-          emailToUse = '$cleanUsername@magicdiary.internal';
+          emailToUse = '$upperUsername@magicdiary.internal';
         }
       } catch (e) {
         // Fallback to internal convention
-        emailToUse = '$cleanUsername@magicdiary.internal';
+        emailToUse = '$upperUsername@magicdiary.internal';
       }
     }
 
@@ -108,7 +136,7 @@ class AuthRepository {
     final user = credential.user!;
     var profile = await getUserProfile(user.uid);
     if (profile == null) {
-      final username = UserProfile.generate7CharUsername();
+      final username = await generateUniqueUsername();
       profile = UserProfile(
         uid: user.uid,
         email: user.email ?? emailToUse,
@@ -119,7 +147,7 @@ class AuthRepository {
         updatedAt: DateTime.now(),
       );
       await _firestore.collection('users').doc(user.uid).set(profile.toMap());
-      await _reserveUsername(username, user.uid, user.email ?? emailToUse);
+      await reserveUsername(username, user.uid, displayName: profile.displayName, email: profile.email);
     }
     return profile;
   }
@@ -132,9 +160,16 @@ class AuthRepository {
     String? username,
   }) async {
     final cleanEmail = email.trim();
-    final cleanUsername = (username?.trim().isNotEmpty ?? false)
-        ? username!.trim().toLowerCase()
-        : UserProfile.generate7CharUsername();
+    String cleanUsername;
+    if (username != null && username.trim().isNotEmpty) {
+      cleanUsername = username.trim().toUpperCase().replaceAll('0', '').replaceAll('O', '');
+      // If the provided username is too short or already exists in DB, regenerate until unique
+      if (cleanUsername.length < 3 || await isUsernameTaken(cleanUsername)) {
+        cleanUsername = await generateUniqueUsername();
+      }
+    } else {
+      cleanUsername = await generateUniqueUsername();
+    }
 
     final credential = await _auth.createUserWithEmailAndPassword(
       email: cleanEmail,
@@ -154,7 +189,7 @@ class AuthRepository {
     );
 
     await _firestore.collection('users').doc(user.uid).set(profile.toMap());
-    await _reserveUsername(cleanUsername, user.uid, cleanEmail);
+    await reserveUsername(cleanUsername, user.uid, displayName: displayName, email: cleanEmail);
     return profile;
   }
 
@@ -183,7 +218,7 @@ class AuthRepository {
 
       var profile = await getUserProfile(user.uid);
       if (profile == null) {
-        final username = UserProfile.generate7CharUsername();
+        final username = await generateUniqueUsername();
         profile = UserProfile(
           uid: user.uid,
           email: user.email ?? '',
@@ -197,7 +232,7 @@ class AuthRepository {
           updatedAt: DateTime.now(),
         );
         await _firestore.collection('users').doc(user.uid).set(profile.toMap());
-        await _reserveUsername(username, user.uid, user.email ?? '');
+        await reserveUsername(username, user.uid, displayName: profile.displayName, email: profile.email);
       }
       return profile;
     } catch (e) {
@@ -206,14 +241,34 @@ class AuthRepository {
     }
   }
 
-  Future<void> _reserveUsername(String username, String uid, String email) async {
-    if (username.isEmpty) return;
+  Future<void> reserveUsername(
+    String username,
+    String uid, {
+    String? displayName,
+    String? email,
+  }) async {
+    final clean = username.trim().toUpperCase();
+    if (clean.isEmpty) return;
     try {
-      await _firestore.collection('usernames').doc(username.toLowerCase()).set({
+      final data = <String, dynamic>{
         'uid': uid,
-        'email': email,
+        'username': clean,
         'createdAt': FieldValue.serverTimestamp(),
-      });
+      };
+      if (displayName != null && displayName.trim().isNotEmpty) {
+        data['displayName'] = displayName.trim();
+      }
+      if (email != null && email.trim().isNotEmpty) {
+        data['email'] = email.trim().toLowerCase();
+      }
+
+      await _firestore.collection('usernames').doc(clean).set(data, SetOptions(merge: true));
+      // Also alias lowercase doc for case-insensitive lookup compatibility
+      if (clean != clean.toLowerCase()) {
+        try {
+          await _firestore.collection('usernames').doc(clean.toLowerCase()).set(data, SetOptions(merge: true));
+        } catch (_) {}
+      }
     } catch (e) {
       debugPrint('Username reservation note: $e');
     }
@@ -234,6 +289,14 @@ class AuthRepository {
 
   Future<void> updateUserProfile(UserProfile updatedProfile) async {
     await _firestore.collection('users').doc(updatedProfile.uid).update(updatedProfile.toMap());
+    if (updatedProfile.username.isNotEmpty) {
+      reserveUsername(
+        updatedProfile.username,
+        updatedProfile.uid,
+        displayName: updatedProfile.displayName,
+        email: updatedProfile.email,
+      );
+    }
   }
 
   /// Permanently deletes the user's account and all associated data:

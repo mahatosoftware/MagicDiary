@@ -28,12 +28,35 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _obscurePassword = true;
   bool _isLoading = false;
   bool _isGoogleLoading = false;
+  bool _isGeneratingUsername = false;
   String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
     _usernameController.text = UserProfile.generate7CharUsername();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchUniqueUsername();
+    });
+  }
+
+  Future<void> _fetchUniqueUsername() async {
+    if (!mounted) return;
+    setState(() => _isGeneratingUsername = true);
+    try {
+      final unique = await ref.read(authRepositoryProvider).generateUniqueUsername();
+      if (mounted) {
+        setState(() {
+          _usernameController.text = unique;
+        });
+      }
+    } catch (e) {
+      debugPrint('Note: unable to query unique username from db in LoginScreen: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isGeneratingUsername = false);
+      }
+    }
   }
 
   @override
@@ -106,7 +129,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               email: _emailController.text.trim(),
               password: _passwordController.text.trim(),
               displayName: _fullNameController.text.trim(),
-              username: _usernameController.text.trim(),
+              username: _usernameController.text.trim().toUpperCase(),
             );
       } else {
         await ref.read(userProfileProvider.notifier).login(
@@ -298,6 +321,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             _errorMessage = null;
                             if (_isSignUp && _usernameController.text.trim().isEmpty) {
                               _usernameController.text = UserProfile.generate7CharUsername();
+                              _fetchUniqueUsername();
                             }
                           });
                         },
@@ -393,20 +417,36 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         const SizedBox(height: 14),
                         TextFormField(
                           controller: _usernameController,
+                          textCapitalization: TextCapitalization.characters,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z1-9]')),
+                            FilteringTextInputFormatter.deny(RegExp(r'[0oO]')),
+                            TextInputFormatter.withFunction((oldValue, newValue) {
+                              return TextEditingValue(
+                                text: newValue.text.toUpperCase(),
+                                selection: newValue.selection,
+                              );
+                            }),
+                          ],
                           decoration: InputDecoration(
                             labelText: 'Username (7-Character Alphanumeric)',
-                            hintText: 'e.g. k4m9x27',
-                            helperText: '7-character ID auto-generated for your account',
+                            hintText: 'e.g. K9Z7MPT',
+                            helperText: '7-character alphanumeric in all caps (excluding 0 and O)',
                             prefixIcon: const Icon(Icons.alternate_email_outlined),
-                            suffixIcon: IconButton(
-                              icon: const Icon(Icons.refresh_rounded),
-                              tooltip: 'Generate new 7-character username',
-                              onPressed: () {
-                                setState(() {
-                                  _usernameController.text = UserProfile.generate7CharUsername();
-                                });
-                              },
-                            ),
+                            suffixIcon: _isGeneratingUsername
+                                ? const Padding(
+                                    padding: EdgeInsets.all(12.0),
+                                    child: SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    ),
+                                  )
+                                : IconButton(
+                                    icon: const Icon(Icons.refresh_rounded),
+                                    tooltip: 'Generate new 7-character username',
+                                    onPressed: _fetchUniqueUsername,
+                                  ),
                             border: const OutlineInputBorder(),
                           ),
                           keyboardType: TextInputType.text,
@@ -417,6 +457,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             }
                             if (v.trim().length < 3) {
                               return 'Username must be at least 3 characters';
+                            }
+                            if (UserProfile.hasConfusingChars(v)) {
+                              return 'Username cannot contain "0" (zero) or "O" (letter O)';
+                            }
+                            if (!UserProfile.isValidAlphanumeric(v)) {
+                              return 'Username must be alphanumeric with uppercase letters and numbers (no 0 or O)';
                             }
                             return null;
                           },
@@ -533,12 +579,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 )
                               : Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
                                     _buildGoogleIcon(),
-                                    const SizedBox(width: 12),
-                                    const Text(
-                                      'Continue with Google',
-                                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                                    const SizedBox(width: 8),
+                                    const Flexible(
+                                      child: Text(
+                                        'Continue with Google',
+                                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ),
                                   ],
                                 ),

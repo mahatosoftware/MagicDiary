@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../auth/models/user_profile.dart';
 import '../models/shared_diary_models.dart';
 
 final sharedDiaryRepositoryProvider = Provider<SharedDiaryRepository>((ref) => SharedDiaryRepository());
@@ -16,6 +18,248 @@ class SharedDiaryRepository {
   CollectionReference<Map<String, dynamic>> get _sharesRef =>
       _firestore.collection('shared_diary_access');
 
+  CollectionReference<Map<String, dynamic>> get _invitationsRef =>
+      _firestore.collection('share_invitations');
+
+  /// Looks up a user in Firestore by username, UID, or QR code metadata (case-insensitive & resilient)
+  Future<UserProfile?> lookupUserByUsername(
+    String username, {
+    String? uidHint,
+    String? displayNameHint,
+    String? emailHint,
+  }) async {
+    final clean = username.trim().replaceAll('@', '');
+    if (clean.isEmpty && (uidHint == null || uidHint.trim().isEmpty)) return null;
+    final upper = clean.toUpperCase();
+    final lower = clean.toLowerCase();
+
+    // 1. Direct UID lookup if UID is known or hint provided (Fastest O(1) single-document get)
+    final targetUid = uidHint?.trim() ?? (clean.length >= 26 && clean.length <= 36 && !clean.contains(' ') ? clean : null);
+    if (targetUid != null && targetUid.isNotEmpty) {
+      try {
+        final userDoc = await _firestore.collection('users').doc(targetUid).get();
+        if (userDoc.exists && userDoc.data() != null) {
+          final profile = UserProfile.fromMap(userDoc.data()!, targetUid);
+          _seedUsernameMapping(profile.username.isNotEmpty ? profile.username : upper, targetUid, profile.displayName, profile.email);
+          return profile;
+        }
+      } catch (e) {
+        debugPrint('Direct user doc get note: $e');
+      }
+    }
+
+    // 2. Check usernames registry (check uppercase, fallback lowercase)
+    try {
+      var usernameDoc = await _firestore.collection('usernames').doc(upper).get();
+      if (!usernameDoc.exists && upper != lower) {
+        usernameDoc = await _firestore.collection('usernames').doc(lower).get();
+      }
+      if (usernameDoc.exists && usernameDoc.data() != null) {
+        final data = usernameDoc.data()!;
+        final uid = data['uid'] as String?;
+        if (uid != null && uid.isNotEmpty) {
+          try {
+            final userDoc = await _firestore.collection('users').doc(uid).get();
+            if (userDoc.exists && userDoc.data() != null) {
+              return UserProfile.fromMap(userDoc.data()!, uid);
+            }
+          } catch (e) {
+            debugPrint('Direct users collection get failed ($e), using registry metadata');
+          }
+          // Resilient fallback: return user profile constructed from usernames registry metadata
+          final displayName = data['displayName'] as String? ?? displayNameHint ?? '@$upper';
+          final email = data['email'] as String? ?? emailHint ?? '$upper@magicdiary.internal';
+          return UserProfile(
+            uid: uid,
+            email: email,
+            displayName: displayName,
+            username: upper,
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Note: Error checking usernames collection for "$upper": $e');
+    }
+
+    // 3. Fallback: Check if clean itself matches a user document ID directly
+    try {
+      final doc = await _firestore.collection('users').doc(clean).get();
+      if (doc.exists && doc.data() != null) {
+        final profile = UserProfile.fromMap(doc.data()!, clean);
+        _seedUsernameMapping(profile.username.isNotEmpty ? profile.username : upper, clean, profile.displayName, profile.email);
+        return profile;
+      }
+    } catch (_) {}
+
+    // 4. Fallback: Direct query on users collection (check uppercase, fallback lowercase)
+    try {
+      var query = await _firestore
+          .collection('users')
+          .where('username', isEqualTo: upper)
+          .limit(1)
+          .get();
+      if (query.docs.isEmpty && upper != lower) {
+        query = await _firestore
+            .collection('users')
+            .where('username', isEqualTo: lower)
+            .limit(1)
+            .get();
+      }
+      if (query.docs.isNotEmpty) {
+        final doc = query.docs.first;
+        final profile = UserProfile.fromMap(doc.data(), doc.id);
+        _seedUsernameMapping(profile.username.isNotEmpty ? profile.username : upper, doc.id, profile.displayName, profile.email);
+        return profile;
+      }
+    } catch (e) {
+      debugPrint('Note: Error querying users by username "$upper": $e');
+    }
+
+    // 5. Rich QR metadata fallback: if the QR payload embedded a valid UID or email
+    if (uidHint != null && uidHint.trim().isNotEmpty) {
+      return UserProfile(
+        uid: uidHint.trim(),
+        email: emailHint?.trim() ?? '$upper@magicdiary.internal',
+        displayName: displayNameHint?.trim() ?? '@$upper',
+        username: upper,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+    }
+
+    return null;
+  }
+
+  void _seedUsernameMapping(String username, String uid, String displayName, String email) {
+    final clean = username.trim().toUpperCase();
+    if (clean.isEmpty) return;
+    try {
+      final data = <String, dynamic>{
+        'uid': uid,
+        'username': clean,
+        'createdAt': FieldValue.serverTimestamp(),
+      };
+      if (displayName.trim().isNotEmpty) data['displayName'] = displayName.trim();
+      if (email.trim().isNotEmpty) data['email'] = email.trim().toLowerCase();
+      _firestore.collection('usernames').doc(clean).set(data, SetOptions(merge: true)).catchError((_) {});
+      if (clean != clean.toLowerCase()) {
+        _firestore.collection('usernames').doc(clean.toLowerCase()).set(data, SetOptions(merge: true)).catchError((_) {});
+      }
+    } catch (_) {}
+  }
+
+  /// Creates a one-time usable share invitation
+  Future<OneTimeShareInvite> createOneTimeShareInvite(OneTimeShareInvite invite) async {
+    await _invitationsRef.doc(invite.id).set(invite.toMap());
+    return invite;
+  }
+
+  /// Fetches an invitation by token
+  Future<OneTimeShareInvite?> getShareInvite(String token) async {
+    try {
+      final doc = await _invitationsRef.doc(token).get();
+      if (doc.exists && doc.data() != null) {
+        return OneTimeShareInvite.fromMap(doc.data()!, doc.id);
+      }
+    } catch (e) {
+      debugPrint('Error getting share invite $token: $e');
+    }
+    return null;
+  }
+
+  /// Claims a one-time usable invitation link in an atomic transaction
+  Future<SharedDiaryAccess> claimOneTimeInvite({
+    required String token,
+    required UserProfile recipientUser,
+  }) async {
+    final inviteRef = _invitationsRef.doc(token);
+
+    return await _firestore.runTransaction((transaction) async {
+      final inviteSnap = await transaction.get(inviteRef);
+      if (!inviteSnap.exists || inviteSnap.data() == null) {
+        throw Exception('Invite link not found or invalid.');
+      }
+
+      final invite = OneTimeShareInvite.fromMap(inviteSnap.data()!, inviteSnap.id);
+
+      if (invite.ownerUid == recipientUser.uid) {
+        throw Exception('You cannot claim your own share invite link.');
+      }
+
+      if (invite.isClaimed) {
+        throw Exception('This invite link has already been used and cannot be claimed again.');
+      }
+
+      if (invite.isExpired) {
+        throw Exception('This invite link has expired.');
+      }
+
+      final now = DateTime.now();
+
+      // Mark invite as claimed
+      transaction.update(inviteRef, {
+        'isClaimed': true,
+        'claimedByUid': recipientUser.uid,
+        'claimedByEmail': recipientUser.email,
+        'claimedByName': recipientUser.displayName,
+        'claimedAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // Grant recipient SharedDiaryAccess
+      final cleanEmail = recipientUser.email.trim().toLowerCase();
+      final primaryDocId = generateShareId(
+        ownerUid: invite.ownerUid,
+        diaryId: invite.diaryId,
+        target: cleanEmail.isNotEmpty ? cleanEmail : recipientUser.uid,
+      );
+
+      final share = SharedDiaryAccess(
+        id: primaryDocId,
+        diaryId: invite.diaryId,
+        diaryName: invite.diaryName,
+        ownerUid: invite.ownerUid,
+        ownerName: invite.ownerName,
+        recipientType: RecipientType.user,
+        sharingMode: invite.sharingMode,
+        futureRecordPolicy: FutureRecordPolicy.allFuture,
+        sharedWithUid: recipientUser.uid,
+        sharedWithEmail: cleanEmail,
+        sharedWithName: recipientUser.displayName.isNotEmpty
+            ? recipientUser.displayName
+            : (recipientUser.username.isNotEmpty ? '@${recipientUser.username}' : cleanEmail),
+        permission: invite.permission,
+        shareEntireDiary: invite.sharingMode == SharingMode.entire,
+        grantedRecordIds: invite.grantedRecordIds,
+        allowAttachments: invite.allowAttachments,
+        allowComments: invite.allowComments,
+        allowExport: invite.allowExport,
+        restrictedFields: invite.restrictedFields,
+        status: ShareStatus.active,
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      // Save primary share access
+      transaction.set(_sharesRef.doc(primaryDocId), share.toMap(), SetOptions(merge: true));
+
+      // Also set exact UID doc and lowercased UID doc for resilient O(1) rules matching
+      final exactUidDocId = '${invite.ownerUid}_${invite.diaryId}_${recipientUser.uid.trim().replaceAll('/', '_')}';
+      final lowerUidDocId = '${invite.ownerUid}_${invite.diaryId}_${recipientUser.uid.trim().toLowerCase().replaceAll('/', '_')}';
+
+      if (exactUidDocId != primaryDocId) {
+        transaction.set(_sharesRef.doc(exactUidDocId), share.copyWith(id: exactUidDocId).toMap(), SetOptions(merge: true));
+      }
+      if (lowerUidDocId != primaryDocId && lowerUidDocId != exactUidDocId) {
+        transaction.set(_sharesRef.doc(lowerUidDocId), share.copyWith(id: lowerUidDocId).toMap(), SetOptions(merge: true));
+      }
+
+      return share;
+    });
+  }
+
   /// Generates a deterministic document ID for instant O(1) Firestore security rules lookup.
   static String generateShareId({
     required String ownerUid,
@@ -30,30 +274,72 @@ class SharedDiaryRepository {
   /// Generates a deterministic document ID and an optional UID alias.
   Future<void> createShareAccess(SharedDiaryAccess access) async {
     final cleanEmail = access.sharedWithEmail.trim().toLowerCase();
-    final target = cleanEmail.isNotEmpty ? cleanEmail : access.sharedWithUid;
+    final safeEmail = cleanEmail.isNotEmpty
+        ? cleanEmail
+        : (access.sharedWithName.startsWith('@')
+            ? '${access.sharedWithName.replaceAll('@', '')}@magicdiary.internal'
+            : (access.sharedWithUid.isNotEmpty && !access.sharedWithUid.startsWith('pending_')
+                ? '${access.sharedWithUid}@magicdiary.internal'
+                : ''));
+
+    final target = safeEmail.isNotEmpty ? safeEmail : access.sharedWithUid;
     final primaryDocId = generateShareId(
       ownerUid: access.ownerUid,
       diaryId: access.diaryId,
       target: target,
     );
 
-    final normalized = access.copyWith(
-      id: primaryDocId,
-      sharedWithEmail: cleanEmail,
-    );
+    Future<void> writeShareDoc(String docId) async {
+      try {
+        final docRef = _sharesRef.doc(docId);
+        final existingDoc = await docRef.get();
+        final now = DateTime.now();
+
+        final Map<String, dynamic> data = access.toMap();
+        data['id'] = docId;
+        data['sharedWithEmail'] = safeEmail;
+        data['updatedAt'] = Timestamp.fromDate(now);
+
+        if (existingDoc.exists && existingDoc.data() != null) {
+          final existing = existingDoc.data()!;
+          if (existing['createdAt'] != null) {
+            data['createdAt'] = existing['createdAt'];
+          }
+          if (existing['ownerUid'] != null) {
+            data['ownerUid'] = existing['ownerUid'];
+          }
+          if (existing['diaryId'] != null) {
+            data['diaryId'] = existing['diaryId'];
+          }
+          if (existing['id'] != null) {
+            data['id'] = existing['id'];
+          }
+        } else {
+          data['createdAt'] = Timestamp.fromDate(access.createdAt);
+        }
+
+        await docRef.set(data, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('Error writing share doc $docId: $e');
+        if (docId == primaryDocId) {
+          rethrow;
+        }
+      }
+    }
 
     // 1. Save primary access record by deterministic email/target ID
-    await _sharesRef.doc(primaryDocId).set(normalized.toMap(), SetOptions(merge: true));
+    await writeShareDoc(primaryDocId);
 
-    // 2. If shared with a real UID (not pending), also save/alias by UID docId for O(1) rules
+    // 2. If shared with a real UID (not pending), save both exact UID and lowercased UID docId for O(1) rules
     if (access.sharedWithUid.isNotEmpty && !access.sharedWithUid.startsWith('pending_')) {
-      final uidDocId = generateShareId(
-        ownerUid: access.ownerUid,
-        diaryId: access.diaryId,
-        target: access.sharedWithUid,
-      );
-      if (uidDocId != primaryDocId) {
-        await _sharesRef.doc(uidDocId).set(normalized.copyWith(id: uidDocId).toMap(), SetOptions(merge: true));
+      final exactUidDocId = '${access.ownerUid}_${access.diaryId}_${access.sharedWithUid.trim().replaceAll('/', '_')}';
+      final lowerUidDocId = '${access.ownerUid}_${access.diaryId}_${access.sharedWithUid.trim().toLowerCase().replaceAll('/', '_')}';
+
+      if (exactUidDocId != primaryDocId) {
+        await writeShareDoc(exactUidDocId);
+      }
+      if (lowerUidDocId != primaryDocId && lowerUidDocId != exactUidDocId) {
+        await writeShareDoc(lowerUidDocId);
       }
     }
   }
@@ -394,12 +680,21 @@ class SharedDiaryRepository {
     required String uid,
     String? email,
   }) async {
-    // 1. Direct UID lookup
-    final uidDocId = generateShareId(ownerUid: ownerUid, diaryId: diaryId, target: uid);
-    final uidDoc = await _sharesRef.doc(uidDocId).get();
-    if (uidDoc.exists && uidDoc.data() != null) {
-      final access = SharedDiaryAccess.fromMap(uidDoc.data()!, uidDoc.id);
+    // 1. Direct UID lookup (check exact UID first, then lowercased UID)
+    final exactUidDocId = '${ownerUid}_${diaryId}_${uid.trim().replaceAll('/', '_')}';
+    final exactDoc = await _sharesRef.doc(exactUidDocId).get();
+    if (exactDoc.exists && exactDoc.data() != null) {
+      final access = SharedDiaryAccess.fromMap(exactDoc.data()!, exactDoc.id);
       if (!access.isExpired) return access;
+    }
+
+    final lowerUidDocId = '${ownerUid}_${diaryId}_${uid.trim().toLowerCase().replaceAll('/', '_')}';
+    if (lowerUidDocId != exactUidDocId) {
+      final lowerDoc = await _sharesRef.doc(lowerUidDocId).get();
+      if (lowerDoc.exists && lowerDoc.data() != null) {
+        final access = SharedDiaryAccess.fromMap(lowerDoc.data()!, lowerDoc.id);
+        if (!access.isExpired) return access;
+      }
     }
 
     // 2. Email lookup

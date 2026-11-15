@@ -9,15 +9,17 @@ import '../../../core/diary_registry/diary_registry.dart';
 import '../../../core/diary_registry/diary_definition.dart';
 import '../../../core/diary_registry/diary_category.dart';
 import '../../../core/providers/app_providers.dart';
-import '../../shared_diaries/models/shared_diary_models.dart';
-import '../../shared_diaries/repositories/shared_diary_repository.dart';
+import '../../shared_diaries/widgets/sharing_wizard_sheet.dart';
 
-final circleTasksStreamProvider = StreamProvider.family<List<CircleResponsibilityTask>, String>((ref, circleId) {
+final circleTasksStreamProvider =
+    StreamProvider.family<List<CircleResponsibilityTask>, String>(
+        (ref, circleId) {
   final repo = ref.read(magicCircleRepositoryProvider);
   return repo.watchCircleTasks(circleId);
 });
 
-final circleExpensesStreamProvider = StreamProvider.family<List<CircleExpense>, String>((ref, circleId) {
+final circleExpensesStreamProvider =
+    StreamProvider.family<List<CircleExpense>, String>((ref, circleId) {
   final repo = ref.read(magicCircleRepositoryProvider);
   return repo.watchCircleExpenses(circleId);
 });
@@ -33,10 +35,12 @@ class CircleDashboardScreen extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<CircleDashboardScreen> createState() => _CircleDashboardScreenState();
+  ConsumerState<CircleDashboardScreen> createState() =>
+      _CircleDashboardScreenState();
 }
 
-class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> with SingleTickerProviderStateMixin {
+class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   DiaryCategoryType? _selectedDiaryCategory;
 
@@ -57,14 +61,16 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
     final circlesAsync = ref.watch(userCirclesStreamProvider);
     final circle = circlesAsync.value?.firstWhere(
           (c) => c.id == widget.circleId,
-          orElse: () => widget.initialCircle ?? MagicCircle(
-            id: widget.circleId,
-            name: 'Circle',
-            ownerId: '',
-            members: [],
-            createdAt: DateTime.now(),
-            updatedAt: DateTime.now(),
-          ),
+          orElse: () =>
+              widget.initialCircle ??
+              MagicCircle(
+                id: widget.circleId,
+                name: 'Circle',
+                ownerId: '',
+                members: [],
+                createdAt: DateTime.now(),
+                updatedAt: DateTime.now(),
+              ),
         ) ??
         widget.initialCircle;
 
@@ -75,7 +81,8 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
     final user = ref.watch(userProfileProvider);
     final currentMember = circle.getMember(user?.uid ?? '');
     final tasksAsync = ref.watch(circleTasksStreamProvider(widget.circleId));
-    final expensesAsync = ref.watch(circleExpensesStreamProvider(widget.circleId));
+    final expensesAsync =
+        ref.watch(circleExpensesStreamProvider(widget.circleId));
 
     return Scaffold(
       appBar: AppBar(
@@ -113,7 +120,8 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
   // -------------------------------------------------------------
   // TAB 1: SHARED TASKS / RESPONSIBILITIES
   // -------------------------------------------------------------
-  Widget _buildTasksTab(AsyncValue<List<CircleResponsibilityTask>> tasksAsync, MagicCircle circle) {
+  Widget _buildTasksTab(AsyncValue<List<CircleResponsibilityTask>> tasksAsync,
+      MagicCircle circle) {
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showAddTaskModal(context, circle),
@@ -129,12 +137,17 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.assignment_turned_in_outlined, size: 64, color: Colors.grey.shade400),
+                  Icon(Icons.assignment_turned_in_outlined,
+                      size: 64, color: Colors.grey.shade400),
                   const SizedBox(height: 16),
-                  const Text('No Tasks in this Circle', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const Text('No Tasks in this Circle',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   const SizedBox(height: 6),
-                  const Text('Assign responsibilities like paying bills or grocery shopping to members.',
-                      textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  const Text(
+                      'Assign responsibilities like paying bills or grocery shopping to members.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey, fontSize: 13)),
                 ],
               ),
             );
@@ -147,11 +160,14 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
               final task = tasks[index];
               return Card(
                 margin: const EdgeInsets.only(bottom: 10),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
                 child: ListTile(
                   leading: IconButton(
                     icon: Icon(
-                      task.isCompleted ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                      task.isCompleted
+                          ? Icons.check_circle_rounded
+                          : Icons.radio_button_unchecked_rounded,
                       color: task.isCompleted ? Colors.green : Colors.grey,
                     ),
                     onPressed: task.isCompleted
@@ -166,7 +182,8 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
                     task.title,
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      decoration: task.isCompleted ? TextDecoration.lineThrough : null,
+                      decoration:
+                          task.isCompleted ? TextDecoration.lineThrough : null,
                       color: task.isCompleted ? Colors.grey : Colors.black87,
                     ),
                   ),
@@ -175,7 +192,8 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
                     style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                   ),
                   trailing: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
                       color: task.priority == 'high'
                           ? Colors.red.shade50
@@ -217,7 +235,9 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
 
     final filteredDiaries = _selectedDiaryCategory == null
         ? allSharedDiaries
-        : allSharedDiaries.where((d) => d.categoryType == _selectedDiaryCategory).toList();
+        : allSharedDiaries
+            .where((d) => d.categoryType == _selectedDiaryCategory)
+            .toList();
 
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
@@ -233,12 +253,14 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
               height: 48,
               child: ListView(
                 scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 children: [
                   ChoiceChip(
                     label: const Text('All Categories'),
                     selected: _selectedDiaryCategory == null,
-                    onSelected: (_) => setState(() => _selectedDiaryCategory = null),
+                    onSelected: (_) =>
+                        setState(() => _selectedDiaryCategory = null),
                   ),
                   const SizedBox(width: 8),
                   ...DiaryCategory.allCategories.map((cat) {
@@ -246,7 +268,9 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
                     return Padding(
                       padding: const EdgeInsets.only(right: 8.0),
                       child: ChoiceChip(
-                        avatar: Icon(cat.icon, size: 16, color: isSelected ? Colors.white : cat.color),
+                        avatar: Icon(cat.icon,
+                            size: 16,
+                            color: isSelected ? Colors.white : cat.color),
                         label: Text(cat.name),
                         selected: isSelected,
                         onSelected: (_) => setState(() {
@@ -264,13 +288,15 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.auto_stories_outlined, size: 64, color: Colors.grey.shade400),
+                        Icon(Icons.auto_stories_outlined,
+                            size: 64, color: Colors.grey.shade400),
                         const SizedBox(height: 16),
                         Text(
                           _selectedDiaryCategory != null
                               ? 'No Diaries in this Category'
                               : 'No Diaries Added Yet',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 16),
                         ),
                         const SizedBox(height: 6),
                         Text(
@@ -278,7 +304,8 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
                               ? 'Try selecting "All Categories" or add a new diary.'
                               : 'Share bills, groceries, vehicle or property diaries with circle members.',
                           textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.grey, fontSize: 13),
+                          style:
+                              const TextStyle(color: Colors.grey, fontSize: 13),
                         ),
                       ],
                     ),
@@ -290,15 +317,20 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
                       final diary = filteredDiaries[index];
                       return Card(
                         margin: const EdgeInsets.only(bottom: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
                         child: ListTile(
                           contentPadding: const EdgeInsets.all(12),
                           leading: CircleAvatar(
-                            backgroundColor: diary.color.withValues(alpha: 0.15),
+                            backgroundColor:
+                                diary.color.withValues(alpha: 0.15),
                             child: Icon(diary.icon, color: diary.color),
                           ),
-                          title: Text(diary.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Text(diary.description, maxLines: 2, overflow: TextOverflow.ellipsis),
+                          title: Text(diary.name,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: Text(diary.description,
+                              maxLines: 2, overflow: TextOverflow.ellipsis),
                           trailing: const Icon(Icons.chevron_right),
                           onTap: () {
                             context.push(
@@ -318,7 +350,8 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
   // -------------------------------------------------------------
   // TAB 3: SHARED EXPENSES
   // -------------------------------------------------------------
-  Widget _buildExpensesTab(AsyncValue<List<CircleExpense>> expensesAsync, MagicCircle circle) {
+  Widget _buildExpensesTab(
+      AsyncValue<List<CircleExpense>> expensesAsync, MagicCircle circle) {
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showAddExpenseModal(context, circle),
@@ -329,7 +362,8 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, stack) => Center(child: Text('Error: $err')),
         data: (expenses) {
-          final totalSpent = expenses.fold<double>(0.0, (acc, e) => acc + e.amount);
+          final totalSpent =
+              expenses.fold<double>(0.0, (acc, e) => acc + e.amount);
 
           return Column(
             children: [
@@ -345,16 +379,21 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
                   children: [
                     CircleAvatar(
                       backgroundColor: Colors.green.shade700,
-                      child: const Icon(Icons.account_balance_wallet, color: Colors.white),
+                      child: const Icon(Icons.account_balance_wallet,
+                          color: Colors.white),
                     ),
                     const SizedBox(width: 14),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Total Group Expenditure', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                        const Text('Total Group Expenditure',
+                            style: TextStyle(fontSize: 12, color: Colors.grey)),
                         Text(
                           '₹${totalSpent.toStringAsFixed(0)}',
-                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green.shade800),
+                          style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green.shade800),
                         ),
                       ],
                     ),
@@ -368,12 +407,18 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.receipt_long_outlined, size: 64, color: Colors.grey.shade400),
+                            Icon(Icons.receipt_long_outlined,
+                                size: 64, color: Colors.grey.shade400),
                             const SizedBox(height: 16),
-                            const Text('No Group Expenses Recorded', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                            const Text('No Group Expenses Recorded',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 16)),
                             const SizedBox(height: 6),
-                            const Text('Record group groceries, travel, or maintenance bills and split them evenly.',
-                                textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 13)),
+                            const Text(
+                                'Record group groceries, travel, or maintenance bills and split them evenly.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    color: Colors.grey, fontSize: 13)),
                           ],
                         ),
                       )
@@ -384,16 +429,23 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
                           final expense = expenses[index];
                           return Card(
                             margin: const EdgeInsets.only(bottom: 10),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14)),
                             child: ListTile(
-                              title: Text(expense.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                              title: Text(expense.title,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold)),
                               subtitle: Text(
                                 'Paid by ${expense.paidByName} • Split among ${expense.participantUids.length} members',
-                                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                                style: TextStyle(
+                                    fontSize: 12, color: Colors.grey.shade600),
                               ),
                               trailing: Text(
                                 '₹${expense.amount.toStringAsFixed(0)}',
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green),
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                    color: Colors.green),
                               ),
                             ),
                           );
@@ -410,7 +462,8 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
   // -------------------------------------------------------------
   // TAB 4: MEMBERS & ROLES
   // -------------------------------------------------------------
-  Widget _buildMembersTab(MagicCircle circle, MagicCircleMember? currentMember) {
+  Widget _buildMembersTab(
+      MagicCircle circle, MagicCircleMember? currentMember) {
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showInviteMemberModal(context, circle),
@@ -424,21 +477,29 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
           final member = circle.members[index];
           return Card(
             margin: const EdgeInsets.only(bottom: 10),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             child: ListTile(
               leading: CircleAvatar(
                 backgroundColor: Theme.of(context).primaryColor,
                 child: Text(
-                  member.displayName.isNotEmpty ? member.displayName[0].toUpperCase() : 'M',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  member.displayName.isNotEmpty
+                      ? member.displayName[0].toUpperCase()
+                      : 'M',
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.bold),
                 ),
               ),
-              title: Text(member.displayName, style: const TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: Text(member.email, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              title: Text(member.displayName,
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: Text(member.email,
+                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
               trailing: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: member.role == CircleRole.owner ? Colors.purple.shade50 : Colors.blue.shade50,
+                  color: member.role == CircleRole.owner
+                      ? Colors.purple.shade50
+                      : Colors.blue.shade50,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -446,7 +507,9 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
-                    color: member.role == CircleRole.owner ? Colors.purple.shade700 : Colors.blue.shade700,
+                    color: member.role == CircleRole.owner
+                        ? Colors.purple.shade700
+                        : Colors.blue.shade700,
                   ),
                 ),
               ),
@@ -473,29 +536,34 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
       isScrollControlled: true,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) => Padding(
-          padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+          padding: EdgeInsets.fromLTRB(
+              20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Assign Responsibility', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              const Text('Assign Responsibility',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
               const SizedBox(height: 14),
               TextField(
                 controller: titleController,
                 decoration: InputDecoration(
                   labelText: 'Task Title *',
                   hintText: 'e.g. Pay electricity bill, Buy milk',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12)),
                 ),
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<MagicCircleMember>(
                 decoration: InputDecoration(
                   labelText: 'Assign to Member',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12)),
                 ),
                 items: circle.members
-                    .map((m) => DropdownMenuItem(value: m, child: Text(m.displayName)))
+                    .map((m) =>
+                        DropdownMenuItem(value: m, child: Text(m.displayName)))
                     .toList(),
                 onChanged: (member) {
                   if (member != null) {
@@ -520,7 +588,8 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
                 child: InputDecorator(
                   decoration: InputDecoration(
                     labelText: 'Due Date',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12)),
                   ),
                   child: Text(DateFormat('d MMM yyyy').format(dueDate)),
                 ),
@@ -531,7 +600,8 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
                   ),
                   onPressed: () async {
                     final title = titleController.text.trim();
@@ -553,10 +623,13 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
                       createdAt: DateTime.now(),
                     );
 
-                    await ref.read(magicCircleRepositoryProvider).saveCircleTask(task);
+                    await ref
+                        .read(magicCircleRepositoryProvider)
+                        .saveCircleTask(task);
                     if (ctx.mounted) Navigator.pop(ctx);
                   },
-                  child: const Text('Assign Task', style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: const Text('Assign Task',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ),
             ],
@@ -579,13 +652,15 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Add Diary to Circle', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              const Text('Add Diary to Circle',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
               const SizedBox(height: 14),
               DropdownButtonFormField<DiaryDefinition>(
                 initialValue: selectedDiary,
                 decoration: InputDecoration(
                   labelText: 'Select Predefined Diary',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12)),
                 ),
                 items: alphabeticalDiaries
                     .map((d) => DropdownMenuItem(value: d, child: Text(d.name)))
@@ -600,56 +675,19 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
                   ),
                   onPressed: () async {
-                    if (!circle.sharedDiaryIds.contains(selectedDiary.id)) {
-                      final updatedIds = [...circle.sharedDiaryIds, selectedDiary.id];
-                      final updatedCircle = MagicCircle(
-                        id: circle.id,
-                        name: circle.name,
-                        description: circle.description,
-                        category: circle.category,
-                        ownerId: circle.ownerId,
-                        members: circle.members,
-                        sharedDiaryIds: updatedIds,
-                        createdAt: circle.createdAt,
-                        updatedAt: DateTime.now(),
-                      );
-                      await ref.read(magicCircleRepositoryProvider).updateCircle(updatedCircle);
-
-                      // Also generate SharedDiaryAccess for circle members so it appears in Shared Diaries
-                      final sharedRepo = ref.read(sharedDiaryRepositoryProvider);
-                      for (final member in circle.members) {
-                        if (member.uid != circle.ownerId && member.email.isNotEmpty) {
-                          final cleanEmail = member.email.trim().toLowerCase();
-                          final share = SharedDiaryAccess(
-                            id: SharedDiaryRepository.generateShareId(
-                              ownerUid: circle.ownerId,
-                              diaryId: selectedDiary.id,
-                              target: cleanEmail,
-                            ),
-                            diaryId: selectedDiary.id,
-                            diaryName: selectedDiary.name,
-                            ownerUid: circle.ownerId,
-                            ownerName: circle.name,
-                            circleId: circle.id,
-                            circleName: circle.name,
-                            sharedWithUid: member.uid.isNotEmpty ? member.uid : 'pending_$cleanEmail',
-                            sharedWithEmail: cleanEmail,
-                            sharedWithName: member.displayName,
-                            permission: SharedDiaryPermission.editor,
-                            shareEntireDiary: true,
-                            createdAt: DateTime.now(),
-                            updatedAt: DateTime.now(),
-                          );
-                          await sharedRepo.createShareAccess(share);
-                        }
-                      }
-                    }
-                    if (ctx.mounted) Navigator.pop(ctx);
+                    Navigator.pop(ctx);
+                    await SharingWizardSheet.showForCircle(
+                      context,
+                      selectedDiary,
+                      circle,
+                    );
                   },
-                  child: const Text('Add to Circle', style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: const Text('Choose how to share',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ),
             ],
@@ -669,29 +707,34 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
       isScrollControlled: true,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) => Padding(
-          padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+          padding: EdgeInsets.fromLTRB(
+              20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Add Group Expense', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              const Text('Add Group Expense',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
               const SizedBox(height: 14),
               TextField(
                 controller: titleController,
                 decoration: InputDecoration(
                   labelText: 'Expense Description *',
                   hintText: 'e.g. Weekly Groceries, Fuel, Hotel Booking',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12)),
                 ),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: amountController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
                 decoration: InputDecoration(
                   labelText: 'Amount *',
                   prefixText: '₹ ',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12)),
                 ),
               ),
               const SizedBox(height: 12),
@@ -699,10 +742,12 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
                 initialValue: paidByMember,
                 decoration: InputDecoration(
                   labelText: 'Paid By',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12)),
                 ),
                 items: circle.members
-                    .map((m) => DropdownMenuItem(value: m, child: Text(m.displayName)))
+                    .map((m) =>
+                        DropdownMenuItem(value: m, child: Text(m.displayName)))
                     .toList(),
                 onChanged: (val) {
                   if (val != null) setModalState(() => paidByMember = val);
@@ -714,16 +759,24 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
                   ),
                   onPressed: () async {
                     final title = titleController.text.trim();
-                    final amount = double.tryParse(amountController.text.trim()) ?? 0.0;
-                    if (title.isEmpty || amount <= 0 || paidByMember == null) return;
+                    final amount =
+                        double.tryParse(amountController.text.trim()) ?? 0.0;
+                    if (title.isEmpty || amount <= 0 || paidByMember == null) {
+                      return;
+                    }
 
-                    final participants = circle.members.map((m) => m.uid).toList();
-                    final splitPerPerson = amount / (participants.isEmpty ? 1 : participants.length);
-                    final matrix = {for (final uid in participants) uid: splitPerPerson};
+                    final participants =
+                        circle.members.map((m) => m.uid).toList();
+                    final splitPerPerson = amount /
+                        (participants.isEmpty ? 1 : participants.length);
+                    final matrix = {
+                      for (final uid in participants) uid: splitPerPerson
+                    };
 
                     final expense = CircleExpense(
                       id: const Uuid().v4(),
@@ -738,10 +791,13 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
                       expenseDate: DateTime.now(),
                     );
 
-                    await ref.read(magicCircleRepositoryProvider).saveCircleExpense(expense);
+                    await ref
+                        .read(magicCircleRepositoryProvider)
+                        .saveCircleExpense(expense);
                     if (ctx.mounted) Navigator.pop(ctx);
                   },
-                  child: const Text('Save Expense', style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: const Text('Save Expense',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ),
             ],
@@ -760,12 +816,14 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
       isScrollControlled: true,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) => Padding(
-          padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+          padding: EdgeInsets.fromLTRB(
+              20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Invite Member to Circle', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              const Text('Invite Member to Circle',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
               const SizedBox(height: 14),
               TextField(
                 controller: emailController,
@@ -773,7 +831,8 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
                 decoration: InputDecoration(
                   labelText: 'Member Email Address',
                   prefixIcon: const Icon(Icons.email_outlined),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12)),
                 ),
               ),
               const SizedBox(height: 12),
@@ -781,10 +840,12 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
                 initialValue: selectedRole,
                 decoration: InputDecoration(
                   labelText: 'Role',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12)),
                 ),
                 items: CircleRole.values
-                    .map((r) => DropdownMenuItem(value: r, child: Text(r.label)))
+                    .map(
+                        (r) => DropdownMenuItem(value: r, child: Text(r.label)))
                     .toList(),
                 onChanged: (val) {
                   if (val != null) setModalState(() => selectedRole = val);
@@ -796,7 +857,8 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
                   ),
                   onPressed: () async {
                     final email = emailController.text.trim();
@@ -823,10 +885,13 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen> w
                       updatedAt: DateTime.now(),
                     );
 
-                    await ref.read(magicCircleRepositoryProvider).updateCircle(updatedCircle);
+                    await ref
+                        .read(magicCircleRepositoryProvider)
+                        .updateCircle(updatedCircle);
                     if (ctx.mounted) Navigator.pop(ctx);
                   },
-                  child: const Text('Send Invitation', style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: const Text('Send Invitation',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ),
             ],

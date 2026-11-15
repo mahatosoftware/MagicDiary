@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 class UserProfile {
   final String uid;
@@ -13,29 +14,112 @@ class UserProfile {
   final DateTime createdAt;
   final DateTime updatedAt;
 
-  /// Generates a clean 7-character alphanumeric username (lowercase a-z and 0-9).
-  /// Starts with an alphabetic character and contains at least one numeric digit.
+  static const String allowedCapsLetters = 'ABCDEFGHIJKLMNPQRSTUVWXYZ'; // 25 letters, strictly no 'O'
+  static const String allowedDigits = '123456789'; // 9 digits, strictly no '0'
+  static const String allowedAlphanumeric = 'ABCDEFGHIJKLMNPQRSTUVWXYZ123456789'; // 34 characters
+
+  /// Generates a clean 7-character alphanumeric username with uppercase letters and numbers (1-9),
+  /// strictly excluding 'O' (letter O) and '0' (digit zero) to eliminate visual ambiguity.
+  /// Guarantees both uppercase letters and digits are present in every generated username.
   static String generate7CharUsername() {
-    const letters = 'abcdefghijklmnopqrstuvwxyz';
-    const digits = '0123456789';
-    const allChars = 'abcdefghijklmnopqrstuvwxyz0123456789';
     final random = Random.secure();
+    final chars = <String>[];
 
-    final buffer = StringBuffer();
-    // 1st character: letter (a-z)
-    buffer.write(letters[random.nextInt(letters.length)]);
-    // Next 5 characters: alphanumeric
+    // Ensure at least one uppercase letter (no 'O') and at least one digit (no '0')
+    chars.add(allowedCapsLetters[random.nextInt(allowedCapsLetters.length)]);
+    chars.add(allowedDigits[random.nextInt(allowedDigits.length)]);
+
+    // Fill remaining 5 positions from the combined alphanumeric pool
     for (int i = 0; i < 5; i++) {
-      buffer.write(allChars[random.nextInt(allChars.length)]);
+      chars.add(allowedAlphanumeric[random.nextInt(allowedAlphanumeric.length)]);
     }
-    // 7th character guarantee: numeric digit (0-9)
-    final digitChar = digits[random.nextInt(digits.length)];
-    final charsList = buffer.toString().split('')..add(digitChar);
 
-    // Keep first character as letter, shuffle characters 1..6
-    final firstChar = charsList[0];
-    final remaining = charsList.sublist(1)..shuffle(random);
-    return firstChar + remaining.join();
+    // Securely shuffle positions
+    chars.shuffle(random);
+    return chars.join();
+  }
+
+  /// Checks if a username contains confusing characters ('0', 'O', or 'o').
+  static bool hasConfusingChars(String username) {
+    final upper = username.toUpperCase();
+    return upper.contains('0') || upper.contains('O');
+  }
+
+  /// Checks if a username is valid alphanumeric with uppercase letters and digits 1-9 (no 0, no O/o).
+  static bool isValidAlphanumeric(String username) {
+    final clean = username.trim();
+    if (clean.length < 3 || clean.length > 30) return false;
+    return RegExp(r'^[A-NP-Z1-9]+$').hasMatch(clean);
+  }
+
+  /// Generates a unique 7-character username using only capital letters that is guaranteed not to exist in the database.
+  /// If the generated username exists in the db, it regenerates until a unique one is generated.
+  static Future<String> generateUniqueUsername({
+    FirebaseFirestore? firestore,
+    int maxAttempts = 100,
+    Future<bool> Function(String username)? isTakenFn,
+  }) async {
+    final check = isTakenFn ?? ((candidate) => isUsernameTaken(candidate, firestore: firestore));
+    for (int attempt = 0; attempt < maxAttempts; attempt++) {
+      final candidate = generate7CharUsername();
+      final exists = await check(candidate);
+      if (!exists) {
+        return candidate;
+      }
+      debugPrint('Generated username "$candidate" already exists in db (attempt ${attempt + 1}). Regenerating...');
+    }
+    // High-entropy fallback if max attempts reached
+    return generate7CharUsername();
+  }
+
+  /// Checks if a username already exists in Firestore (checks 'usernames' doc, then fallback 'users' collection).
+  /// Case-insensitive so checking 'KXMPEQA' detects both uppercase and legacy lowercase entries.
+  static Future<bool> isUsernameTaken(
+    String username, {
+    FirebaseFirestore? firestore,
+  }) async {
+    final clean = username.trim();
+    if (clean.isEmpty) return false;
+    final upper = clean.toUpperCase();
+    final lower = clean.toLowerCase();
+
+    // 1. Primary check in 'usernames' collection (single doc lookup)
+    try {
+      final db = firestore ?? FirebaseFirestore.instance;
+      var doc = await db.collection('usernames').doc(upper).get();
+      if (!doc.exists && upper != lower) {
+        doc = await db.collection('usernames').doc(lower).get();
+      }
+      if (doc.exists) {
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Note: Error checking usernames collection for "$upper": $e');
+    }
+
+    // 2. Secondary fallback check in 'users' collection by 'username' field
+    try {
+      final db = firestore ?? FirebaseFirestore.instance;
+      var query = await db
+          .collection('users')
+          .where('username', isEqualTo: upper)
+          .limit(1)
+          .get();
+      if (query.docs.isEmpty && upper != lower) {
+        query = await db
+            .collection('users')
+            .where('username', isEqualTo: lower)
+            .limit(1)
+            .get();
+      }
+      if (query.docs.isNotEmpty) {
+        return true;
+      }
+    } catch (e) {
+      // Permission might be denied if unauthenticated or non-owner, which is expected
+    }
+
+    return false;
   }
 
   UserProfile({

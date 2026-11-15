@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:magic_diary/core/diary_engine/models/diary_record.dart';
+export 'frequent_contact.dart';
+export 'one_time_share_invite.dart';
 
 enum SharedDiaryPermission {
   viewer,
@@ -64,6 +66,7 @@ extension SharingModeX on SharingMode {
 enum RecipientType {
   user,
   circle,
+  inviteLink,
 }
 
 extension RecipientTypeX on RecipientType {
@@ -73,6 +76,8 @@ extension RecipientTypeX on RecipientType {
         return 'Individual User';
       case RecipientType.circle:
         return 'Magic Circle';
+      case RecipientType.inviteLink:
+        return 'One-Time Invite Link';
     }
   }
 }

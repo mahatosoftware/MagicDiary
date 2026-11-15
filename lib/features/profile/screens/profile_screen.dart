@@ -89,10 +89,30 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
-  void _showQrCodeDialog(BuildContext context, UserProfile? user) {
+  /// Generates a rich, self-describing deep link payload for QR code sharing
+  static String getProfileQrData(UserProfile? user) {
+    if (user == null || user.username.isEmpty) return 'magicdiary';
+    final cleanUsername = user.username.toUpperCase();
+    final uid = user.uid;
+    final name = Uri.encodeComponent(user.displayName);
+    final email = Uri.encodeComponent(user.email);
+    return 'magicdiary://user/$cleanUsername?uid=$uid&name=$name&email=$email';
+  }
+
+  void _showQrCodeDialog(BuildContext context, WidgetRef ref, UserProfile? user) {
     if (user == null) return;
     final theme = Theme.of(context);
     final username = user.username.isNotEmpty ? user.username : 'magicdiary';
+
+    // Proactively guarantee the username registry is populated in Firestore
+    if (user.username.isNotEmpty) {
+      ref.read(authRepositoryProvider).reserveUsername(
+        user.username,
+        user.uid,
+        displayName: user.displayName,
+        email: user.email,
+      );
+    }
 
     showDialog(
       context: context,
@@ -157,7 +177,7 @@ class ProfileScreen extends ConsumerWidget {
                 ),
                 child: Center(
                   child: QrImageView(
-                    data: username,
+                    data: getProfileQrData(user),
                     version: QrVersions.auto,
                     size: 196.0,
                     eyeStyle: QrEyeStyle(
@@ -207,6 +227,19 @@ class ProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(userProfileProvider);
     final theme = Theme.of(context);
+
+    // Self-healing: ensure username is reserved and up-to-date in Firestore /usernames registry
+    if (user != null && user.username.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(authRepositoryProvider).reserveUsername(
+          user.username,
+          user.uid,
+          displayName: user.displayName,
+          email: user.email,
+        );
+      });
+    }
+
     User? currentUser;
     try {
       currentUser = FirebaseAuth.instance.currentUser;
@@ -316,7 +349,7 @@ class ProfileScreen extends ConsumerWidget {
                     IconButton(
                       icon: const Icon(Icons.qr_code_2_rounded),
                       tooltip: 'View Profile QR Code',
-                      onPressed: () => _showQrCodeDialog(context, user),
+                      onPressed: () => _showQrCodeDialog(context, ref, user),
                     ),
                     IconButton(
                       icon: const Icon(Icons.edit_outlined),
@@ -377,7 +410,7 @@ class ProfileScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: 16),
                     GestureDetector(
-                      onTap: () => _showQrCodeDialog(context, user),
+                      onTap: () => _showQrCodeDialog(context, ref, user),
                       child: Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
@@ -393,7 +426,7 @@ class ProfileScreen extends ConsumerWidget {
                           ],
                         ),
                         child: QrImageView(
-                          data: user?.username.isNotEmpty == true ? user!.username : 'magicdiary',
+                          data: getProfileQrData(user),
                           version: QrVersions.auto,
                           size: 160.0,
                           eyeStyle: QrEyeStyle(
@@ -456,7 +489,7 @@ class ProfileScreen extends ConsumerWidget {
                             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                             textStyle: const TextStyle(fontSize: 13),
                           ),
-                          onPressed: () => _showQrCodeDialog(context, user),
+                          onPressed: () => _showQrCodeDialog(context, ref, user),
                         ),
                       ],
                     ),
@@ -509,7 +542,7 @@ class ProfileScreen extends ConsumerWidget {
                         IconButton(
                           icon: const Icon(Icons.qr_code_2_rounded, size: 20),
                           tooltip: 'Show QR Code',
-                          onPressed: () => _showQrCodeDialog(context, user),
+                          onPressed: () => _showQrCodeDialog(context, ref, user),
                         ),
                         IconButton(
                           icon: const Icon(Icons.copy_rounded, size: 18),
