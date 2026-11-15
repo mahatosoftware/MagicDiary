@@ -4,11 +4,16 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import '../models/magic_circle_models.dart';
+import '../models/circle_candidate_member.dart';
+import '../widgets/add_circle_member_sheet.dart';
+import '../widgets/circle_invite_ready_dialog.dart';
 import 'magic_circles_screen.dart';
 import '../../../core/diary_registry/diary_registry.dart';
 import '../../../core/diary_registry/diary_definition.dart';
 import '../../../core/diary_registry/diary_category.dart';
 import '../../../core/providers/app_providers.dart';
+import '../../../core/security/circle_permission_service.dart';
+import '../../shared_diaries/repositories/frequent_contacts_repository.dart';
 import '../../shared_diaries/widgets/sharing_wizard_sheet.dart';
 
 final circleTasksStreamProvider =
@@ -808,96 +813,165 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen>
   }
 
   void _showInviteMemberModal(BuildContext context, MagicCircle circle) {
-    final emailController = TextEditingController();
-    var selectedRole = CircleRole.contributor;
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModalState) => Padding(
-          padding: EdgeInsets.fromLTRB(
-              20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Invite Member to Circle',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-              const SizedBox(height: 14),
-              TextField(
-                controller: emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: InputDecoration(
-                  labelText: 'Member Email Address',
-                  prefixIcon: const Icon(Icons.email_outlined),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.person_add_alt_1_rounded, color: Colors.deepPurple),
+                const SizedBox(width: 8),
+                const Text(
+                  'Add Member to Circle',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                 ),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<CircleRole>(
-                initialValue: selectedRole,
-                decoration: InputDecoration(
-                  labelText: 'Role',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(ctx),
                 ),
-                items: CircleRole.values
-                    .map(
-                        (r) => DropdownMenuItem(value: r, child: Text(r.label)))
-                    .toList(),
-                onChanged: (val) {
-                  if (val != null) setModalState(() => selectedRole = val);
-                },
+              ],
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: CircleAvatar(
+                backgroundColor: Colors.deepPurple.shade50,
+                child: const Icon(Icons.person_add_rounded, color: Colors.deepPurple),
               ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                  onPressed: () async {
-                    final email = emailController.text.trim();
-                    if (email.isEmpty || !email.contains('@')) return;
-
-                    final newMember = MagicCircleMember(
-                      uid: 'pending_$email',
-                      email: email,
-                      displayName: email.split('@').first,
-                      role: selectedRole,
-                      joinedAt: DateTime.now(),
-                      status: 'invited',
-                    );
-
-                    final updatedCircle = MagicCircle(
-                      id: circle.id,
-                      name: circle.name,
-                      description: circle.description,
-                      category: circle.category,
-                      ownerId: circle.ownerId,
-                      members: [...circle.members, newMember],
-                      sharedDiaryIds: circle.sharedDiaryIds,
-                      createdAt: circle.createdAt,
-                      updatedAt: DateTime.now(),
-                    );
-
-                    await ref
-                        .read(magicCircleRepositoryProvider)
-                        .updateCircle(updatedCircle);
-                    if (ctx.mounted) Navigator.pop(ctx);
+              title: const Text('Add by Username, QR, Email, or Contacts'),
+              subtitle: const Text('Search username, scan profile QR, or pick existing contacts'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: Colors.grey.shade200),
+              ),
+              onTap: () {
+                Navigator.pop(ctx);
+                AddCircleMemberSheet.show(
+                  context,
+                  existingCircle: circle,
+                  onMemberAdded: (candidate) async {
+                    await _addMemberToCircle(context, circle, candidate);
                   },
-                  child: const Text('Send Invitation',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            ListTile(
+              leading: CircleAvatar(
+                backgroundColor: Colors.amber.shade50,
+                child: Icon(Icons.link_rounded, color: Colors.amber.shade900),
               ),
-            ],
-          ),
+              title: const Text('Share Invite Link'),
+              subtitle: const Text('Generate link & QR code for WhatsApp, SMS or messaging'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: Colors.grey.shade200),
+              ),
+              onTap: () {
+                Navigator.pop(ctx);
+                _shareCircleInviteLink(context, circle);
+              },
+            ),
+            const SizedBox(height: 12),
+          ],
         ),
       ),
     );
+  }
+
+  Future<void> _addMemberToCircle(
+    BuildContext context,
+    MagicCircle circle,
+    CircleCandidateMember candidate,
+  ) async {
+    final existingMember = circle.members.where((m) =>
+        (candidate.uid != null && m.uid == candidate.uid) ||
+        m.email.toLowerCase() == candidate.email.toLowerCase()).firstOrNull;
+
+    if (existingMember != null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${candidate.displayName} is already a member of this Circle')),
+        );
+      }
+      return;
+    }
+
+    final newMember = candidate.toMagicCircleMember();
+    final updatedCircle = MagicCircle(
+      id: circle.id,
+      name: circle.name,
+      description: circle.description,
+      category: circle.category,
+      ownerId: circle.ownerId,
+      members: [...circle.members, newMember],
+      sharedDiaryIds: circle.sharedDiaryIds,
+      coverImageUrl: circle.coverImageUrl,
+      createdAt: circle.createdAt,
+      updatedAt: DateTime.now(),
+    );
+
+    await ref.read(magicCircleRepositoryProvider).updateCircle(updatedCircle);
+
+    // Record frequent contact usage
+    final currentUser = ref.read(userProfileProvider);
+    if (currentUser != null) {
+      try {
+        await ref.read(frequentContactsRepositoryProvider).recordContactUsage(
+              userId: currentUser.uid,
+              email: candidate.email,
+              name: candidate.displayName,
+              username: candidate.username,
+            );
+      } catch (_) {}
+    }
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Added ${candidate.displayName} to ${circle.name}!'),
+          backgroundColor: Colors.green.shade700,
+        ),
+      );
+    }
+  }
+
+  Future<void> _shareCircleInviteLink(BuildContext context, MagicCircle circle) async {
+    final currentUser = ref.read(userProfileProvider);
+    if (currentUser == null) return;
+
+    final token = const Uuid().v4();
+    try {
+      final permService = CirclePermissionService();
+      await permService.createInvitation(
+        circleId: circle.id,
+        circleName: circle.name,
+        inviterUid: currentUser.uid,
+        inviterName: currentUser.displayName,
+        inviteeEmail: 'link@magicdiary.internal',
+        role: 'contributor',
+      );
+    } catch (_) {}
+
+    if (context.mounted) {
+      await CircleInviteReadyDialog.show(
+        context,
+        circleId: circle.id,
+        circleName: circle.name,
+        token: token,
+      );
+    }
   }
 }

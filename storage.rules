@@ -7,6 +7,8 @@ rules_version = '2';
 // Access Patterns:
 // - User assets (invoices, receipts, warranty cards, profile photos, documents, voice notes)
 //   are stored under /users/{userId}/...
+// - Diary shared attachments: /users/{userId}/diaries/{diaryId}/attachments/...
+//   strictly governed by the diary share's `allowAttachments` flag in Firestore.
 // - Circle shared media and attachments are stored under /circles/{circleId}/...
 // - File size limit: 15MB max to prevent storage abuse and DoS.
 // - Allowed MIME content types:
@@ -49,6 +51,28 @@ service firebase.storage {
 
     function isCircleOwner(circleId) {
       return isAuthenticated() && firestore.get(/databases/(default)/documents/circles/$(circleId)).data.ownerId == request.auth.uid;
+    }
+
+    function canReadSharedDiaryAttachment(ownerId, diaryId) {
+      return isAuthenticated() && (
+        (
+          firestore.exists(/databases/(default)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.uid))
+          && firestore.get(/databases/(default)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.uid)).data.status == 'active'
+          && firestore.get(/databases/(default)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.uid)).data.allowAttachments == true
+        ) || (
+          request.auth.token.email != null
+          && firestore.exists(/databases/(default)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.token.email.lower()))
+          && firestore.get(/databases/(default)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.token.email.lower())).data.status == 'active'
+          && firestore.get(/databases/(default)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.token.email.lower())).data.allowAttachments == true
+        )
+      );
+    }
+
+    // Shared Diary-specific attachments directory (gated by allowAttachments flag)
+    match /users/{userId}/diaries/{diaryId}/attachments/{allPaths=**} {
+      allow read: if isOwner(userId) || canReadSharedDiaryAttachment(userId, diaryId);
+      allow write: if isOwner(userId) && isValidFileSize() && isValidContentType();
+      allow delete: if isOwner(userId);
     }
 
     // User-isolated directory

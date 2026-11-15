@@ -16,6 +16,7 @@ import '../features/shared_diaries/models/shared_diary_models.dart';
 import '../features/magic_circles/screens/magic_circles_screen.dart';
 import '../features/magic_circles/screens/create_circle_screen.dart';
 import '../features/magic_circles/screens/circle_dashboard_screen.dart';
+import '../features/magic_circles/screens/claim_circle_invite_screen.dart';
 import '../features/magic_circles/models/magic_circle_models.dart';
 import '../features/payments/screens/payments_hub_screen.dart';
 import '../features/documents/screens/document_library_screen.dart';
@@ -130,6 +131,18 @@ final router = GoRouter(
           builder: (context, state) => CircleDashboardScreen(
             circleId: state.pathParameters['id']!,
             initialCircle: state.extra as MagicCircle?,
+          ),
+        ),
+        GoRoute(
+          path: '/circle/invite/:token',
+          builder: (context, state) => ClaimCircleInviteScreen(
+            token: state.pathParameters['token']!,
+          ),
+        ),
+        GoRoute(
+          path: '/circles/invite/:token',
+          builder: (context, state) => ClaimCircleInviteScreen(
+            token: state.pathParameters['token']!,
           ),
         ),
         // Universal Calendar

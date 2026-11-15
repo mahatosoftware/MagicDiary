@@ -7,6 +7,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 enum QrScanType {
   username,
   inviteToken,
+  circleInviteToken,
   email,
   raw,
 }
@@ -68,11 +69,19 @@ class QrScanResult {
       } catch (_) {}
     }
 
-    // 2. Check for one-time invite link (deep link or web link)
+    // 2. Check for one-time diary invite link (deep link or web link)
     if (text.contains('/share/invite/')) {
       final token = text.split('/share/invite/').last.split('?').first.replaceAll('/', '').trim();
       if (token.isNotEmpty) {
         return QrScanResult(type: QrScanType.inviteToken, value: token);
+      }
+    }
+
+    // 2b. Check for circle invite link (deep link or web link)
+    if (text.contains('/circle/invite/')) {
+      final token = text.split('/circle/invite/').last.split('?').first.replaceAll('/', '').trim();
+      if (token.isNotEmpty) {
+        return QrScanResult(type: QrScanType.circleInviteToken, value: token);
       }
     }
 

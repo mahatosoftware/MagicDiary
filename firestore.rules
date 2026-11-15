@@ -40,7 +40,7 @@ rules_version = '2';
 //   - billAccounts/{accountId} (Recurring Bill Accounts)
 //   - bills/{billId} (Bills & Invoices)
 //   - billPayments/{paymentId} (Bill Payments)
-//   - documents/{documentId} (Document & Vault Records)
+//   - documents/{documentId} (Document & Vault Records; supports cross-user read when attached to a shared diary with allowAttachments)
 //   - reminders/{reminderId} (Task & Event Reminders)
 //   - vehicles/{vehicleId} (Vehicle Profiles)
 //   - serviceRecords/{serviceId} (Vehicle Maintenance Services)
@@ -77,6 +77,8 @@ rules_version = '2';
 //   - frequent_contacts/{contactId} (Frequent Used Contacts for Share Suggestions)
 //     - Fields: id (optional, max: 500), userId (required, matches auth.uid, immutable), email (required, format: email, max: 255), name (optional, max: 100), username (optional, max: 50), photoUrl (optional, max: 2048), useCount (required, >= 1), lastUsedAt (required, timestamp), createdAt (required, timestamp, immutable), updatedAt (optional, timestamp)
 //   - diaries/{diaryId}/records/{recordId} (Universal Diary Records for 45 Life OS Subdiaries)
+//     - private_data/{docId} (Isolated Sensitive / Redacted Field Payload - Option A)
+//       - Fields: recordId (required, matches recordId), ownerId (required, matches userId), diaryId (required, matches diaryId), sensitiveFields (required, map), restrictedFields (optional, list), updatedAt (optional, timestamp), createdAt (optional, timestamp), id (optional, string)
 //
 // Top-Level Collections:
 //   - /circle_invitations/{invitationId} (Magic Circle Member Invitations)
@@ -338,10 +340,16 @@ service cloud.firestore {
         && data.mimeType is string && data.mimeType.size() <= 100
         && data.fileSizeBytes is number && data.fileSizeBytes >= 0
         && data.createdAt is timestamp
+        && isValidOptionalString(data, 'id', 100)
         && isValidOptionalString(data, 'storagePath', 500)
         && isValidOptionalString(data, 'relatedProductId', 100)
         && isValidOptionalString(data, 'relatedInstallmentId', 100)
         && isValidOptionalString(data, 'relatedBillId', 100)
+        && isValidOptionalString(data, 'relatedDiaryId', 100)
+        && isValidOptionalString(data, 'relatedRecordId', 100)
+        && isValidOptionalString(data, 'circleId', 100)
+        && isValidOptionalDate(data, 'expiryDate')
+        && isValidOptionalString(data, 'extractedText', 10000)
         && isValidOptionalList(data, 'tags', 20)
         && isValidOptionalString(data, 'notes', 1000);
     }
@@ -1020,6 +1028,18 @@ service cloud.firestore {
         && (!('schemaVersion' in data) || data.schemaVersion == null || (data.schemaVersion is int && data.schemaVersion >= 0));
     }
 
+    function isValidPrivateData(data, userId, diaryId, recordId) {
+      return hasRequiredFields(data, ['recordId', 'ownerId', 'diaryId', 'sensitiveFields'])
+        && data.recordId is string && data.recordId == recordId && data.recordId.size() <= 100
+        && data.ownerId is string && data.ownerId == userId && data.ownerId.size() <= 100
+        && data.diaryId is string && data.diaryId == diaryId && data.diaryId.size() <= 100
+        && data.sensitiveFields is map
+        && isValidOptionalList(data, 'restrictedFields', 50)
+        && isValidOptionalDate(data, 'updatedAt')
+        && isValidOptionalDate(data, 'createdAt')
+        && isValidOptionalString(data, 'id', 100);
+    }
+
     // ===============================================================
     // Magic Circles & Shared Diary Access Validators & Helpers
     // ===============================================================
@@ -1134,16 +1154,18 @@ service cloud.firestore {
         && data.circleName is string && data.circleName.size() >= 1 && data.circleName.size() <= 150
         && data.inviterUid is string && data.inviterUid.size() >= 1 && data.inviterUid.size() <= 100
         && data.inviterName is string && data.inviterName.size() >= 1 && data.inviterName.size() <= 100
-        && data.inviteeEmail is string && data.inviteeEmail.size() <= 255 && isValidEmail(data.inviteeEmail)
+        && data.inviteeEmail is string && data.inviteeEmail.size() <= 255 && (data.inviteeEmail == 'link' || data.inviteeEmail.size() == 0 || isValidEmail(data.inviteeEmail))
         && data.role is string && data.role in ['admin', 'editor', 'contributor', 'viewer', 'member']
         && data.status in ['pending', 'accepted', 'revoked', 'expired']
         && isTimestampOrDateString(data.createdAt)
         && isTimestampOrDateString(data.expiresAt)
+        && isValidOptionalBool(data, 'isLinkInvite')
         && isValidOptionalString(data, 'token', 100)
         && isValidOptionalDate(data, 'acceptedAt')
         && isValidOptionalString(data, 'acceptedByUid', 100)
         && isValidOptionalDate(data, 'revokedAt')
-        && isValidOptionalString(data, 'revokedByUid', 100);
+        && isValidOptionalString(data, 'revokedByUid', 100)
+        && isValidOptionalDate(data, 'updatedAt');
     }
 
     function isValidCircleTask(data, circleId) {
@@ -1304,6 +1326,51 @@ service cloud.firestore {
         && shareDoc.data.permission in ['contributor', 'editor', 'admin'];
     }
 
+    function canReadRecordPrivateData(ownerId, diaryId, recordId) {
+      let uidExactPath = /databases/$(database)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.uid);
+      let uidLowerPath = /databases/$(database)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.uid.lower());
+      let emailLower = request.auth.token.email != null ? request.auth.token.email.lower() : '';
+      let emailPath = /databases/$(database)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + emailLower);
+      let shareDoc = exists(uidExactPath) ? get(uidExactPath) : (
+        exists(uidLowerPath) ? get(uidLowerPath) : (
+          request.auth.token.email != null && exists(emailPath) ? get(emailPath) : null
+        )
+      );
+      return isAuthenticated()
+        && shareDoc != null
+        && (!('status' in shareDoc.data) || shareDoc.data.status == null || shareDoc.data.status == 'active')
+        && (!('expiresAt' in shareDoc.data) || shareDoc.data.expiresAt == null || request.time < shareDoc.data.expiresAt)
+        && (
+          (
+            (shareDoc.data.shareEntireDiary == true || (!('sharingMode' in shareDoc.data) || shareDoc.data.sharingMode == 'entire'))
+            && (!('shareEntireDiary' in shareDoc.data && shareDoc.data.shareEntireDiary == false))
+            && (!('sharingMode' in shareDoc.data && shareDoc.data.sharingMode == 'selected'))
+          )
+          || (
+            shareDoc.data.grantedRecordIds is list
+            && recordId in shareDoc.data.grantedRecordIds
+          )
+        )
+        && (!('restrictedFields' in shareDoc.data) || shareDoc.data.restrictedFields == null || shareDoc.data.restrictedFields.size() == 0);
+    }
+
+    function canReadSharedAttachmentDocument(ownerId, diaryId) {
+      let uidExactPath = /databases/$(database)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.uid);
+      let uidLowerPath = /databases/$(database)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.uid.lower());
+      let emailLower = request.auth.token.email != null ? request.auth.token.email.lower() : '';
+      let emailPath = /databases/$(database)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + emailLower);
+      let shareDoc = exists(uidExactPath) ? get(uidExactPath) : (
+        exists(uidLowerPath) ? get(uidLowerPath) : (
+          request.auth.token.email != null && exists(emailPath) ? get(emailPath) : null
+        )
+      );
+      return isAuthenticated()
+        && shareDoc != null
+        && (!('status' in shareDoc.data) || shareDoc.data.status == null || shareDoc.data.status == 'active')
+        && (!('expiresAt' in shareDoc.data) || shareDoc.data.expiresAt == null || request.time < shareDoc.data.expiresAt)
+        && ('allowAttachments' in shareDoc.data && shareDoc.data.allowAttachments == true);
+    }
+
     // ===============================================================
     // Root User Profile Rule
     // ===============================================================
@@ -1410,7 +1477,8 @@ service cloud.firestore {
       }
 
       match /documents/{documentId} {
-        allow read, delete: if isOwner(userId);
+        allow read: if isOwner(userId) || (resource.data.relatedDiaryId != null && canReadSharedAttachmentDocument(userId, resource.data.relatedDiaryId));
+        allow delete: if isOwner(userId);
         allow create: if isOwner(userId) && isValidDocumentRecord(request.resource.data, userId);
         allow update: if isOwner(userId)
                       && isValidDocumentRecord(request.resource.data, userId)
@@ -1722,6 +1790,11 @@ service cloud.firestore {
             hasSharedDiaryWriteAccess(userId, diaryId)
             && resource.data.createdBy == request.auth.uid
           );
+
+          match /private_data/{docId} {
+            allow read: if isOwner(userId) || canReadRecordPrivateData(userId, diaryId, recordId);
+            allow write: if isOwner(userId) && isValidPrivateData(request.resource.data, userId, diaryId, recordId);
+          }
         }
       }
     }
@@ -1841,6 +1914,10 @@ service cloud.firestore {
                         && areImmutableFieldsUnchanged(['id', 'name', 'category', 'ownerId', 'createdAt', 'sharedDiaryIds', 'description', 'coverImageUrl'])
                         && request.auth.uid in request.resource.data.memberUids
                       )
+                      || (
+                        areImmutableFieldsUnchanged(['id', 'name', 'category', 'ownerId', 'createdAt', 'sharedDiaryIds', 'description', 'coverImageUrl'])
+                        && request.auth.uid in request.resource.data.memberUids
+                      )
                     );
       allow delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
 
@@ -1875,7 +1952,8 @@ service cloud.firestore {
     // Circle Invitations (Magic Circles Invitations) Collection
     // ===============================================================
     match /circle_invitations/{invitationId} {
-      allow read: if isAuthenticated() && (
+      allow get: if isAuthenticated();
+      allow list: if isAuthenticated() && (
         resource.data.inviterUid == request.auth.uid
         || (request.auth.token.email != null && resource.data.inviteeEmail.lower() == request.auth.token.email.lower())
       );
@@ -1885,10 +1963,24 @@ service cloud.firestore {
                     && isValidCircleInvitation(request.resource.data);
       allow update: if isAuthenticated()
                     && isValidCircleInvitation(request.resource.data)
-                    && areImmutableFieldsUnchanged(['id', 'circleId', 'inviterUid', 'inviteeEmail', 'createdAt'])
                     && (
-                      resource.data.inviterUid == request.auth.uid
-                      || (request.auth.token.email != null && resource.data.inviteeEmail.lower() == request.auth.token.email.lower() && areImmutableFieldsUnchanged(['role']))
+                      (
+                        resource.data.inviterUid == request.auth.uid
+                        && areImmutableFieldsUnchanged(['id', 'circleId', 'inviterUid', 'inviteeEmail', 'createdAt'])
+                      )
+                      || (
+                        request.auth.token.email != null
+                        && resource.data.inviteeEmail.lower() == request.auth.token.email.lower()
+                        && areImmutableFieldsUnchanged(['id', 'circleId', 'inviterUid', 'inviteeEmail', 'createdAt', 'role'])
+                      )
+                      || (
+                        request.auth.uid != resource.data.inviterUid
+                        && resource.data.status == 'pending'
+                        && request.resource.data.status == 'accepted'
+                        && request.resource.data.acceptedByUid == request.auth.uid
+                        && (!('expiresAt' in resource.data) || resource.data.expiresAt == null || request.time < resource.data.expiresAt)
+                        && areImmutableFieldsUnchanged(['id', 'circleId', 'circleName', 'inviterUid', 'inviterName', 'role', 'createdAt', 'expiresAt'])
+                      )
                     );
       allow delete: if isAuthenticated() && resource.data.inviterUid == request.auth.uid;
     }

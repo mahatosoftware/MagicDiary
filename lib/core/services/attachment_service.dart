@@ -129,7 +129,9 @@ class AttachmentService {
   }) async {
     final attachmentId = const Uuid().v4();
     final ext = file.path.split('.').last;
-    final storagePath = 'users/$userId/attachments/$attachmentId.$ext';
+    final storagePath = relatedDiaryId != null && relatedDiaryId.isNotEmpty
+        ? 'users/$userId/diaries/$relatedDiaryId/attachments/$attachmentId.$ext'
+        : 'users/$userId/attachments/$attachmentId.$ext';
 
     final ref = _storage.ref().child(storagePath);
     final uploadTask = await ref.putFile(

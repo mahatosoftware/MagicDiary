@@ -1711,9 +1711,8 @@ class _SharingWizardSheetState extends ConsumerState<SharingWizardSheet> {
           debugPrint('Note recording frequent contact: $e');
         }
       } else {
-        // Circle members read using their UID/email. Do not write an aggregate
-        // Circle document: it is not used by the record-read rules and its
-        // generated ID can exceed the rules' 100-character limit.
+        // Circle members read using their UID/email. Access remains per member;
+        // the Circle document only indexes which diaries appear in its UI.
         final circleId = _selectedCircleId!;
         final circleName = _selectedCircleName ?? 'Circle';
 
@@ -1730,59 +1729,90 @@ class _SharingWizardSheetState extends ConsumerState<SharingWizardSheet> {
           }
         }
 
-        if (circle != null) {
-          for (final member in circle.members) {
-            if (member.uid == user.uid || member.uid == circle.ownerId) {
-              continue;
-            }
-            final cleanEmail = member.email.trim().toLowerCase();
-            final email = cleanEmail.isNotEmpty
-                ? cleanEmail
-                : '${member.displayName.isNotEmpty ? member.displayName.replaceAll(' ', '_').toLowerCase() : (member.uid.isNotEmpty ? member.uid : 'member')}@magicdiary.internal';
-            final recipientUid = member.uid.isNotEmpty
-                ? member.uid
-                : (cleanEmail.isNotEmpty ? 'pending_$cleanEmail' : 'pending_$email');
-            if (recipientUid.isEmpty) continue;
+        if (circle == null) {
+          throw Exception(
+              'Could not load the selected Circle. Please try again.');
+        }
+        final selectedCircle = circle;
 
-            await repo.createShareAccess(
-              SharedDiaryAccess(
-                id: SharedDiaryRepository.generateShareId(
-                  ownerUid: user.uid,
-                  diaryId: diary.id,
-                  target: email.isNotEmpty ? email : recipientUid,
-                ),
-                diaryId: diary.id,
-                diaryName: diary.name,
+        final recipients = selectedCircle.members
+            .where((member) =>
+                member.status == 'active' &&
+                member.uid != user.uid &&
+                member.uid != selectedCircle.ownerId)
+            .toList();
+        if (recipients.isEmpty) {
+          throw Exception(
+              'This Circle has no other active members to share with.');
+        }
+
+        for (final member in recipients) {
+          final cleanEmail = member.email.trim().toLowerCase();
+          final email = cleanEmail.isNotEmpty
+              ? cleanEmail
+              : '${member.displayName.isNotEmpty ? member.displayName.replaceAll(' ', '_').toLowerCase() : (member.uid.isNotEmpty ? member.uid : 'member')}@magicdiary.internal';
+          final recipientUid = member.uid.isNotEmpty
+              ? member.uid
+              : (cleanEmail.isNotEmpty
+                  ? 'pending_$cleanEmail'
+                  : 'pending_$email');
+          if (recipientUid.isEmpty) continue;
+
+          await repo.createShareAccess(
+            SharedDiaryAccess(
+              id: SharedDiaryRepository.generateShareId(
                 ownerUid: user.uid,
-                ownerName: ownerName,
-                circleId: circleId,
-                circleName: circleName,
-                recipientType: RecipientType.circle,
-                sharingMode: _sharingMode,
-                futureRecordPolicy: _futurePolicy,
-                snapshotCutoffTime:
-                    _futurePolicy == FutureRecordPolicy.existingOnly
-                        ? (widget.initialShare?.snapshotCutoffTime ??
-                            DateTime.now())
-                        : null,
-                sharedWithUid: recipientUid,
-                sharedWithEmail: email,
-                sharedWithName: member.displayName,
-                permission: _permission,
-                shareEntireDiary: _sharingMode == SharingMode.entire,
-                grantedRecordIds: _sharingMode == SharingMode.selected
-                    ? _selectedRecordIds.toList()
-                    : const [],
-                allowAttachments: _allowAttachments,
-                allowComments: _allowComments,
-                allowExport: _allowExport,
-                restrictedFields: _restrictedFields,
-                status: ShareStatus.active,
-                expiresAt: _expiresAt,
-                createdAt: widget.initialShare?.createdAt ?? DateTime.now(),
-                updatedAt: DateTime.now(),
+                diaryId: diary.id,
+                target: email.isNotEmpty ? email : recipientUid,
               ),
-            );
+              diaryId: diary.id,
+              diaryName: diary.name,
+              ownerUid: user.uid,
+              ownerName: ownerName,
+              circleId: circleId,
+              circleName: circleName,
+              recipientType: RecipientType.circle,
+              sharingMode: _sharingMode,
+              futureRecordPolicy: _futurePolicy,
+              snapshotCutoffTime: _futurePolicy ==
+                      FutureRecordPolicy.existingOnly
+                  ? (widget.initialShare?.snapshotCutoffTime ?? DateTime.now())
+                  : null,
+              sharedWithUid: recipientUid,
+              sharedWithEmail: email,
+              sharedWithName: member.displayName,
+              permission: _permission,
+              shareEntireDiary: _sharingMode == SharingMode.entire,
+              grantedRecordIds: _sharingMode == SharingMode.selected
+                  ? _selectedRecordIds.toList()
+                  : const [],
+              allowAttachments: _allowAttachments,
+              allowComments: _allowComments,
+              allowExport: _allowExport,
+              restrictedFields: _restrictedFields,
+              status: ShareStatus.active,
+              expiresAt: _expiresAt,
+              createdAt: widget.initialShare?.createdAt ?? DateTime.now(),
+              updatedAt: DateTime.now(),
+            ),
+          );
+        }
+
+        // The Circle tab is backed by sharedDiaryIds. Keep that index in sync
+        // with the per-member access records so the shared diary is discoverable.
+        // Non-admin members may not be allowed to update Circle metadata.
+        if (selectedCircle.ownerId == user.uid ||
+            selectedCircle.getMember(user.uid)?.role.isAdmin == true) {
+          try {
+            await ref.read(magicCircleRepositoryProvider).updateCircle(
+                  selectedCircle.copyWith(
+                    sharedDiaryIds:
+                        {...selectedCircle.sharedDiaryIds, diary.id}.toList(),
+                    updatedAt: DateTime.now(),
+                  ),
+                );
+          } catch (e) {
+            debugPrint('Could not update Circle diary index: $e');
           }
         }
       }

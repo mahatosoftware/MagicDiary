@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/diary_record.dart';
 
@@ -17,12 +18,73 @@ class DiaryRecordRepository {
         .collection('records');
   }
 
+  DocumentReference<Map<String, dynamic>> _recordPrivateDataRef({
+    required String userId,
+    required String diaryId,
+    required String recordId,
+  }) {
+    return _userRecordsRef(userId, diaryId)
+        .doc(recordId)
+        .collection('private_data')
+        .doc('details');
+  }
+
+  /// Saves a diary record.
+  /// If [record.restrictedFields] is non-empty, sensitive fields are isolated into
+  /// a separate `/private_data/details` subcollection protected by independent
+  /// Firestore security rules (Option A), preventing unauthorized over-the-wire retrieval.
   Future<void> saveRecord({
     required String userId,
     required DiaryRecord record,
   }) async {
-    final ref = _userRecordsRef(userId, record.sourceDiaryId).doc(record.id);
-    await ref.set(record.toMap(), SetOptions(merge: true));
+    final recordRef = _userRecordsRef(userId, record.sourceDiaryId).doc(record.id);
+
+    if (record.restrictedFields.isNotEmpty) {
+      final sensitiveData = <String, dynamic>{};
+      final publicFields = Map<String, dynamic>.from(record.fields);
+
+      for (final key in record.restrictedFields) {
+        if (publicFields.containsKey(key)) {
+          sensitiveData[key] = publicFields.remove(key);
+        }
+      }
+
+      final isAmountRestricted = record.restrictedFields.contains('amount');
+      if (isAmountRestricted && record.amount != null) {
+        sensitiveData['amount'] = record.amount;
+      }
+
+      final sanitizedRecord = record.copyWith(
+        fields: publicFields,
+        clearAmount: isAmountRestricted,
+      );
+
+      final batch = _firestore.batch();
+      batch.set(recordRef, sanitizedRecord.toMap(), SetOptions(merge: true));
+
+      final privateRef = _recordPrivateDataRef(
+        userId: userId,
+        diaryId: record.sourceDiaryId,
+        recordId: record.id,
+      );
+
+      batch.set(
+        privateRef,
+        {
+          'recordId': record.id,
+          'ownerId': userId,
+          'diaryId': record.sourceDiaryId,
+          'sensitiveFields': sensitiveData,
+          'restrictedFields': record.restrictedFields,
+          'updatedAt': Timestamp.now(),
+        },
+        SetOptions(merge: true),
+      );
+
+      await batch.commit();
+    } else {
+      await recordRef.set(record.toMap(), SetOptions(merge: true));
+    }
   }
 
   Future<void> deleteRecord({
@@ -30,9 +92,23 @@ class DiaryRecordRepository {
     required String diaryId,
     required String recordId,
   }) async {
-    await _userRecordsRef(userId, diaryId).doc(recordId).delete();
+    final batch = _firestore.batch();
+    final recordRef = _userRecordsRef(userId, diaryId).doc(recordId);
+    final privateRef = _recordPrivateDataRef(
+      userId: userId,
+      diaryId: diaryId,
+      recordId: recordId,
+    );
+
+    batch.delete(privateRef);
+    batch.delete(recordRef);
+    await batch.commit();
   }
 
+  /// Retrieves a record.
+  /// If the record contains restricted fields, seamlessly attempts to load and merge
+  /// `/private_data/details`. If the caller is restricted, Firestore Security Rules
+  /// will deny access to the subcollection, leaving sensitive fields securely absent.
   Future<DiaryRecord?> getRecord({
     required String userId,
     required String diaryId,
@@ -40,7 +116,40 @@ class DiaryRecordRepository {
   }) async {
     final doc = await _userRecordsRef(userId, diaryId).doc(recordId).get();
     if (!doc.exists || doc.data() == null) return null;
-    return DiaryRecord.fromMap(doc.data()!, doc.id);
+    var record = DiaryRecord.fromMap(doc.data()!, doc.id);
+
+    if (record.restrictedFields.isNotEmpty) {
+      try {
+        final privateDoc = await _recordPrivateDataRef(
+          userId: userId,
+          diaryId: diaryId,
+          recordId: recordId,
+        ).get();
+
+        if (privateDoc.exists && privateDoc.data() != null) {
+          final data = privateDoc.data()!;
+          final sensitiveFields = Map<String, dynamic>.from(
+              data['sensitiveFields'] as Map? ?? {});
+
+          final mergedFields = Map<String, dynamic>.from(record.fields)
+            ..addAll(sensitiveFields);
+
+          final restoredAmount = sensitiveFields.containsKey('amount')
+              ? (sensitiveFields['amount'] as num?)?.toDouble()
+              : record.amount;
+
+          record = record.copyWith(
+            fields: mergedFields,
+            amount: restoredAmount,
+          );
+        }
+      } catch (_) {
+        // PERMISSION_DENIED: caller is unauthorized to view private_data.
+        // The record safely remains in its redacted state at the data layer.
+      }
+    }
+
+    return record;
   }
 
   Stream<List<DiaryRecord>> watchRecords({
@@ -87,5 +196,47 @@ class DiaryRecordRepository {
     final resolved = records.whereType<DiaryRecord>().toList()
       ..sort((a, b) => b.recordDate.compareTo(a.recordDate));
     return resolved;
+  }
+
+  /// Stream a single record with real-time private_data details merged.
+  Stream<DiaryRecord?> watchRecordWithPrivateData({
+    required String userId,
+    required String diaryId,
+    required String recordId,
+  }) {
+    return _userRecordsRef(userId, diaryId).doc(recordId).snapshots().asyncMap((doc) async {
+      if (!doc.exists || doc.data() == null) return null;
+      var record = DiaryRecord.fromMap(doc.data()!, doc.id);
+
+      if (record.restrictedFields.isNotEmpty) {
+        try {
+          final privateDoc = await _recordPrivateDataRef(
+            userId: userId,
+            diaryId: diaryId,
+            recordId: recordId,
+          ).get();
+
+          if (privateDoc.exists && privateDoc.data() != null) {
+            final data = privateDoc.data()!;
+            final sensitiveFields = Map<String, dynamic>.from(
+                data['sensitiveFields'] as Map? ?? {});
+
+            final mergedFields = Map<String, dynamic>.from(record.fields)
+              ..addAll(sensitiveFields);
+
+            final restoredAmount = sensitiveFields.containsKey('amount')
+                ? (sensitiveFields['amount'] as num?)?.toDouble()
+                : record.amount;
+
+            record = record.copyWith(
+              fields: mergedFields,
+              amount: restoredAmount,
+            );
+          }
+        } catch (_) {}
+      }
+
+      return record;
+    });
   }
 }

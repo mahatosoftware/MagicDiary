@@ -222,8 +222,11 @@ class DiaryAccessControlService {
     final sanitizedFields = Map<String, dynamic>.from(record.fields)
       ..removeWhere((key, _) => restrictedSet.contains(key));
 
+    final isAmountRestricted = restrictedSet.contains('amount');
+
     return record.copyWith(
       fields: sanitizedFields,
+      clearAmount: isAmountRestricted,
       attachmentIds: shareAccess.allowAttachments ? record.attachmentIds : const [],
     );
   }
