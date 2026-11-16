@@ -540,7 +540,7 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> with SingleTi
             ),
             const SizedBox(height: 6),
             const Text(
-              'Reminders from your School Fees, Bills, Vehicles, Household & Property diaries are synchronized here.',
+              'Reminders from your School Fees, Bills, Vehicles, Household, Property & Personal (Birthdays & Anniversaries) diaries are synchronized here.',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey, fontSize: 12),
             ),

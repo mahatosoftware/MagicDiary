@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import '../../../core/utils/date_calculators.dart';
 import '../models/reminder.dart';
 import '../../../core/notifications/services/notification_manager.dart';
 
@@ -440,21 +441,200 @@ class ReminderSyncService {
         }
         eventDate ??= now;
 
+        final isAnnual = eventType.toLowerCase().contains('birthday') ||
+            eventType.toLowerCase().contains('anniversary') ||
+            title.toLowerCase().contains('birthday') ||
+            title.toLowerCase().contains('anniversary');
+
+        final nextDueDate = isAnnual
+            ? DateCalculators.calculateNextOccurrence(eventDate, now)
+            : eventDate;
+
+        final targetDay = DateTime(nextDueDate.year, nextDueDate.month, nextDueDate.day);
+        final today = DateTime(now.year, now.month, now.day);
+        final daysUntil = targetDay.difference(today).inDays;
         final docId = 'reminder_evt_${doc.id}';
+
+        // Only include birthdays and anniversaries due in next 30 days
+        if (isAnnual && (daysUntil < 0 || daysUntil > 30)) {
+          if (existingData.containsKey(docId)) {
+            try {
+              await reminderCol.doc(docId).delete();
+            } catch (_) {}
+          }
+          continue;
+        }
+
+        final milestoneDesc = isAnnual && eventDate.year < now.year
+            ? '${DateCalculators.formatMilestoneLabel(eventDate, eventType, nextDueDate)}${giftIdeas != null ? " • Gift Ideas: $giftIdeas" : ""}'
+            : (giftIdeas != null ? 'Gift Ideas: $giftIdeas' : '$title scheduled for ${dateFormat.format(nextDueDate)}.');
+
         remindersToSync.add(Reminder(
           id: docId,
           userId: userId,
           title: '$eventType: $title',
-          description: giftIdeas != null ? 'Gift Ideas: $giftIdeas' : '$title scheduled for ${dateFormat.format(eventDate)}.',
+          description: milestoneDesc,
           module: 'Personal',
           status: 'pending',
-          dueDate: eventDate,
+          dueDate: nextDueDate,
           relatedId: doc.id,
           actionRoute: '/personal',
           actionType: 'Review',
           priority: 'medium',
           createdAt: _resolveCreatedAt(existingData[docId], now),
         ));
+      }
+    } catch (_) {}
+
+    // 7b. FAMILY DIARY: Family Member Birthdays & Anniversaries
+    try {
+      final familySnap = await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('diaries')
+          .doc('family')
+          .collection('records')
+          .get();
+
+      final today = DateTime(now.year, now.month, now.day);
+
+      for (final doc in familySnap.docs) {
+        final d = doc.data();
+        final fields = (d['fields'] as Map<String, dynamic>?) ?? {};
+        final memberName = fields['member_name'] as String? ?? (d['title'] as String? ?? 'Family Member');
+        final relation = fields['relation'] as String?;
+        final relationLabel = (relation != null && relation.isNotEmpty) ? ' ($relation)' : '';
+
+        // Date of Birth
+        final dobVal = fields['date_of_birth'] ?? fields['dob'];
+        if (dobVal != null) {
+          final dob = dobVal is Timestamp
+              ? dobVal.toDate()
+              : DateTime.tryParse(dobVal.toString());
+          if (dob != null) {
+            final nextDob = DateCalculators.calculateNextOccurrence(dob, now);
+            final targetDob = DateTime(nextDob.year, nextDob.month, nextDob.day);
+            final daysUntil = targetDob.difference(today).inDays;
+            final docId = 'reminder_fam_${doc.id}_dob';
+
+            if (daysUntil >= 0 && daysUntil <= 30) {
+              final milestone = DateCalculators.formatMilestoneLabel(dob, 'Birthday', nextDob);
+              remindersToSync.add(Reminder(
+                id: docId,
+                userId: userId,
+                title: 'Birthday: $memberName$relationLabel',
+                description: '$milestone • Family & Contacts Diary',
+                module: 'Personal',
+                status: 'pending',
+                dueDate: nextDob,
+                relatedId: doc.id,
+                actionRoute: '/diaries',
+                actionType: 'Celebrate',
+                priority: 'medium',
+                createdAt: _resolveCreatedAt(existingData[docId], now),
+              ));
+            } else if (existingData.containsKey(docId)) {
+              try {
+                await reminderCol.doc(docId).delete();
+              } catch (_) {}
+            }
+          }
+        }
+
+        // Anniversary
+        final annivVal = fields['anniversary'];
+        if (annivVal != null) {
+          final anniv = annivVal is Timestamp
+              ? annivVal.toDate()
+              : DateTime.tryParse(annivVal.toString());
+          if (anniv != null) {
+            final nextAnniv = DateCalculators.calculateNextOccurrence(anniv, now);
+            final targetAnniv = DateTime(nextAnniv.year, nextAnniv.month, nextAnniv.day);
+            final daysUntil = targetAnniv.difference(today).inDays;
+            final docId = 'reminder_fam_${doc.id}_anniv';
+
+            if (daysUntil >= 0 && daysUntil <= 30) {
+              final milestone = DateCalculators.formatMilestoneLabel(anniv, 'Anniversary', nextAnniv);
+              remindersToSync.add(Reminder(
+                id: docId,
+                userId: userId,
+                title: 'Anniversary: $memberName$relationLabel',
+                description: '$milestone • Family & Contacts Diary',
+                module: 'Personal',
+                status: 'pending',
+                dueDate: nextAnniv,
+                relatedId: doc.id,
+                actionRoute: '/diaries',
+                actionType: 'Celebrate',
+                priority: 'medium',
+                createdAt: _resolveCreatedAt(existingData[docId], now),
+              ));
+            } else if (existingData.containsKey(docId)) {
+              try {
+                await reminderCol.doc(docId).delete();
+              } catch (_) {}
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 7c. EVENT DIARY: Celebrations & Weddings
+    try {
+      final eventDiarySnap = await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('diaries')
+          .doc('event')
+          .collection('records')
+          .get();
+
+      final today = DateTime(now.year, now.month, now.day);
+
+      for (final doc in eventDiarySnap.docs) {
+        final d = doc.data();
+        final fields = (d['fields'] as Map<String, dynamic>?) ?? {};
+        final eventName = fields['event_name'] as String? ?? (d['title'] as String? ?? 'Special Event');
+        final dateVal = fields['event_date'] ?? d['recordDate'];
+        if (dateVal != null) {
+          final evDate = dateVal is Timestamp
+              ? dateVal.toDate()
+              : DateTime.tryParse(dateVal.toString());
+          if (evDate != null) {
+            final lowerName = eventName.toLowerCase();
+            final isAnnual = lowerName.contains('birthday') || lowerName.contains('anniversary');
+            final nextEvDate = isAnnual
+                ? DateCalculators.calculateNextOccurrence(evDate, now)
+                : evDate;
+            final targetEvDate = DateTime(nextEvDate.year, nextEvDate.month, nextEvDate.day);
+            final daysUntil = targetEvDate.difference(today).inDays;
+            final docId = 'reminder_diary_evt_${doc.id}';
+
+            if (isAnnual && (daysUntil < 0 || daysUntil > 30)) {
+              if (existingData.containsKey(docId)) {
+                try {
+                  await reminderCol.doc(docId).delete();
+                } catch (_) {}
+              }
+              continue;
+            }
+
+            remindersToSync.add(Reminder(
+              id: docId,
+              userId: userId,
+              title: 'Event: $eventName',
+              description: '$eventName scheduled for ${dateFormat.format(nextEvDate)}.',
+              module: 'Personal',
+              status: 'pending',
+              dueDate: nextEvDate,
+              relatedId: doc.id,
+              actionRoute: '/diaries',
+              actionType: 'Celebrate',
+              priority: 'medium',
+              createdAt: _resolveCreatedAt(existingData[docId], now),
+            ));
+          }
+        }
       }
     } catch (_) {}
 
@@ -652,6 +832,8 @@ class ReminderSyncService {
     if (t.contains('tax')) return 'property_tax';
     if (t.contains('school fee')) return 'school_fees';
     if (t.contains('salary')) return 'monthly_salary';
+    if (t.contains('birthday')) return 'birthday';
+    if (t.contains('anniversary')) return 'anniversary';
     return 'general';
   }
 

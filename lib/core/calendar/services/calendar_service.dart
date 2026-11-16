@@ -9,6 +9,7 @@ import '../../../features/warranty/models/product.dart';
 import '../../../features/personal/models/personal_models.dart';
 import '../../../features/household/models/household_management_models.dart';
 import '../../diary_engine/models/diary_record.dart';
+import '../../utils/date_calculators.dart';
 
 class CalendarService {
   static List<CalendarEventItem> aggregateEvents({
@@ -130,12 +131,30 @@ class CalendarService {
     }
 
     // 7. Special Events & Goals
+    final existingEventReminderRelatedIds = reminders
+        .where((r) => r.relatedId != null)
+        .map((r) => r.relatedId!)
+        .toSet();
+
     for (final ev in specialEvents) {
+      if (existingEventReminderRelatedIds.contains(ev.id)) continue;
+
+      final isAnnual = ev.eventType.toLowerCase().contains('birthday') ||
+          ev.eventType.toLowerCase().contains('anniversary') ||
+          ev.title.toLowerCase().contains('birthday') ||
+          ev.title.toLowerCase().contains('anniversary');
+
+      final startTime = isAnnual
+          ? DateCalculators.calculateNextOccurrence(ev.date)
+          : ev.date;
+
       events.add(CalendarEventItem(
         id: 'event_${ev.id}',
         title: ev.title,
-        subtitle: ev.eventType,
-        startTime: ev.date,
+        subtitle: isAnnual && ev.date.year < DateTime.now().year
+            ? DateCalculators.formatMilestoneLabel(ev.date, ev.eventType, startTime)
+            : ev.eventType,
+        startTime: startTime,
         sourceType: CalendarSourceType.personalDiary,
         sourceDiaryId: 'event',
         categoryId: 'lifestyle_organization',

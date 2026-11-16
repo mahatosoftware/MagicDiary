@@ -4,16 +4,17 @@ import '../../../core/utils/date_calculators.dart';
 import '../models/reminder.dart';
 
 class ReminderRepository {
-  final FirebaseFirestore _firestore;
+  final FirebaseFirestore? _firestore;
   final Uuid _uuid = const Uuid();
 
-  ReminderRepository({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? FirebaseFirestore.instance;
+  ReminderRepository({FirebaseFirestore? firestore}) : _firestore = firestore;
+
+  FirebaseFirestore get firestore => _firestore ?? FirebaseFirestore.instance;
 
   Future<List<Reminder>> getReminders(String userId) async {
     if (userId.isEmpty) return const [];
     try {
-      final snapshot = await _firestore
+      final snapshot = await firestore
           .collection('users')
           .doc(userId)
           .collection('reminders')
@@ -22,7 +23,7 @@ class ReminderRepository {
       return snapshot.docs.map((d) => Reminder.fromMap(d.data(), d.id)).toList();
     } catch (e) {
       try {
-        final snapshot = await _firestore.collection('users').doc(userId).collection('reminders').get();
+        final snapshot = await firestore.collection('users').doc(userId).collection('reminders').get();
         final list = snapshot.docs.map((d) => Reminder.fromMap(d.data(), d.id)).toList();
         list.sort((a, b) => a.dueDate.compareTo(b.dueDate));
         return list;
@@ -48,7 +49,7 @@ class ReminderRepository {
       createdAt: DateTime.now(),
     );
 
-    await _firestore.collection('users').doc(userId).collection('reminders').doc(newId).set(newRem.toMap());
+    await firestore.collection('users').doc(userId).collection('reminders').doc(newId).set(newRem.toMap());
     return newRem;
   }
 
@@ -56,7 +57,7 @@ class ReminderRepository {
     if (userId.isEmpty || reminderId.isEmpty) return;
     final DateTime newDueDate = DateCalculators.calculateDeferredDate(DateTime.now(), option, customDays: customDays);
 
-    await _firestore.collection('users').doc(userId).collection('reminders').doc(reminderId).update({
+    await firestore.collection('users').doc(userId).collection('reminders').doc(reminderId).update({
       'status': 'snoozed',
       'snoozedUntil': Timestamp.fromDate(newDueDate),
       'dueDate': Timestamp.fromDate(newDueDate),
@@ -65,7 +66,7 @@ class ReminderRepository {
 
   Future<void> completeReminder(String userId, String reminderId) async {
     if (userId.isEmpty || reminderId.isEmpty) return;
-    await _firestore.collection('users').doc(userId).collection('reminders').doc(reminderId).update({
+    await firestore.collection('users').doc(userId).collection('reminders').doc(reminderId).update({
       'status': 'completed',
       'completedAt': Timestamp.fromDate(DateTime.now()),
     });
@@ -74,7 +75,7 @@ class ReminderRepository {
   Future<void> completeReminderByRelatedId(String userId, String relatedId, {DateTime? completedAt}) async {
     if (userId.isEmpty || relatedId.isEmpty) return;
     try {
-      final snap = await _firestore
+      final snap = await firestore
           .collection('users')
           .doc(userId)
           .collection('reminders')
@@ -91,7 +92,7 @@ class ReminderRepository {
 
   Future<void> deleteReminder(String userId, String reminderId) async {
     if (userId.isEmpty || reminderId.isEmpty) return;
-    await _firestore
+    await firestore
         .collection('users')
         .doc(userId)
         .collection('reminders')
@@ -101,7 +102,7 @@ class ReminderRepository {
 
   Future<void> syncReminder(String userId, Reminder reminder) async {
     if (userId.isEmpty) return;
-    final docRef = _firestore.collection('users').doc(userId).collection('reminders').doc(reminder.id);
+    final docRef = firestore.collection('users').doc(userId).collection('reminders').doc(reminder.id);
     final snap = await docRef.get();
     final createdAt = snap.exists && snap.data()?['createdAt'] is Timestamp
         ? (snap.data()!['createdAt'] as Timestamp)

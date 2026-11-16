@@ -20,6 +20,87 @@ class DateCalculators {
     return 'active';
   }
 
+  /// Calculates the next upcoming occurrence for an annual recurring event (e.g. Birthday, Anniversary).
+  ///
+  /// - If the event is in the future (e.g. upcoming milestone or wedding in a future year),
+  ///   the original future date is returned.
+  /// - If the event date is historical (e.g. birth year 1990 or anniversary 2015),
+  ///   the next occurrence for the current or upcoming year is returned.
+  /// - Handles leap year (Feb 29) gracefully on non-leap years.
+  static DateTime calculateNextOccurrence(DateTime originalDate, [DateTime? fromDate]) {
+    final now = fromDate ?? DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    // If the original date is already in the future (including future years), return it directly.
+    if (originalDate.isAfter(today) && originalDate.year >= now.year) {
+      return originalDate;
+    }
+
+    // Resolve day safely for Feb 29 leap year birthdays on non-leap years
+    int targetDay = originalDate.day;
+    if (originalDate.month == 2 && originalDate.day == 29) {
+      final isLeapYear = (now.year % 4 == 0 && (now.year % 100 != 0 || now.year % 400 == 0));
+      if (!isLeapYear) {
+        targetDay = 28;
+      }
+    }
+
+    final thisYearDateOnly = DateTime(now.year, originalDate.month, targetDay);
+    final hour = originalDate.hour == 0 && originalDate.minute == 0 ? 9 : originalDate.hour;
+    final minute = originalDate.minute;
+
+    // If this year's date is today or upcoming this year:
+    if (!thisYearDateOnly.isBefore(today)) {
+      return DateTime(now.year, originalDate.month, targetDay, hour, minute);
+    }
+
+    // Has already passed this year; schedule for next year
+    final nextYear = now.year + 1;
+    int nextYearTargetDay = originalDate.day;
+    if (originalDate.month == 2 && originalDate.day == 29) {
+      final isNextYearLeap = (nextYear % 4 == 0 && (nextYear % 100 != 0 || nextYear % 400 == 0));
+      if (!isNextYearLeap) {
+        nextYearTargetDay = 28;
+      }
+    }
+
+    return DateTime(nextYear, originalDate.month, nextYearTargetDay, hour, minute);
+  }
+
+  /// Calculates the milestone year count (e.g. 30th birthday, 10th anniversary).
+  static int calculateMilestoneYears(DateTime originalDate, DateTime targetOccurrence) {
+    return targetOccurrence.year - originalDate.year;
+  }
+
+  /// Formats milestone label e.g., "30th Birthday (Born 1996)" or "10th Anniversary (Est. 2016)".
+  static String formatMilestoneLabel(DateTime originalDate, String eventType, DateTime targetOccurrence) {
+    final years = targetOccurrence.year - originalDate.year;
+    if (years <= 0) return eventType;
+
+    final lower = eventType.toLowerCase();
+    final suffix = _ordinalSuffix(years);
+    if (lower.contains('birthday') || lower.contains('birth')) {
+      return '$years$suffix Birthday (Born ${originalDate.year})';
+    } else if (lower.contains('anniversary')) {
+      return '$years$suffix Anniversary (Est. ${originalDate.year})';
+    }
+    return '$years$suffix Year Milestone';
+  }
+
+  static String _ordinalSuffix(int n) {
+    if (n >= 11 && n <= 13) return 'th';
+    switch (n % 10) {
+      case 1:
+        return 'st';
+      case 2:
+        return 'nd';
+      case 3:
+        return 'rd';
+      default:
+        return 'th';
+    }
+  }
+
   static DateTime calculateDeferredDate(DateTime base, DeferOption option, {int customDays = 0}) {
     switch (option) {
       case DeferOption.plus1Day:

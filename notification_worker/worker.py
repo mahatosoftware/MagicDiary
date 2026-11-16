@@ -55,11 +55,11 @@ class NotificationWorker:
     def run(self) -> WorkerRunSummary:
         """Executes the notification worker cycle."""
         now = datetime.now(timezone.utc)
-        worker_id = f"worker_{uuid.uuid4().hex[:8]}_{int(now.timestamp())}"
+        worker_id = f"magicdiary_worker_{uuid.uuid4().hex[:8]}_{int(now.timestamp())}"
         summary = WorkerRunSummary(worker_id=worker_id, started_at=now)
 
         logger.info(
-            "Starting Notification Worker %s (dry_run=%s, lookahead=%dm, batch_size=%d)",
+            "Starting MagicDiary Notification Worker %s (dry_run=%s, lookahead=%dm, batch_size=%d)",
             worker_id,
             self.config.dry_run,
             self.config.lookahead_minutes,

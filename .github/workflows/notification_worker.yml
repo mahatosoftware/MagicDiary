@@ -1,4 +1,4 @@
-name: Scheduled Notification Worker
+name: MagicDiary Notification Worker
 
 on:
   schedule:
@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   run-worker:
-    name: Execute Notification Worker
+    name: Execute MagicDiary Notification Worker
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -48,7 +48,7 @@ jobs:
 
       - name: Execute Notification Worker
         env:
-          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID != '' && secrets.FIREBASE_PROJECT_ID || 'magicdiary-firebase-prod' }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
           LOOKAHEAD_MINUTES: ${{ github.event.inputs.lookahead_minutes || 30 }}
@@ -61,7 +61,7 @@ jobs:
       - name: Generate Job Summary
         if: always()
         run: |
-          echo "### 🚀 Magic Diary Notification Worker Run Complete" >> $GITHUB_STEP_SUMMARY
+          echo "### 🚀 MagicDiary Notification Worker Run Complete" >> $GITHUB_STEP_SUMMARY
           echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Dry Run**: ${{ github.event.inputs.dry_run || 'false' }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Lookahead**: ${{ github.event.inputs.lookahead_minutes || 30 }} minutes" >> $GITHUB_STEP_SUMMARY

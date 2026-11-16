@@ -14,6 +14,7 @@ import '../../features/documents/models/document_record.dart';
 import '../../features/reminders/repositories/reminder_repository.dart';
 import '../../features/reminders/models/reminder.dart';
 import '../../features/reminders/services/reminder_sync_service.dart';
+import '../utils/date_calculators.dart';
 
 // New Diary Repositories
 import '../../features/vehicle/repositories/vehicle_repository.dart';
@@ -191,14 +192,69 @@ final remindersProvider = FutureProvider<List<Reminder>>((ref) async {
   final user = ref.watch(userProfileProvider);
   if (user == null) return const [];
   final repo = ref.read(reminderRepositoryProvider);
-  final reminders = await repo.getReminders(user.uid);
+  final rawReminders = await repo.getReminders(user.uid);
+  final now = DateTime.now();
 
-  // Proactive synthesis fallback: Ensure any active properties have their
+  // Normalize any annual recurring reminders (Birthdays, Anniversaries)
+  // that may have been saved with historical birth/wedding years:
+  final reminders = rawReminders.map((r) {
+    final lowerTitle = r.title.toLowerCase();
+    final isAnnual = r.module == 'Personal' &&
+        (lowerTitle.contains('birthday') || lowerTitle.contains('anniversary'));
+    if (isAnnual && r.dueDate.year < now.year) {
+      final nextDue = DateCalculators.calculateNextOccurrence(r.dueDate, now);
+      return r.copyWith(dueDate: nextDue);
+    }
+    return r;
+  }).toList();
+
+  final List<Reminder> synthesized = [];
+  final existingIds = reminders.map((r) => r.id).toSet();
+
+  // 1. Proactive synthesis for Personal Life Events (Birthdays, Anniversaries, Milestones)
+  try {
+    final events = await ref.watch(specialEventsProvider.future);
+    for (final ev in events) {
+      final docId = 'reminder_evt_${ev.id}';
+      if (!existingIds.contains(docId)) {
+        final isAnnual = ev.eventType.toLowerCase().contains('birthday') ||
+            ev.eventType.toLowerCase().contains('anniversary') ||
+            ev.title.toLowerCase().contains('birthday') ||
+            ev.title.toLowerCase().contains('anniversary');
+
+        final nextDue = isAnnual
+            ? DateCalculators.calculateNextOccurrence(ev.date, now)
+            : ev.date;
+
+        final milestoneDesc = isAnnual && ev.date.year < now.year
+            ? '${DateCalculators.formatMilestoneLabel(ev.date, ev.eventType, nextDue)}${ev.giftIdeas != null ? " • Gift Ideas: ${ev.giftIdeas}" : ""}'
+            : (ev.giftIdeas != null ? 'Gift Ideas: ${ev.giftIdeas}' : '${ev.eventType} celebration');
+
+        synthesized.add(
+          Reminder(
+            id: docId,
+            userId: user.uid,
+            title: '${ev.eventType}: ${ev.title}',
+            description: milestoneDesc,
+            module: 'Personal',
+            status: 'pending',
+            dueDate: nextDue,
+            relatedId: ev.id,
+            actionRoute: '/personal',
+            actionType: 'Review',
+            priority: 'medium',
+            createdAt: ev.date,
+          ),
+        );
+        existingIds.add(docId);
+      }
+    }
+  } catch (_) {}
+
+  // 2. Proactive synthesis fallback: Ensure any active properties have their
   // property tax and lease reminders seamlessly present even if Firestore is syncing.
   try {
     final properties = await ref.watch(propertiesProvider.future);
-    final existingIds = reminders.map((r) => r.id).toSet();
-    final List<Reminder> synthesized = [];
 
     for (final prop in properties) {
       final taxId = 'reminder_prop_${prop.id}_tax';
@@ -220,6 +276,7 @@ final remindersProvider = FutureProvider<List<Reminder>>((ref) async {
             createdAt: prop.taxDueDate,
           ),
         );
+        existingIds.add(taxId);
       }
 
       if (prop.leaseEndDate != null) {
@@ -242,18 +299,31 @@ final remindersProvider = FutureProvider<List<Reminder>>((ref) async {
               createdAt: prop.leaseEndDate!,
             ),
           );
+          existingIds.add(leaseId);
         }
       }
     }
-
-    if (synthesized.isNotEmpty) {
-      final combined = [...reminders, ...synthesized];
-      combined.sort((a, b) => a.dueDate.compareTo(b.dueDate));
-      return combined;
-    }
   } catch (_) {}
 
-  return reminders;
+  if (synthesized.isNotEmpty) {
+    reminders.addAll(synthesized);
+  }
+
+  // Filter: Show birthdays and anniversaries in reminder ONLY if due in the next 30 days (0 <= daysUntil <= 30)
+  final today = DateTime(now.year, now.month, now.day);
+  final visibleReminders = reminders.where((r) {
+    final lowerTitle = r.title.toLowerCase();
+    final isAnnual = r.module == 'Personal' &&
+        (lowerTitle.contains('birthday') || lowerTitle.contains('anniversary'));
+    if (!isAnnual) return true;
+
+    final targetDay = DateTime(r.dueDate.year, r.dueDate.month, r.dueDate.day);
+    final daysUntil = targetDay.difference(today).inDays;
+    return daysUntil >= 0 && daysUntil <= 30;
+  }).toList();
+
+  visibleReminders.sort((a, b) => a.dueDate.compareTo(b.dueDate));
+  return visibleReminders;
 });
 
 // Vehicles Providers

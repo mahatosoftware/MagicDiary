@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../core/utils/date_calculators.dart';
 import '../models/personal_models.dart';
 
 class PersonalDashboardScreen extends ConsumerWidget {
@@ -102,8 +103,8 @@ class PersonalDashboardScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 8),
             eventsAsync.when(
-              data: (events) {
-                if (events.isEmpty) {
+              data: (rawEvents) {
+                if (rawEvents.isEmpty) {
                   return Card(
                     color: Colors.pink.shade50.withValues(alpha: 0.5),
                     elevation: 0,
@@ -139,18 +140,40 @@ class PersonalDashboardScreen extends ConsumerWidget {
                   );
                 }
 
+                final now = DateTime.now();
+                final today = DateTime(now.year, now.month, now.day);
+
+                // Sort events by upcoming occurrence date
+                final sortedEvents = [...rawEvents];
+                sortedEvents.sort((a, b) {
+                  final isAnnualA = a.eventType.toLowerCase().contains('birthday') ||
+                      a.eventType.toLowerCase().contains('anniversary');
+                  final isAnnualB = b.eventType.toLowerCase().contains('birthday') ||
+                      b.eventType.toLowerCase().contains('anniversary');
+                  final nextA = isAnnualA ? DateCalculators.calculateNextOccurrence(a.date, now) : a.date;
+                  final nextB = isAnnualB ? DateCalculators.calculateNextOccurrence(b.date, now) : b.date;
+                  return nextA.compareTo(nextB);
+                });
+
                 return SizedBox(
-                  height: 125,
+                  height: 130,
                   child: ListView.builder(
                     scrollDirection: Axis.horizontal,
-                    itemCount: events.length,
+                    itemCount: sortedEvents.length,
                     itemBuilder: (context, index) {
-                      final e = events[index];
-                      final daysAway = e.date.difference(DateTime.now()).inDays;
+                      final e = sortedEvents[index];
+                      final isAnnual = e.eventType.toLowerCase().contains('birthday') ||
+                          e.eventType.toLowerCase().contains('anniversary');
+                      final nextDate = isAnnual ? DateCalculators.calculateNextOccurrence(e.date, now) : e.date;
+                      final targetDay = DateTime(nextDate.year, nextDate.month, nextDate.day);
+                      final daysAway = targetDay.difference(today).inDays;
+
                       String timeLabel;
                       if (daysAway == 0) {
                         timeLabel = 'Today! 🎉';
-                      } else if (daysAway > 0) {
+                      } else if (daysAway == 1) {
+                        timeLabel = 'Tomorrow! 🎂';
+                      } else if (daysAway > 1) {
                         timeLabel = 'in $daysAway days';
                       } else {
                         timeLabel = '${-daysAway}d ago';
@@ -163,15 +186,22 @@ class PersonalDashboardScreen extends ConsumerWidget {
                         eventIcon = Icons.emoji_events_rounded;
                       }
 
+                      final milestoneLabel = (isAnnual && e.date.year < now.year)
+                          ? DateCalculators.formatMilestoneLabel(e.date, e.eventType, nextDate)
+                          : null;
+
                       return Container(
-                        width: 250,
+                        width: 260,
                         margin: const EdgeInsets.only(right: 12),
                         child: Card(
                           color: Colors.pink.shade50,
                           elevation: 0,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
-                            side: BorderSide(color: Colors.pink.shade100),
+                            side: BorderSide(
+                              color: daysAway == 0 ? Colors.pink.shade400 : Colors.pink.shade100,
+                              width: daysAway == 0 ? 1.8 : 1,
+                            ),
                           ),
                           child: InkWell(
                             borderRadius: BorderRadius.circular(14),
@@ -202,30 +232,43 @@ class PersonalDashboardScreen extends ConsumerWidget {
                                       ),
                                     ],
                                   ),
-                                  const SizedBox(height: 6),
+                                  const SizedBox(height: 4),
+                                  if (milestoneLabel != null) ...[
+                                    Text(
+                                      milestoneLabel,
+                                      style: TextStyle(fontSize: 11, color: Colors.pink.shade800, fontWeight: FontWeight.w600),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 2),
+                                  ],
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
                                       Text(
-                                        DateFormat('dd MMM yyyy').format(e.date),
+                                        DateFormat('dd MMMM').format(nextDate),
                                         style: TextStyle(fontSize: 12, color: Colors.pink.shade900, fontWeight: FontWeight.w500),
                                       ),
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                         decoration: BoxDecoration(
-                                          color: Colors.white,
+                                          color: daysAway == 0 ? Colors.pink.shade100 : Colors.white,
                                           borderRadius: BorderRadius.circular(8),
                                           border: Border.all(color: Colors.pink.shade200),
                                         ),
                                         child: Text(
                                           timeLabel,
-                                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.pink.shade800),
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                            color: daysAway == 0 ? Colors.pink.shade900 : Colors.pink.shade800,
+                                          ),
                                         ),
                                       ),
                                     ],
                                   ),
                                   if (e.giftIdeas != null && e.giftIdeas!.isNotEmpty) ...[
-                                    const SizedBox(height: 6),
+                                    const SizedBox(height: 4),
                                     Text(
                                       '🎁 ${e.giftIdeas}',
                                       style: const TextStyle(fontSize: 11, color: Colors.purple, fontWeight: FontWeight.w500),

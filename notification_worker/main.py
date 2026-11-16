@@ -25,7 +25,7 @@ def setup_logging() -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Magic Diary Scheduled Notification Worker for GitHub Actions"
+        description="MagicDiary Notification Worker for GitHub Actions"
     )
     parser.add_argument(
         "--dry-run",
@@ -80,7 +80,7 @@ def main() -> int:
             "error_count": len(summary.errors),
         }
         print("\n" + "=" * 60)
-        print("NOTIFICATION WORKER EXECUTION SUMMARY")
+        print("MAGICDIARY NOTIFICATION WORKER EXECUTION SUMMARY")
         print("=" * 60)
         print(json.dumps(summary_dict, indent=2))
         print("=" * 60 + "\n")

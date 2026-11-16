@@ -9,9 +9,12 @@ from __future__ import annotations
 import json
 import os
 from typing import Any, Dict, Optional
-from dotenv import load_dotenv
 
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 
 class WorkerConfig:
@@ -64,7 +67,22 @@ class WorkerConfig:
     def validate(self) -> None:
         """Validates critical worker configuration."""
         if not self.dry_run:
+            sa_dict = None
+            if self.service_account_raw:
+                sa_dict = self.get_service_account_dict()
+
+            sa_project_id = sa_dict.get("project_id") if isinstance(sa_dict, dict) else None
+            if not self.project_id and sa_project_id:
+                self.project_id = sa_project_id
+
             if not self.project_id:
                 raise ValueError("FIREBASE_PROJECT_ID environment variable is required.")
             if not self.service_account_raw:
                 raise ValueError("FIREBASE_SERVICE_ACCOUNT environment variable is required.")
+
+            if sa_project_id and self.project_id and sa_project_id != self.project_id:
+                raise ValueError(
+                    f"Project ID mismatch: FIREBASE_PROJECT_ID is '{self.project_id}', "
+                    f"but the service account key belongs to '{sa_project_id}'. "
+                    f"Please generate the service account key from project '{self.project_id}'."
+                )

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../core/utils/date_calculators.dart';
 import '../../reminders/models/reminder.dart';
 import '../../reminders/repositories/reminder_repository.dart';
 import '../models/personal_models.dart';
@@ -109,23 +110,41 @@ class PersonalRepository {
     // Sync reminder
     try {
       final remRepo = ReminderRepository(firestore: firestore);
-      await remRepo.syncReminder(
-        userId,
-        Reminder(
-          id: 'reminder_evt_${event.id}',
-          userId: userId,
-          title: '${event.eventType}: ${event.title}',
-          description: event.giftIdeas != null ? 'Gift Ideas: ${event.giftIdeas}' : '${event.eventType} celebration',
-          module: 'Personal',
-          status: 'pending',
-          dueDate: event.date,
-          relatedId: event.id,
-          actionRoute: '/personal',
-          actionType: 'Review',
-          priority: 'medium',
-          createdAt: DateTime.now(),
-        ),
-      );
+      final isAnnual = event.eventType.toLowerCase().contains('birthday') ||
+          event.eventType.toLowerCase().contains('anniversary');
+      final now = DateTime.now();
+      final nextDueDate = isAnnual
+          ? DateCalculators.calculateNextOccurrence(event.date, now)
+          : event.date;
+
+      final targetDay = DateTime(nextDueDate.year, nextDueDate.month, nextDueDate.day);
+      final today = DateTime(now.year, now.month, now.day);
+      final daysUntil = targetDay.difference(today).inDays;
+
+      // Only schedule reminders for birthdays and anniversaries due in next 30 days
+      if (!isAnnual || (daysUntil >= 0 && daysUntil <= 30)) {
+        final milestoneDesc = isAnnual && event.date.year < now.year
+            ? '${DateCalculators.formatMilestoneLabel(event.date, event.eventType, nextDueDate)}${event.giftIdeas != null ? " • Gift Ideas: ${event.giftIdeas}" : ""}'
+            : (event.giftIdeas != null ? 'Gift Ideas: ${event.giftIdeas}' : '${event.eventType} celebration');
+
+        await remRepo.syncReminder(
+          userId,
+          Reminder(
+            id: 'reminder_evt_${event.id}',
+            userId: userId,
+            title: '${event.eventType}: ${event.title}',
+            description: milestoneDesc,
+            module: 'Personal',
+            status: 'pending',
+            dueDate: nextDueDate,
+            relatedId: event.id,
+            actionRoute: '/personal',
+            actionType: 'Review',
+            priority: 'medium',
+            createdAt: DateTime.now(),
+          ),
+        );
+      }
     } catch (_) {}
   }
 

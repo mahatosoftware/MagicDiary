@@ -1,4 +1,4 @@
-# Magic Diary – Scheduled Notification Worker (GitHub Actions + FCM HTTP v1)
+# MagicDiary Notification Worker (GitHub Actions + FCM HTTP v1)
 
 ## Overview
 
@@ -118,7 +118,7 @@ pytest notification_worker/tests -v
 
 You can trigger the worker manually at any time via the GitHub Web UI:
 1. Navigate to **Actions** tab in your repository.
-2. Select **Scheduled Notification Worker**.
+2. Select **MagicDiary Notification Worker**.
 3. Click **Run workflow**.
 4. Choose optional inputs:
    - `dry_run`: `true` or `false`
