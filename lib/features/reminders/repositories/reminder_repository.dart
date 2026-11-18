@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uuid/uuid.dart';
+import '../../../core/notifications/services/notification_manager.dart';
 import '../../../core/utils/date_calculators.dart';
 import '../models/reminder.dart';
 
@@ -70,6 +71,9 @@ class ReminderRepository {
       'status': 'completed',
       'completedAt': Timestamp.fromDate(DateTime.now()),
     });
+    try {
+      await NotificationManager().onRecordPaidOrCompleted(userId: userId, recordId: reminderId);
+    } catch (_) {}
   }
 
   Future<void> completeReminderByRelatedId(String userId, String relatedId, {DateTime? completedAt}) async {
@@ -86,7 +90,13 @@ class ReminderRepository {
           'status': 'completed',
           'completedAt': Timestamp.fromDate(completedAt ?? DateTime.now()),
         });
+        try {
+          await NotificationManager().onRecordPaidOrCompleted(userId: userId, recordId: doc.id);
+        } catch (_) {}
       }
+      try {
+        await NotificationManager().onRecordPaidOrCompleted(userId: userId, recordId: relatedId);
+      } catch (_) {}
     } catch (_) {}
   }
 
@@ -98,6 +108,9 @@ class ReminderRepository {
         .collection('reminders')
         .doc(reminderId)
         .delete();
+    try {
+      await NotificationManager().cancelForRecord(userId: userId, recordId: reminderId);
+    } catch (_) {}
   }
 
   Future<void> syncReminder(String userId, Reminder reminder) async {

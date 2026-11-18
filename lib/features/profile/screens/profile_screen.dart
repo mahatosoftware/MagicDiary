@@ -3,12 +3,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../auth/models/user_profile.dart';
 import '../../../core/notifications/providers/notification_providers.dart';
 import '../../../core/notifications/models/notification_device.dart';
+import '../../../core/notifications/models/notification_schedule.dart';
+import '../../../core/notifications/models/notification_enums.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -106,16 +107,6 @@ class ProfileScreen extends ConsumerWidget {
     if (user == null) return;
     final theme = Theme.of(context);
     final username = user.username.isNotEmpty ? user.username : 'magicdiary';
-
-    // Proactively guarantee the username registry is populated in Firestore
-    if (user.username.isNotEmpty) {
-      ref.read(authRepositoryProvider).reserveUsername(
-        user.username,
-        user.uid,
-        displayName: user.displayName,
-        email: user.email,
-      );
-    }
 
     showDialog(
       context: context,
@@ -236,160 +227,284 @@ class ProfileScreen extends ConsumerWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) => FutureBuilder<List<NotificationDevice>>(
-        future: ref.read(notificationRepositoryProvider).getDevices(user.uid),
-        builder: (ctx, snapshot) {
-          final devices = snapshot.data ?? [];
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      builder: (ctx) {
+        List<NotificationDevice>? loadedDevices;
+        bool isLoading = true;
+
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final fcmService = ref.read(notificationManagerProvider).fcmService;
+            final currentDevId = fcmService.currentDeviceId;
+            final currentToken = fcmService.currentToken;
+
+            if (isLoading && loadedDevices == null) {
+              ref.read(notificationRepositoryProvider).getDevices(user.uid).then((devs) {
+                if (context.mounted) {
+                  setModalState(() {
+                    loadedDevices = List.from(devs);
+                    isLoading = false;
+                  });
+                }
+              }).catchError((_) {
+                if (context.mounted) {
+                  setModalState(() {
+                    loadedDevices = [];
+                    isLoading = false;
+                  });
+                }
+              });
+            }
+
+            final devices = loadedDevices ?? [];
+            final inactiveDevices = devices.where((d) =>
+                (currentDevId != null && d.id != currentDevId) ||
+                (currentToken != null && d.fcmToken != currentToken)).toList();
+
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Registered Devices & FCM',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded),
-                      onPressed: () => Navigator.pop(ctx),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'These devices receive push notifications from Magic Diary and GitHub Actions scheduled workers.',
-                  style: TextStyle(fontSize: 13, color: Colors.grey),
-                ),
-                const SizedBox(height: 16),
-                if (snapshot.connectionState == ConnectionState.waiting)
-                  const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()))
-                else if (devices.isEmpty)
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.orange.shade200),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text(
-                          'No devices registered yet',
-                          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange),
+                          'Registered Devices & FCM',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                         ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Open the app on an Android, iOS, or Web device with notifications enabled to automatically register.',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                        const SizedBox(height: 12),
-                        ElevatedButton.icon(
-                          onPressed: () async {
-                            final fcmService = ref.read(notificationManagerProvider).fcmService;
-                            await fcmService.initialize(user.uid);
-                            if (ctx.mounted) {
-                              Navigator.pop(ctx);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Device registration initiated.')),
-                              );
-                            }
-                          },
-                          icon: const Icon(Icons.refresh_rounded, size: 16),
-                          label: const Text('Register This Device Now'),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: () => Navigator.pop(ctx),
                         ),
                       ],
                     ),
-                  )
-                else
-                  ...devices.map((d) => Card(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(
-                                    d.platform == 'android'
-                                        ? Icons.android_rounded
-                                        : (d.platform == 'ios' ? Icons.apple_rounded : Icons.computer_rounded),
-                                    color: Colors.teal,
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      d.deviceName.isNotEmpty ? d.deviceName : d.id,
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                                    ),
-                                  ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: Colors.teal.shade50,
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Text(
-                                      d.platform.toUpperCase(),
-                                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.teal.shade800),
-                                    ),
-                                  ),
-                                ],
+                    const SizedBox(height: 8),
+                    const Text(
+                      'These devices receive push notifications from Magic Diary and GitHub Actions scheduled workers.',
+                      style: TextStyle(fontSize: 13, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 16),
+                    if (isLoading)
+                      const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()))
+                    else if (devices.isEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.orange.shade200),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'No devices registered yet',
+                              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange),
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'Open the app on an Android, iOS, or Web device with notifications enabled to automatically register.',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                            const SizedBox(height: 12),
+                            ElevatedButton.icon(
+                              onPressed: () async {
+                                await fcmService.initialize(user.uid);
+                                final refreshed = await ref.read(notificationRepositoryProvider).getDevices(user.uid);
+                                setModalState(() {
+                                  loadedDevices = List.from(refreshed);
+                                });
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Device registered successfully!')),
+                                  );
+                                }
+                              },
+                              icon: const Icon(Icons.refresh_rounded, size: 16),
+                              label: const Text('Register This Device Now'),
+                            ),
+                          ],
+                        ),
+                      )
+                    else ...[
+                      if (inactiveDevices.isNotEmpty && devices.length > 1) ...[
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              '${devices.length} registered (${inactiveDevices.length} old)',
+                              style: const TextStyle(fontSize: 12, color: Colors.grey),
+                            ),
+                            TextButton.icon(
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.red.shade700,
+                                visualDensity: VisualDensity.compact,
                               ),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      'Device ID: ${d.id}',
-                                      style: const TextStyle(fontSize: 12, fontFamily: 'monospace', color: Colors.black87),
+                              icon: const Icon(Icons.cleaning_services_rounded, size: 16),
+                              label: const Text('Remove Inactive Devices', style: TextStyle(fontSize: 12)),
+                              onPressed: () async {
+                                final repo = ref.read(notificationRepositoryProvider);
+                                for (final oldDev in inactiveDevices) {
+                                  await repo.deleteDevice(user.uid, oldDev.id);
+                                }
+                                setModalState(() {
+                                  loadedDevices?.removeWhere((d) => inactiveDevices.any((rem) => rem.id == d.id));
+                                });
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Removed ${inactiveDevices.length} inactive device(s).')),
+                                  );
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                      ...devices.map((d) {
+                        final isCurrentDevice = (currentDevId != null && d.id == currentDevId) ||
+                            (currentToken != null && d.fcmToken == currentToken);
+
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(
+                              color: isCurrentDevice ? Colors.green.shade300 : Colors.grey.shade200,
+                              width: isCurrentDevice ? 1.5 : 1,
+                            ),
+                          ),
+                          color: isCurrentDevice ? Colors.green.shade50.withValues(alpha: 0.3) : null,
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(
+                                      d.platform == 'android'
+                                          ? Icons.android_rounded
+                                          : (d.platform == 'ios' ? Icons.apple_rounded : Icons.computer_rounded),
+                                      color: isCurrentDevice ? Colors.green.shade700 : Colors.teal,
+                                      size: 20,
                                     ),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.copy_rounded, size: 16),
-                                    tooltip: 'Copy Device ID',
-                                    onPressed: () {
-                                      Clipboard.setData(ClipboardData(text: d.id));
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('Copied Device ID: ${d.id}')),
-                                      );
-                                    },
-                                  ),
-                                ],
-                              ),
-                              if (d.fcmToken.isNotEmpty) ...[
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            d.deviceName.isNotEmpty ? d.deviceName : d.id,
+                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          Text(
+                                            isCurrentDevice ? 'This Device (Active)' : 'Previous Install / Inactive',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: isCurrentDevice ? FontWeight.bold : FontWeight.normal,
+                                              color: isCurrentDevice ? Colors.green.shade800 : Colors.grey.shade600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: isCurrentDevice ? Colors.green.shade100 : Colors.teal.shade50,
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        d.platform.toUpperCase(),
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: isCurrentDevice ? Colors.green.shade900 : Colors.teal.shade800,
+                                        ),
+                                      ),
+                                    ),
+                                    if (!isCurrentDevice) ...[
+                                      const SizedBox(width: 4),
+                                      IconButton(
+                                        icon: const Icon(Icons.delete_outline, size: 20, color: Colors.red),
+                                        tooltip: 'Remove Inactive Device',
+                                        visualDensity: VisualDensity.compact,
+                                        onPressed: () async {
+                                          final repo = ref.read(notificationRepositoryProvider);
+                                          await repo.deleteDevice(user.uid, d.id);
+                                          setModalState(() {
+                                            loadedDevices?.removeWhere((item) => item.id == d.id);
+                                          });
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(content: Text('Removed inactive device.')),
+                                            );
+                                          }
+                                        },
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
                                 Row(
                                   children: [
                                     Expanded(
                                       child: Text(
-                                        'FCM Token: ${d.fcmToken.substring(0, d.fcmToken.length > 24 ? 24 : d.fcmToken.length)}...',
-                                        style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.grey),
+                                        'Device ID: ${d.id}',
+                                        style: const TextStyle(fontSize: 12, fontFamily: 'monospace', color: Colors.black87),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
                                     IconButton(
-                                      icon: const Icon(Icons.token_rounded, size: 16),
-                                      tooltip: 'Copy Full FCM Token',
+                                      icon: const Icon(Icons.copy_rounded, size: 16),
+                                      tooltip: 'Copy Device ID',
+                                      visualDensity: VisualDensity.compact,
                                       onPressed: () {
-                                        Clipboard.setData(ClipboardData(text: d.fcmToken));
+                                        Clipboard.setData(ClipboardData(text: d.id));
                                         ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text('FCM Token copied to clipboard')),
+                                          SnackBar(content: Text('Copied Device ID: ${d.id}')),
                                         );
                                       },
                                     ),
                                   ],
                                 ),
+                                if (d.fcmToken.isNotEmpty) ...[
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          'FCM Token: ${d.fcmToken.substring(0, d.fcmToken.length > 24 ? 24 : d.fcmToken.length)}...',
+                                          style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.grey),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.token_rounded, size: 16),
+                                        tooltip: 'Copy Full FCM Token',
+                                        visualDensity: VisualDensity.compact,
+                                        onPressed: () {
+                                          Clipboard.setData(ClipboardData(text: d.fcmToken));
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(content: Text('FCM Token copied to clipboard')),
+                                          );
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ],
-                            ],
+                            ),
                           ),
-                        ),
-                      )),
+                        );
+                      }),
+                    ],
                 const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
@@ -411,31 +526,32 @@ class ProfileScreen extends ConsumerWidget {
                         final fcmService = ref.read(notificationManagerProvider).fcmService;
                         await fcmService.initialize(user.uid);
 
-                        // 2. Queue a test schedule due right now
+                        // 2. Queue a test schedule due right now with compliant schema
                         final now = DateTime.now();
                         final schedId = 'test_push_${now.millisecondsSinceEpoch}';
-                        await FirebaseFirestore.instance
-                            .collection('users')
-                            .doc(user.uid)
-                            .collection('notification_schedules')
-                            .doc(schedId)
-                            .set({
-                          'id': schedId,
-                          'userId': user.uid,
-                          'recordId': 'test_push_record',
-                          'moduleId': 'general',
-                          'categoryId': 'general',
-                          'status': 'scheduled',
-                          'scheduledAt': now.subtract(const Duration(minutes: 1)),
-                          'eventType': 'Test Alert',
-                          'payload': {
+                        final sched = NotificationSchedule(
+                          id: schedId,
+                          userId: user.uid,
+                          recordId: 'test_push_record',
+                          moduleId: 'general',
+                          categoryId: 'general',
+                          status: NotificationScheduleStatus.scheduled,
+                          scheduledAt: now.subtract(const Duration(minutes: 1)),
+                          originalScheduledAt: now.subtract(const Duration(minutes: 1)),
+                          reminderOffset: '0d',
+                          localNotificationId: schedId.hashCode.abs() % 100000,
+                          eventType: 'Test Alert',
+                          scheduleSource: ScheduleSource.defaultTemplate,
+                          createdAt: now,
+                          updatedAt: now,
+                          payload: {
                             'title': '🔔 Magic Diary Test Push',
                             'body': 'Push notification triggered successfully by GitHub Worker!',
                             'actionRoute': '/notifications',
                           },
-                          'deliveryKey': '${user.uid}_test_${now.millisecondsSinceEpoch}',
-                          'createdAt': FieldValue.serverTimestamp(),
-                        });
+                        );
+
+                        await ref.read(notificationRepositoryProvider).saveSchedule(user.uid, sched);
 
                         if (ctx.mounted) {
                           Navigator.pop(ctx);
@@ -467,11 +583,13 @@ class ProfileScreen extends ConsumerWidget {
                 ),
               ],
             ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
-  }
+  },
+);
+}
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

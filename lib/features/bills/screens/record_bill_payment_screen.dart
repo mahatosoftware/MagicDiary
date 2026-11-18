@@ -21,6 +21,7 @@ class _RecordBillPaymentScreenState extends ConsumerState<RecordBillPaymentScree
   final _notesController = TextEditingController();
   DateTime _paymentDate = DateTime.now();
   String _paymentMethod = 'UPI';
+  bool _autoRollover = true;
 
   final List<String> _methods = ['UPI', 'Credit Card', 'Net Banking', 'Auto-Debit', 'Cash'];
 
@@ -59,13 +60,17 @@ class _RecordBillPaymentScreenState extends ConsumerState<RecordBillPaymentScree
       notes: _notesController.text.trim().isNotEmpty ? _notesController.text.trim() : null,
     );
 
-    await repo.recordBillPayment(user.uid, payment);
+    await repo.recordBillPayment(user.uid, payment, autoRollover: _autoRollover);
     ref.invalidate(billsProvider);
     ref.invalidate(remindersProvider);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bill payment recorded!')),
+        SnackBar(
+          content: Text(_autoRollover
+              ? 'Payment recorded! Next billing cycle auto-generated with reminder.'
+              : 'Bill payment recorded!'),
+        ),
       );
       if (context.canPop()) {
         context.pop();
@@ -213,6 +218,27 @@ class _RecordBillPaymentScreenState extends ConsumerState<RecordBillPaymentScree
                   border: OutlineInputBorder(),
                 ),
                 maxLines: 2,
+              ),
+              const SizedBox(height: 16),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.green.shade200),
+                ),
+                child: SwitchListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  title: const Text(
+                    'Auto-Rollover Next Bill',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                  subtitle: const Text(
+                    'Automatically generate next cycle\'s bill and reminder schedule',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  value: _autoRollover,
+                  onChanged: (val) => setState(() => _autoRollover = val),
+                ),
               ),
               const SizedBox(height: 24),
               SizedBox(

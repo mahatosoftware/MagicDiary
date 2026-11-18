@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/security/security.dart';
+import '../../../core/services/data_backup_service.dart';
 
 class SecuritySettingsScreen extends ConsumerStatefulWidget {
   const SecuritySettingsScreen({super.key});
@@ -217,12 +218,94 @@ class _SecuritySettingsScreenState extends ConsumerState<SecuritySettingsScreen>
                 showDialog(
                   context: context,
                   builder: (exportCtx) => AlertDialog(
-                    title: const Text('Data Package Ready'),
-                    content: Text(
-                      'Successfully compiled all personal diaries (${package.data.keys.length} modules).\nExport timestamp: ${DateFormat('dd MMM yyyy, HH:mm').format(package.exportedAt)}',
+                    title: const Row(
+                      children: [
+                        Icon(Icons.inventory_2_rounded, color: Colors.teal),
+                        SizedBox(width: 8),
+                        Text('Choose Export Format'),
+                      ],
+                    ),
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Compiled ${package.data.keys.length} diary modules for @${user.username}.\nSelect your preferred backup package format:',
+                          style: const TextStyle(fontSize: 13, color: Colors.grey),
+                        ),
+                        const SizedBox(height: 16),
+                        ListTile(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            side: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          leading: const CircleAvatar(
+                            backgroundColor: Colors.teal,
+                            child: Icon(Icons.archive_rounded, color: Colors.white, size: 20),
+                          ),
+                          title: const Text('Complete ZIP Backup (.zip)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                          subtitle: const Text('Includes all raw JSONs, CSV ledger & PDF book', style: TextStyle(fontSize: 11)),
+                          onTap: () async {
+                            Navigator.pop(exportCtx);
+                            try {
+                              await DataBackupService.shareZipBackup(package: package, profile: user);
+                            } catch (err) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ZIP Export Error: $err')));
+                              }
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                        ListTile(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            side: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          leading: CircleAvatar(
+                            backgroundColor: Colors.indigo.shade700,
+                            child: const Icon(Icons.picture_as_pdf_rounded, color: Colors.white, size: 20),
+                          ),
+                          title: const Text('Printable PDF Book (.pdf)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                          subtitle: const Text('Executive report of household, vehicles, bills & ledgers', style: TextStyle(fontSize: 11)),
+                          onTap: () async {
+                            Navigator.pop(exportCtx);
+                            try {
+                              await DataBackupService.sharePdfBook(package: package, profile: user);
+                            } catch (err) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('PDF Export Error: $err')));
+                              }
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                        ListTile(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            side: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          leading: const CircleAvatar(
+                            backgroundColor: Colors.orange,
+                            child: Icon(Icons.code_rounded, color: Colors.white, size: 20),
+                          ),
+                          title: const Text('Structured JSON Data (.json)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                          subtitle: const Text('Single machine-readable file for migration and backup', style: TextStyle(fontSize: 11)),
+                          onTap: () async {
+                            Navigator.pop(exportCtx);
+                            try {
+                              await DataBackupService.shareJsonExport(package: package);
+                            } catch (err) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('JSON Export Error: $err')));
+                              }
+                            }
+                          },
+                        ),
+                      ],
                     ),
                     actions: [
-                      TextButton(onPressed: () => Navigator.pop(exportCtx), child: const Text('Close')),
+                      TextButton(onPressed: () => Navigator.pop(exportCtx), child: const Text('Cancel')),
                     ],
                   ),
                 );

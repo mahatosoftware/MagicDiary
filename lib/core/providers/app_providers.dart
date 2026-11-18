@@ -16,7 +16,7 @@ import '../../features/reminders/repositories/reminder_repository.dart';
 import '../../features/reminders/models/reminder.dart';
 import '../../features/reminders/services/reminder_sync_service.dart';
 import '../utils/date_calculators.dart';
-import '../notifications/services/notification_manager.dart';
+import '../services/home_widget_service.dart';
 
 // New Diary Repositories
 import '../../features/vehicle/repositories/vehicle_repository.dart';
@@ -71,8 +71,8 @@ class AppInfo {
   const AppInfo({
     this.appName = 'Magic Diary',
     this.packageName = 'in.mahato.magicdiary',
-    this.version = '1.0.8',
-    this.buildNumber = '8',
+    this.version = '1.0.9',
+    this.buildNumber = '9',
   });
 
   String get versionString => 'v$version+$buildNumber';
@@ -85,8 +85,8 @@ final appInfoProvider = FutureProvider<AppInfo>((ref) async {
     return AppInfo(
       appName: info.appName.isNotEmpty ? info.appName : 'Magic Diary',
       packageName: info.packageName.isNotEmpty ? info.packageName : 'in.mahato.magicdiary',
-      version: info.version.isNotEmpty ? info.version : '1.0.8',
-      buildNumber: info.buildNumber.isNotEmpty ? info.buildNumber : '8',
+      version: info.version.isNotEmpty ? info.version : '1.0.9',
+      buildNumber: info.buildNumber.isNotEmpty ? info.buildNumber : '9',
     );
   } catch (_) {
     return const AppInfo();
@@ -110,11 +110,6 @@ class UserNotifier extends StateNotifier<UserProfile?> {
     final repo = ref.read(authRepositoryProvider);
     _authSubscription = repo.authStateChanges.listen((profile) {
       state = profile;
-      if (profile != null && profile.uid.isNotEmpty) {
-        try {
-          NotificationManager().fcmService.initialize(profile.uid);
-        } catch (_) {}
-      }
     });
   }
 
@@ -216,7 +211,17 @@ final billsProvider = FutureProvider<List<Bill>>((ref) async {
   final user = ref.watch(userProfileProvider);
   if (user == null) return const [];
   final repo = ref.read(billsRepositoryProvider);
-  return repo.getBills(user.uid);
+  final bills = await repo.getBills(user.uid);
+  try {
+    final unpaid = bills.where((b) => b.status == 'unpaid').toList();
+    final unpaidTotal = unpaid.fold(0.0, (sum, b) => sum + b.amount);
+    HomeWidgetService.updateWidgetData(
+      pendingBillsCount: unpaid.length,
+      pendingBillsTotal: unpaidTotal,
+      pendingRemindersCount: 0,
+    );
+  } catch (_) {}
+  return bills;
 });
 
 // Documents Provider

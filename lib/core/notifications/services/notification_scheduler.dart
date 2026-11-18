@@ -347,6 +347,10 @@ class NotificationScheduler {
         await _localNotificationService.cancelNotification(s.localNotificationId);
       }
     }
+    // Also cancel by stable record ID in case a direct or instant notification was posted
+    await _localNotificationService.cancelNotification(
+      LocalNotificationService.generateStableId(recordId),
+    );
     await _repository.cancelSchedulesForRecord(userId, recordId);
   }
 

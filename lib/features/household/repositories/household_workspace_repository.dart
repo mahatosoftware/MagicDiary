@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uuid/uuid.dart';
+import '../../../core/notifications/services/notification_manager.dart';
 import '../models/household_management_models.dart';
 
 class HouseholdWorkspaceRepository {
@@ -226,6 +227,11 @@ class HouseholdWorkspaceRepository {
       'completedAt': isCompleted ? DateTime.now().toIso8601String() : null,
       'completedByUid': isCompleted ? completedByUid : null,
     });
+    if (isCompleted) {
+      try {
+        await NotificationManager().onRecordPaidOrCompleted(userId: completedByUid, recordId: taskId);
+      } catch (_) {}
+    }
   }
 
   // --- Inter-Member Reimbursements ---

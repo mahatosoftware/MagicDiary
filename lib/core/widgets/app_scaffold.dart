@@ -464,41 +464,53 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
       body: Row(
         children: [
           if (isWide)
-            NavigationRail(
-              selectedIndex: selectedIndex,
-              onDestinationSelected: (index) => _onItemTapped(index, context),
-              labelType: NavigationRailLabelType.all,
-              leading: const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8.0),
-                child: Icon(Icons.bookmark_outline_rounded, size: 32, color: Colors.blueAccent),
-              ),
-              destinations: const [
-                NavigationRailDestination(
-                  icon: Icon(Icons.today_outlined),
-                  selectedIcon: Icon(Icons.today_rounded),
-                  label: Text('My Day'),
-                ),
-                NavigationRailDestination(
-                  icon: Icon(Icons.auto_stories_outlined),
-                  selectedIcon: Icon(Icons.auto_stories_rounded),
-                  label: Text('My Diaries'),
-                ),
-                NavigationRailDestination(
-                  icon: Icon(Icons.share_outlined),
-                  selectedIcon: Icon(Icons.share_rounded),
-                  label: Text('Shared'),
-                ),
-                NavigationRailDestination(
-                  icon: Icon(Icons.groups_outlined),
-                  selectedIcon: Icon(Icons.groups_rounded),
-                  label: Text('Circles'),
-                ),
-                NavigationRailDestination(
-                  icon: Icon(Icons.alarm_outlined),
-                  selectedIcon: Icon(Icons.alarm_rounded),
-                  label: Text('Reminders'),
-                ),
-              ],
+            LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  primary: false,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                    child: IntrinsicHeight(
+                      child: NavigationRail(
+                        selectedIndex: selectedIndex,
+                        onDestinationSelected: (index) => _onItemTapped(index, context),
+                        labelType: NavigationRailLabelType.all,
+                        leading: const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8.0),
+                          child: Icon(Icons.bookmark_outline_rounded, size: 32, color: Colors.blueAccent),
+                        ),
+                        destinations: const [
+                          NavigationRailDestination(
+                            icon: Icon(Icons.today_outlined),
+                            selectedIcon: Icon(Icons.today_rounded),
+                            label: Text('My Day'),
+                          ),
+                          NavigationRailDestination(
+                            icon: Icon(Icons.auto_stories_outlined),
+                            selectedIcon: Icon(Icons.auto_stories_rounded),
+                            label: Text('My Diaries'),
+                          ),
+                          NavigationRailDestination(
+                            icon: Icon(Icons.share_outlined),
+                            selectedIcon: Icon(Icons.share_rounded),
+                            label: Text('Shared'),
+                          ),
+                          NavigationRailDestination(
+                            icon: Icon(Icons.groups_outlined),
+                            selectedIcon: Icon(Icons.groups_rounded),
+                            label: Text('Circles'),
+                          ),
+                          NavigationRailDestination(
+                            icon: Icon(Icons.alarm_outlined),
+                            selectedIcon: Icon(Icons.alarm_rounded),
+                            label: Text('Reminders'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           if (isWide) const VerticalDivider(thickness: 1, width: 1),
           Expanded(

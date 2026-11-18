@@ -17,6 +17,15 @@ class BillAccount {
   final bool isUnusedFlagged;
   final DateTime createdAt;
 
+  // Subscription & Free Trial Tracker fields
+  final String subscriptionType; // 'paid', 'free_trial'
+  final DateTime? trialEndsAt;
+  final DateTime? renewalDate;
+  final int reminderDaysBefore; // default 3 days
+  final String? cancelUrl;
+  final String? planTier; // e.g. 'Standard', 'Premium 4K', 'Family'
+  final bool isActive;
+
   BillAccount({
     required this.id,
     required this.userId,
@@ -33,7 +42,64 @@ class BillAccount {
     this.isSubscription = false,
     this.isUnusedFlagged = false,
     required this.createdAt,
+    this.subscriptionType = 'paid',
+    this.trialEndsAt,
+    this.renewalDate,
+    this.reminderDaysBefore = 3,
+    this.cancelUrl,
+    this.planTier,
+    this.isActive = true,
   });
+
+  BillAccount copyWith({
+    String? id,
+    String? userId,
+    String? name,
+    String? category,
+    String? providerName,
+    String? accountNumber,
+    String? billingCycle,
+    int? dueDayOfMonth,
+    double? defaultAmount,
+    bool? autoReminder,
+    bool? isAutopay,
+    String? paymentMethod,
+    bool? isSubscription,
+    bool? isUnusedFlagged,
+    DateTime? createdAt,
+    String? subscriptionType,
+    DateTime? trialEndsAt,
+    DateTime? renewalDate,
+    int? reminderDaysBefore,
+    String? cancelUrl,
+    String? planTier,
+    bool? isActive,
+  }) {
+    return BillAccount(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      name: name ?? this.name,
+      category: category ?? this.category,
+      providerName: providerName ?? this.providerName,
+      accountNumber: accountNumber ?? this.accountNumber,
+      billingCycle: billingCycle ?? this.billingCycle,
+      dueDayOfMonth: dueDayOfMonth ?? this.dueDayOfMonth,
+      defaultAmount: defaultAmount ?? this.defaultAmount,
+      autoReminder: autoReminder ?? this.autoReminder,
+      isAutopay: isAutopay ?? this.isAutopay,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
+      isSubscription: isSubscription ?? this.isSubscription,
+      isUnusedFlagged: isUnusedFlagged ?? this.isUnusedFlagged,
+      createdAt: createdAt ?? this.createdAt,
+      subscriptionType: subscriptionType ?? this.subscriptionType,
+      trialEndsAt: trialEndsAt ?? this.trialEndsAt,
+      renewalDate: renewalDate ?? this.renewalDate,
+      reminderDaysBefore: reminderDaysBefore ?? this.reminderDaysBefore,
+      cancelUrl: cancelUrl ?? this.cancelUrl,
+      planTier: planTier ?? this.planTier,
+      isActive: isActive ?? this.isActive,
+    );
+  }
 
   factory BillAccount.fromMap(Map<String, dynamic> map, String id) {
     return BillAccount(
@@ -54,6 +120,17 @@ class BillAccount {
       createdAt: map['createdAt'] is Timestamp
           ? (map['createdAt'] as Timestamp).toDate()
           : DateTime.tryParse(map['createdAt'].toString()) ?? DateTime.now(),
+      subscriptionType: map['subscriptionType'] ?? 'paid',
+      trialEndsAt: map['trialEndsAt'] is Timestamp
+          ? (map['trialEndsAt'] as Timestamp).toDate()
+          : (map['trialEndsAt'] != null ? DateTime.tryParse(map['trialEndsAt'].toString()) : null),
+      renewalDate: map['renewalDate'] is Timestamp
+          ? (map['renewalDate'] as Timestamp).toDate()
+          : (map['renewalDate'] != null ? DateTime.tryParse(map['renewalDate'].toString()) : null),
+      reminderDaysBefore: (map['reminderDaysBefore'] as num?)?.toInt() ?? 3,
+      cancelUrl: map['cancelUrl'],
+      planTier: map['planTier'],
+      isActive: map['isActive'] ?? true,
     );
   }
 
@@ -73,6 +150,13 @@ class BillAccount {
       'isSubscription': isSubscription,
       'isUnusedFlagged': isUnusedFlagged,
       'createdAt': Timestamp.fromDate(createdAt),
+      'subscriptionType': subscriptionType,
+      if (trialEndsAt != null) 'trialEndsAt': Timestamp.fromDate(trialEndsAt!),
+      if (renewalDate != null) 'renewalDate': Timestamp.fromDate(renewalDate!),
+      'reminderDaysBefore': reminderDaysBefore,
+      if (cancelUrl != null) 'cancelUrl': cancelUrl,
+      if (planTier != null) 'planTier': planTier,
+      'isActive': isActive,
     };
   }
 }

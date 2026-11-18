@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import '../models/notification_action_record.dart';
 import '../models/notification_device.dart';
 import '../models/notification_enums.dart';
@@ -573,12 +574,41 @@ class NotificationRepository {
     final firestore = _firestore;
     if (firestore != null) {
       try {
+        final docRef = firestore
+            .collection('users')
+            .doc(userId)
+            .collection('devices')
+            .doc(device.id);
+
+        final docSnap = await docRef.get();
+        final data = device.toMap();
+        if (docSnap.exists) {
+          // Keep immutable createdAt field unchanged when updating existing device
+          data.remove('createdAt');
+          data['lastActiveAt'] = FieldValue.serverTimestamp();
+          await docRef.update(data);
+        } else {
+          await docRef.set(data);
+        }
+      } catch (e) {
+        debugPrint('Error registering device ${device.id} in Firestore: $e');
+      }
+    }
+  }
+
+  Future<void> deleteDevice(String userId, String deviceId) async {
+    _cachedDevices.remove(deviceId);
+    if (userId.isEmpty || deviceId.isEmpty) return;
+
+    final firestore = _firestore;
+    if (firestore != null) {
+      try {
         await firestore
             .collection('users')
             .doc(userId)
             .collection('devices')
-            .doc(device.id)
-            .set(device.toMap(), SetOptions(merge: true));
+            .doc(deviceId)
+            .delete();
       } catch (_) {}
     }
   }

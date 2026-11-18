@@ -48,7 +48,18 @@ class BillsRepository {
       dueDayOfMonth: account.dueDayOfMonth,
       defaultAmount: account.defaultAmount,
       autoReminder: account.autoReminder,
+      isAutopay: account.isAutopay,
+      paymentMethod: account.paymentMethod,
+      isSubscription: account.isSubscription,
+      isUnusedFlagged: account.isUnusedFlagged,
       createdAt: DateTime.now(),
+      subscriptionType: account.subscriptionType,
+      trialEndsAt: account.trialEndsAt,
+      renewalDate: account.renewalDate,
+      reminderDaysBefore: account.reminderDaysBefore,
+      cancelUrl: account.cancelUrl,
+      planTier: account.planTier,
+      isActive: account.isActive,
     );
 
     await _firestore
@@ -58,8 +69,15 @@ class BillsRepository {
         .doc(newId)
         .set(newAccount.toMap());
 
+    // Sync subscription & free trial reminder if applicable
+    if (newAccount.isSubscription) {
+      try {
+        await syncSubscriptionReminder(userId, newAccount);
+      } catch (_) {}
+    }
+
     // Auto-generate the active/upcoming Bill for this account so it shows in Bills, Reminders, and triggers notifications!
-    if (newAccount.autoReminder) {
+    if (newAccount.autoReminder && !newAccount.isSubscription) {
       try {
         final now = DateTime.now();
         int targetDay = newAccount.dueDayOfMonth.clamp(1, 28);
@@ -93,6 +111,101 @@ class BillsRepository {
     }
 
     return newAccount;
+  }
+
+  Future<void> updateBillAccount(String userId, BillAccount account) async {
+    if (userId.isEmpty || account.id.isEmpty) return;
+    await _firestore
+        .collection('users')
+        .doc(userId)
+        .collection('billAccounts')
+        .doc(account.id)
+        .set(account.toMap(), SetOptions(merge: true));
+
+    if (account.isSubscription) {
+      try {
+        await syncSubscriptionReminder(userId, account);
+      } catch (_) {}
+    }
+  }
+
+  Future<void> syncSubscriptionReminder(String userId, BillAccount account) async {
+    if (userId.isEmpty || account.id.isEmpty) return;
+    final remId = 'reminder_sub_${account.id}';
+    final remRepo = ReminderRepository(firestore: _firestore);
+
+    if (!account.isActive || !account.autoReminder) {
+      try {
+        await remRepo.deleteReminder(userId, remId);
+        final notifManager = NotificationManager();
+        await notifManager.onRecordPaidOrCompleted(userId: userId, recordId: remId);
+      } catch (_) {}
+      return;
+    }
+
+    DateTime? targetAlertDate;
+    String title = '';
+    String description = '';
+
+    if (account.subscriptionType == 'free_trial' && account.trialEndsAt != null) {
+      final daysBefore = account.reminderDaysBefore.clamp(1, 14);
+      targetAlertDate = account.trialEndsAt!.subtract(Duration(days: daysBefore));
+      if (targetAlertDate.isBefore(DateTime.now())) {
+        targetAlertDate = account.trialEndsAt;
+      }
+      title = 'Free Trial Ending Soon: ${account.name}';
+      final formattedExpiry = DateFormat('dd MMM yyyy').format(account.trialEndsAt!);
+      final chargeNote = account.defaultAmount > 0
+          ? ' Cancel before renewal to avoid ₹${account.defaultAmount.toStringAsFixed(0)} charge.'
+          : ' Cancel before $formattedExpiry if you do not wish to continue.';
+      description = 'Free trial ends on $formattedExpiry.$chargeNote';
+    } else if (account.renewalDate != null) {
+      final daysBefore = account.reminderDaysBefore.clamp(1, 14);
+      targetAlertDate = account.renewalDate!.subtract(Duration(days: daysBefore));
+      if (targetAlertDate.isBefore(DateTime.now())) {
+        targetAlertDate = account.renewalDate;
+      }
+      title = 'Subscription Renewal: ${account.name}';
+      final formattedRenewal = DateFormat('dd MMM yyyy').format(account.renewalDate!);
+      final costNote = account.defaultAmount > 0
+          ? ' for ₹${account.defaultAmount.toStringAsFixed(0)} (${account.billingCycle})'
+          : '';
+      description = 'Renews on $formattedRenewal$costNote. Review plan or cancel to avoid renewal.';
+    }
+
+    if (targetAlertDate != null) {
+      final reminder = Reminder(
+        id: remId,
+        userId: userId,
+        title: title,
+        description: description,
+        module: 'Bills',
+        status: 'pending',
+        dueDate: targetAlertDate,
+        relatedId: account.id,
+        amount: account.defaultAmount,
+        actionRoute: '/bills',
+        actionType: account.subscriptionType == 'free_trial' ? 'Cancel / Review' : 'Manage Subscription',
+        priority: 'high',
+        createdAt: DateTime.now(),
+      );
+
+      await remRepo.syncReminder(userId, reminder);
+
+      try {
+        await NotificationManager().scheduleForRecord(
+          userId: userId,
+          recordId: remId,
+          moduleId: 'bills',
+          categoryId: 'subscriptions',
+          eventType: account.subscriptionType == 'free_trial' ? 'Free Trial Expiry' : 'Subscription Renewal',
+          title: title,
+          dueDate: targetAlertDate,
+          amount: account.defaultAmount,
+          actionRoute: '/bills',
+        );
+      } catch (_) {}
+    }
   }
 
   Future<List<Bill>> getBills(String userId) async {
@@ -220,7 +333,7 @@ class BillsRepository {
     } catch (_) {}
   }
 
-  Future<BillPayment> recordBillPayment(String userId, BillPayment payment) async {
+  Future<BillPayment> recordBillPayment(String userId, BillPayment payment, {bool autoRollover = true}) async {
     final newId = payment.id.isEmpty ? _uuid.v4() : payment.id;
     final newPayment = BillPayment(
       id: newId,
@@ -237,13 +350,17 @@ class BillsRepository {
     await _firestore.collection('users').doc(userId).collection('billPayments').doc(newId).set(newPayment.toMap());
     await _firestore.collection('users').doc(userId).collection('bills').doc(payment.billId).update({'status': 'paid'});
 
-    // Mark reminder completed
+    // Mark reminder completed & cancel scheduled notifications
     try {
-      final remRef = _firestore.collection('users').doc(userId).collection('reminders').doc('reminder_bill_${payment.billId}');
+      final remId = 'reminder_bill_${payment.billId}';
+      final remRef = _firestore.collection('users').doc(userId).collection('reminders').doc(remId);
       await remRef.update({
         'status': 'completed',
         'completedAt': Timestamp.fromDate(payment.paymentDate),
       });
+      final notifManager = NotificationManager();
+      await notifManager.onRecordPaidOrCompleted(userId: userId, recordId: payment.billId);
+      await notifManager.onRecordPaidOrCompleted(userId: userId, recordId: remId);
     } catch (_) {}
 
     // Record canonical financial transaction idempotently
@@ -267,6 +384,101 @@ class BillsRepository {
       );
     } catch (_) {}
 
+    // Auto-Rollover: Generate next period's bill and schedule next reminder
+    if (autoRollover && payment.billAccountId.isNotEmpty) {
+      try {
+        await rolloverNextBill(userId, payment);
+      } catch (_) {}
+    }
+
     return newPayment;
+  }
+
+  /// Automatically rolls over recurring bills (e.g. Broadband, Electricity, Rent)
+  /// to the next cycle and schedules reminders and notifications.
+  Future<Bill?> rolloverNextBill(String userId, BillPayment payment) async {
+    if (userId.isEmpty || payment.billAccountId.isEmpty) return null;
+    try {
+      // 1. Fetch current bill
+      Bill? currentBill;
+      if (payment.billId.isNotEmpty) {
+        final currentBillDoc = await _firestore.collection('users').doc(userId).collection('bills').doc(payment.billId).get();
+        if (currentBillDoc.exists && currentBillDoc.data() != null) {
+          currentBill = Bill.fromMap(currentBillDoc.data()!, currentBillDoc.id);
+        }
+      }
+
+      // 2. Fetch bill account
+      final accDoc = await _firestore.collection('users').doc(userId).collection('billAccounts').doc(payment.billAccountId).get();
+      if (!accDoc.exists || accDoc.data() == null) return null;
+      final account = BillAccount.fromMap(accDoc.data()!, accDoc.id);
+
+      // Do not auto-rollover if disabled, inactive, or one-time
+      if (!account.autoReminder || !account.isActive) return null;
+
+      // 3. Compute next due date
+      final baseDate = currentBill?.dueDate ?? payment.paymentDate;
+      final cycle = account.billingCycle.toLowerCase();
+
+      int monthsToAdd = 1;
+      if (cycle.contains('quarter')) {
+        monthsToAdd = 3;
+      } else if (cycle.contains('year')) {
+        monthsToAdd = 12;
+      }
+
+      int nextYear = baseDate.year;
+      int nextMonth = baseDate.month + monthsToAdd;
+      while (nextMonth > 12) {
+        nextMonth -= 12;
+        nextYear += 1;
+      }
+
+      final maxDaysInNextMonth = DateTime(nextYear, nextMonth + 1, 0).day;
+      final targetDay = account.dueDayOfMonth.clamp(1, maxDaysInNextMonth);
+      final nextDueDate = DateTime(nextYear, nextMonth, targetDay, 9, 0);
+      final nextPeriodName = DateFormat('MMMM yyyy').format(nextDueDate);
+
+      // 4. Idempotency check: Don't duplicate if next period bill already exists
+      final existingBillsSnapshot = await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('bills')
+          .where('billAccountId', isEqualTo: account.id)
+          .get();
+
+      final alreadyExists = existingBillsSnapshot.docs.any((d) {
+        final data = d.data();
+        final period = data['billPeriod']?.toString() ?? '';
+        final status = data['status']?.toString() ?? '';
+        return period == nextPeriodName && status == 'unpaid';
+      });
+
+      if (alreadyExists) return null;
+
+      // 5. Estimated amount for next cycle
+      final estimatedAmount = account.defaultAmount > 0
+          ? account.defaultAmount
+          : (payment.amountPaid > 0 ? payment.amountPaid : (currentBill?.amount ?? 0.0));
+
+      final nextBill = Bill(
+        id: '',
+        billAccountId: account.id,
+        userId: userId,
+        billPeriod: nextPeriodName,
+        billDate: DateTime.now(),
+        dueDate: nextDueDate,
+        amount: estimatedAmount,
+        expectedAmount: estimatedAmount,
+        previousAmount: payment.amountPaid > 0 ? payment.amountPaid : currentBill?.amount,
+        minimumDue: estimatedAmount,
+        status: 'unpaid',
+        notes: 'Auto-rolled over for ${account.name} (${account.billingCycle})',
+      );
+
+      return await addBill(userId, nextBill);
+    } catch (_) {
+      return null;
+    }
   }
 }

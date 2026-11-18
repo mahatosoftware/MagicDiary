@@ -1,5 +1,6 @@
 plugins {
     id("com.google.gms.google-services") version "4.4.2" apply false
+    id("org.jetbrains.kotlin.android") version "2.3.20" apply false
 }
 
 allprojects {
@@ -40,6 +41,11 @@ subprojects {
         sourceCompatibility = "17"
         targetCompatibility = "17"
         options.compilerArgs.addAll(listOf("-Xlint:-options"))
+    }
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
     }
 }
 

@@ -97,10 +97,7 @@ class NotificationManager {
       actionPromptHandler: actionPromptHandler,
     );
 
-    // 3. Listen to auth state to automatically register device for notifications
-    _startAutoRegistration();
-
-    // 4. If user is currently signed in, reconcile startup & initialize FCM immediately
+    // 3. If user is currently signed in, reconcile startup & initialize FCM immediately
     final resolvedUid = (currentUserId != null && currentUserId.isNotEmpty)
         ? currentUserId
         : FirebaseAuth.instance.currentUser?.uid;
@@ -109,6 +106,9 @@ class NotificationManager {
       await recoveryManager.reconcile(userId: resolvedUid);
       await fcmService.initialize(resolvedUid);
     }
+
+    // 4. Listen to auth state to automatically handle login/logout transitions
+    _startAutoRegistration();
 
     _initialized = true;
     debugPrint('NotificationManager successfully initialized.');
@@ -120,12 +120,16 @@ class NotificationManager {
     _authSubscription?.cancel();
     _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) async {
       if (user != null && user.uid.isNotEmpty) {
-        debugPrint('[NotificationManager] Auth state changed: auto-registering device for UID ${user.uid}');
-        try {
-          await fcmService.initialize(user.uid);
-        } catch (e) {
-          debugPrint('[NotificationManager] Auto-registration note: $e');
+        if (fcmService.initializedUserId != user.uid) {
+          debugPrint('[NotificationManager] Auth state changed: auto-registering device for UID ${user.uid}');
+          try {
+            await fcmService.initialize(user.uid);
+          } catch (e) {
+            debugPrint('[NotificationManager] Auto-registration note: $e');
+          }
         }
+      } else {
+        await fcmService.onUserLoggedOut();
       }
     });
   }

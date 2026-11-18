@@ -2,12 +2,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:magic_diary/core/financial/models/recurring_schedule.dart';
 import 'package:magic_diary/core/notifications/models/notification_enums.dart';
 import 'package:magic_diary/core/notifications/models/notification_preference.dart';
+import 'package:magic_diary/core/notifications/models/notification_device.dart';
 import 'package:magic_diary/core/notifications/models/notification_schedule.dart';
 import 'package:magic_diary/core/notifications/models/notification_template.dart';
 import 'package:magic_diary/core/notifications/models/reminder_interval.dart';
 import 'package:magic_diary/core/notifications/models/time_of_day_dto.dart';
 import 'package:magic_diary/core/notifications/repositories/notification_repository.dart';
 import 'package:magic_diary/core/notifications/services/notification_defer_manager.dart';
+import 'package:magic_diary/core/notifications/services/notification_fcm_service.dart';
 import 'package:magic_diary/core/notifications/services/notification_history_manager.dart';
 import 'package:magic_diary/core/notifications/services/notification_preference_manager.dart';
 import 'package:magic_diary/core/notifications/services/notification_recovery_manager.dart';
@@ -15,6 +17,7 @@ import 'package:magic_diary/core/notifications/services/notification_recurrence_
 import 'package:magic_diary/core/notifications/services/notification_scheduler.dart';
 import 'package:magic_diary/core/notifications/services/notification_snooze_manager.dart';
 import 'package:magic_diary/core/notifications/services/notification_template_manager.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -956,6 +959,85 @@ void main() {
       updatedList = await repo.getSchedulesForRecord('u_test', 'r_test');
       expect(updatedList.first.status, NotificationScheduleStatus.sent);
       expect(updatedList.first.sentAt, isNotNull);
+    });
+
+    test('NotificationRepository registers and deletes devices properly', () async {
+      final repo = NotificationRepository();
+      final now = DateTime.now();
+
+      final dev1 = NotificationDevice(
+        id: 'dev_old_111',
+        userId: 'u_device_test',
+        fcmToken: 'old_fcm_token_111',
+        platform: 'android',
+        deviceName: 'android device',
+        lastActiveAt: now.subtract(const Duration(days: 10)),
+        createdAt: now.subtract(const Duration(days: 10)),
+      );
+
+      final dev2 = NotificationDevice(
+        id: 'dev_new_222',
+        userId: 'u_device_test',
+        fcmToken: 'new_fcm_token_222',
+        platform: 'android',
+        deviceName: 'android device',
+        lastActiveAt: now,
+        createdAt: now,
+      );
+
+      await repo.registerDevice('u_device_test', dev1);
+      await repo.registerDevice('u_device_test', dev2);
+
+      var devices = await repo.getDevices('u_device_test');
+      expect(devices.any((d) => d.id == 'dev_old_111'), isTrue);
+      expect(devices.any((d) => d.id == 'dev_new_222'), isTrue);
+
+      // Delete old device
+      await repo.deleteDevice('u_device_test', 'dev_old_111');
+      devices = await repo.getDevices('u_device_test');
+      expect(devices.any((d) => d.id == 'dev_old_111'), isFalse);
+      expect(devices.any((d) => d.id == 'dev_new_222'), isTrue);
+    });
+
+    test('NotificationFcmService creates and reuses stable installation ID across token refreshes', () async {
+      SharedPreferences.setMockInitialValues({});
+      final repo = NotificationRepository();
+      final fcmService = NotificationFcmService(repository: repo);
+
+      // 1. Initial stable ID creation
+      final id1 = await fcmService.getOrCreateInstallationId();
+      expect(id1.startsWith('dev_'), isTrue);
+
+      // 2. Subsequent call returns the exact same ID
+      final id2 = await fcmService.getOrCreateInstallationId();
+      expect(id2, id1);
+
+      // 3. Registering device writes record with stable ID
+      await fcmService.registerDeviceToken('u_stable_test', 'token_alpha');
+      expect(fcmService.currentDeviceId, id1);
+      expect(fcmService.currentToken, 'token_alpha');
+
+      var devices = await repo.getDevices('u_stable_test');
+      expect(devices.length, 1);
+      expect(devices.first.id, id1);
+      expect(devices.first.fcmToken, 'token_alpha');
+
+      // 4. Token refresh updates the SAME device record without creating duplicate device ID
+      await fcmService.registerDeviceToken('u_stable_test', 'token_beta');
+      expect(fcmService.currentDeviceId, id1);
+      expect(fcmService.currentToken, 'token_beta');
+
+      devices = await repo.getDevices('u_stable_test');
+      expect(devices.length, 1);
+      expect(devices.first.id, id1);
+      expect(devices.first.fcmToken, 'token_beta');
+
+      // 5. Logout resets memory state
+      await fcmService.onUserLoggedOut();
+      expect(fcmService.isInitialized, isFalse);
+      expect(fcmService.initializedUserId, isNull);
+      expect(fcmService.currentToken, isNull);
+      expect(fcmService.currentDeviceId, isNull);
     });
   });
 }

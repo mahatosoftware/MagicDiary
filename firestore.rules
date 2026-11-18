@@ -47,6 +47,8 @@ rules_version = '2';
 //   - transactions/{transactionId} (Income & Expense Transactions)
 //   - investments/{investmentId} (Investment Portfolio)
 //   - householdExpenses/{expenseId} (Monthly Household Expenses)
+//   - householdBudgets/{budgetId} (Monthly Household Budgets by Category)
+//   - shoppingList/{itemId} (Household Shopping List Items)
 //   - properties/{propertyId} (Real Estate & Properties)
 //   - propertyMaintenances/{maintenanceId} (Property Maintenance)
 //   - journals/{journalId} (Personal Journal & Diary)
@@ -430,6 +432,25 @@ service cloud.firestore {
         && isTimestampOrDateString(data.dueDate)
         && data.status in ['paid', 'unpaid']
         && data.period is string && data.period.size() <= 50;
+    }
+
+    function isValidHouseholdBudget(data) {
+      return hasRequiredFields(data, ['id', 'category', 'monthlyLimit'])
+        && data.id is string && data.id.size() <= 100
+        && data.category is string && data.category.size() >= 1 && data.category.size() <= 100
+        && data.monthlyLimit is number && data.monthlyLimit >= 0
+        && (!('actualSpent' in data) || data.actualSpent == null || (data.actualSpent is number && data.actualSpent >= 0));
+    }
+
+    function isValidShoppingItem(data) {
+      return hasRequiredFields(data, ['id', 'title', 'createdAt'])
+        && data.id is string && data.id.size() <= 100
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && isTimestampOrDateString(data.createdAt)
+        && isValidOptionalString(data, 'category', 100)
+        && isValidOptionalBool(data, 'isCompleted')
+        && isValidOptionalBool(data, 'isPurchased')
+        && isValidOptionalString(data, 'addedBy', 100);
     }
 
     function isValidProperty(data) {
@@ -1535,6 +1556,22 @@ service cloud.firestore {
                       && areImmutableFieldsUnchanged(['id']);
       }
 
+      match /householdBudgets/{budgetId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidHouseholdBudget(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidHouseholdBudget(request.resource.data)
+                      && areImmutableFieldsUnchanged(['id']);
+      }
+
+      match /shoppingList/{itemId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidShoppingItem(request.resource.data);
+        allow update: if isOwner(userId)
+                      && isValidShoppingItem(request.resource.data)
+                      && areImmutableFieldsUnchanged(['id', 'createdAt']);
+      }
+
       match /properties/{propertyId} {
         allow read, delete: if isOwner(userId);
         allow create: if isOwner(userId) && isValidProperty(request.resource.data);
@@ -1712,10 +1749,17 @@ service cloud.firestore {
 
       match /notification_schedules/{scheduleId} {
         allow read, delete: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidNotificationSchedule(request.resource.data, userId);
+        allow create: if isOwner(userId)
+                      && isValidNotificationSchedule(request.resource.data, userId)
+                      && (!('claimedByWorker' in request.resource.data) || request.resource.data.claimedByWorker == null)
+                      && (!('claimLeaseExpiresAt' in request.resource.data) || request.resource.data.claimLeaseExpiresAt == null)
+                      && (!('sentAt' in request.resource.data) || request.resource.data.sentAt == null)
+                      && (!('attemptCount' in request.resource.data) || request.resource.data.attemptCount == null || request.resource.data.attemptCount == 0)
+                      && (!('status' in request.resource.data) || request.resource.data.status in ['scheduled', 'snoozed', 'deferred', 'cancelled', 'dismissed']);
         allow update: if isOwner(userId)
                       && isValidNotificationSchedule(request.resource.data, userId)
-                      && areImmutableFieldsUnchanged(['id', 'userId', 'createdAt']);
+                      && areImmutableFieldsUnchanged(['id', 'userId', 'createdAt', 'claimedByWorker', 'claimLeaseExpiresAt', 'sentAt', 'attemptCount'])
+                      && (!('status' in request.resource.data) || request.resource.data.status in ['scheduled', 'snoozed', 'deferred', 'cancelled', 'dismissed', 'completed']);
       }
 
       match /notification_actions/{actionId} {
@@ -1806,9 +1850,9 @@ service cloud.firestore {
     // ===============================================================
     match /usernames/{username} {
       // Unauthenticated single-document get allows pre-registration availability checks.
-      // List is strictly forbidden to prevent scraping/enumeration of the user registry.
+      // Authenticated list allows user account maintenance and username claim lookups.
       allow get: if true;
-      allow list: if false;
+      allow list: if isAuthenticated();
       allow create: if isAuthenticated() && isValidUsernameMapping(username, request.resource.data);
       allow update: if isAuthenticated()
                     && resource.data.uid == request.auth.uid

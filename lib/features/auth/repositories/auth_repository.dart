@@ -44,29 +44,7 @@ class AuthRepository {
       if (fbUser == null) {
         return null;
       }
-      var profile = await getUserProfile(fbUser.uid);
-      if (profile == null) {
-        final username = await generateUniqueUsername();
-        profile = UserProfile(
-          uid: fbUser.uid,
-          email: fbUser.email ?? '',
-          displayName: fbUser.displayName ?? username,
-          username: username,
-          photoUrl: fbUser.photoURL,
-          currencySymbol: '₹',
-          themeMode: 'system',
-          enableNotifications: true,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        );
-        try {
-          await _firestore.collection('users').doc(fbUser.uid).set(profile.toMap());
-          await reserveUsername(username, fbUser.uid, displayName: profile.displayName, email: profile.email);
-        } catch (e) {
-          debugPrint('Error creating user profile in Firestore: $e');
-        }
-      }
-      return profile;
+      return await getUserProfile(fbUser.uid);
     });
   }
 
@@ -74,23 +52,7 @@ class AuthRepository {
     try {
       final doc = await _firestore.collection('users').doc(uid).get();
       if (doc.exists && doc.data() != null) {
-        final profile = UserProfile.fromMap(doc.data()!, uid);
-        // Only backfill a username if it is completely blank (never overwrite or auto-regenerate existing usernames)
-        if (profile.username.trim().isEmpty) {
-          final newUsername = await generateUniqueUsername();
-          final updated = profile.copyWith(username: newUsername);
-          try {
-            await _firestore.collection('users').doc(uid).update({'username': newUsername});
-            await reserveUsername(newUsername, uid, displayName: profile.displayName, email: profile.email);
-          } catch (e) {
-            debugPrint('Note backfilling username: $e');
-          }
-          return updated;
-        } else {
-          // Asynchronously prune any duplicate lowercase or stale username records in /usernames
-          _cleanupOrphanedUsernamesForUid(uid, profile.username.trim().toUpperCase());
-        }
-        return profile;
+        return UserProfile.fromMap(doc.data()!, uid);
       }
     } catch (e) {
       debugPrint('Error getting user profile: $e');
@@ -135,20 +97,9 @@ class AuthRepository {
       password: password,
     );
     final user = credential.user!;
-    var profile = await getUserProfile(user.uid);
+    final profile = await getUserProfile(user.uid);
     if (profile == null) {
-      final username = await generateUniqueUsername();
-      profile = UserProfile(
-        uid: user.uid,
-        email: user.email ?? emailToUse,
-        displayName: user.displayName ?? username,
-        username: username,
-        photoUrl: user.photoURL,
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      );
-      await _firestore.collection('users').doc(user.uid).set(profile.toMap());
-      await reserveUsername(username, user.uid, displayName: profile.displayName, email: profile.email);
+      throw Exception('User profile not found. Please register an account first.');
     }
     return profile;
   }

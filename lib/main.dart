@@ -12,6 +12,7 @@ import 'core/ads/ad_manager.dart';
 import 'core/notifications/services/notification_manager.dart';
 import 'core/notifications/services/notification_fcm_service.dart';
 import 'core/security/security.dart';
+import 'core/services/home_widget_service.dart';
 import 'core/version/widgets/app_update_gate.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
@@ -84,6 +85,13 @@ void main() async {
     );
   } catch (e) {
     debugPrint('NotificationManager initialization note: $e');
+  }
+
+  // Initialize Home Screen Widget Service
+  try {
+    await HomeWidgetService.initialize(router);
+  } catch (e) {
+    debugPrint('HomeWidget initialization note: $e');
   }
 
   runApp(
