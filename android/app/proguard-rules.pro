@@ -65,3 +65,12 @@
 
 # Java 8+ Desugaring
 -dontwarn java.time.**
+
+# Google ML Kit & CameraX (Used by mobile_scanner)
+-keep class com.google.mlkit.** { *; }
+-dontwarn com.google.mlkit.**
+-keep class androidx.camera.** { *; }
+-dontwarn androidx.camera.**
+
+# Printing & PDF
+-dontwarn net.sf.andpdf.**
