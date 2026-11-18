@@ -154,6 +154,79 @@ class GenericRecordDetailScreen extends ConsumerWidget {
               ),
             ),
           ),
+
+          // Reminder Information Card (if reminder is configured)
+          if (record.hasReminder) ...[
+            const SizedBox(height: 16),
+            Card(
+              elevation: 1,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.notifications_active_rounded, size: 18, color: color),
+                        const SizedBox(width: 8),
+                        Text(
+                          'REMINDER SETTINGS',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey.shade700,
+                            letterSpacing: 1.0,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (record.remindBeforeDays.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        'Remind me before:',
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                      ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: record.remindBeforeDays.map((days) {
+                          final label = days == 0 ? 'On the Day' : '$days Days Before';
+                          return Chip(
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            visualDensity: VisualDensity.compact,
+                            backgroundColor: color.withValues(alpha: 0.1),
+                            label: Text(
+                              label,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: color,
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Text(
+                          'Repeat Schedule: ',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        ),
+                        Text(
+                          _formatRepeatSchedule(record.repeatSchedule),
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 20),
 
           // Fields Section
@@ -204,6 +277,20 @@ class GenericRecordDetailScreen extends ConsumerWidget {
         .join(' ');
   }
 
+  String _formatRepeatSchedule(String schedule) {
+    switch (schedule) {
+      case 'monthly':
+        return 'Every Month';
+      case 'quarterly':
+        return 'Every Quarter';
+      case 'yearly':
+        return 'Every Year';
+      case 'one_time':
+      default:
+        return 'One Time';
+    }
+  }
+
   void _confirmDelete(BuildContext context, WidgetRef ref, DiaryRecord record) {
     showDialog(
       context: context,
@@ -226,6 +313,11 @@ class GenericRecordDetailScreen extends ConsumerWidget {
                   diaryId: diaryId,
                   recordId: record.id,
                 );
+
+                if (record.reminderId != null) {
+                  final reminderRepo = ref.read(reminderRepositoryProvider);
+                  await reminderRepo.deleteReminder(targetOwnerId, record.reminderId!);
+                }
               }
               if (context.mounted) {
                 context.pop();

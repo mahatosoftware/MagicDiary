@@ -121,24 +121,93 @@ class NotificationWorker:
             return self._fallback_user_schedules_query(window_end)
 
     def _fallback_user_schedules_query(self, window_end: datetime) -> List[firestore.DocumentSnapshot]:
-        """Fallback querying schedules user by user if composite collection group index is not yet built."""
+        """Fallback querying schedules user by user without requiring composite indexes."""
         results: List[firestore.DocumentSnapshot] = []
         try:
-            users = self.db.collection("users").limit(50).stream()
+            users = list(self.db.collection("users").limit(50).stream())
             for user in users:
-                schedules = (
-                    self.db.collection("users")
-                    .doc(user.id)
-                    .collection("notification_schedules")
-                    .where(filter=FieldFilter("status", "in", ["scheduled", "pending", "claimed"]))
-                    .where(filter=FieldFilter("scheduledAt", "<=", window_end))
-                    .limit(20)
-                    .stream()
-                )
-                for s in schedules:
-                    results.append(s)
-                    if len(results) >= self.config.batch_size:
-                        return results
+                try:
+                    schedules = (
+                        self.db.collection("users")
+                        .doc(user.id)
+                        .collection("notification_schedules")
+                        .where(filter=FieldFilter("status", "in", ["scheduled", "pending", "claimed"]))
+                        .limit(20)
+                        .stream()
+                    )
+                    for s in schedules:
+                        d = s.to_dict() or {}
+                        sched_at = d.get("scheduledAt")
+                        if sched_at:
+                            if isinstance(sched_at, datetime):
+                                s_dt = sched_at if sched_at.tzinfo else sched_at.replace(tzinfo=timezone.utc)
+                            else:
+                                s_dt = datetime.fromtimestamp(sched_at.timestamp(), tz=timezone.utc)
+                            if s_dt <= window_end:
+                                results.append(s)
+                                if len(results) >= self.config.batch_size:
+                                    return results
+                except Exception as inner_e:
+                    logger.debug("Error querying user %s schedules: %s", user.id, inner_e)
+
+                # If no schedules found for user, auto-synthesize from pending reminders due in window
+                if len(results) < self.config.batch_size:
+                    try:
+                        reminders = (
+                            self.db.collection("users")
+                            .doc(user.id)
+                            .collection("reminders")
+                            .where(filter=FieldFilter("status", "==", "pending"))
+                            .limit(20)
+                            .stream()
+                        )
+                        for r in reminders:
+                            rd = r.to_dict() or {}
+                            due_date = rd.get("dueDate")
+                            if not due_date:
+                                continue
+                            if isinstance(due_date, datetime):
+                                due_dt = due_date if due_date.tzinfo else due_date.replace(tzinfo=timezone.utc)
+                            else:
+                                due_dt = datetime.fromtimestamp(due_date.timestamp(), tz=timezone.utc)
+
+                            if due_dt <= window_end:
+                                sched_id = f"auto_sched_{r.id}"
+                                sched_ref = (
+                                    self.db.collection("users")
+                                    .doc(user.id)
+                                    .collection("notification_schedules")
+                                    .doc(sched_id)
+                                )
+                                existing_sched = sched_ref.get()
+                                if not existing_sched.exists or existing_sched.to_dict().get("status") in ("scheduled", "pending"):
+                                    sched_data = {
+                                        "id": sched_id,
+                                        "userId": user.id,
+                                        "recordId": r.id,
+                                        "moduleId": rd.get("module", "General").lower(),
+                                        "categoryId": rd.get("module", "General").lower(),
+                                        "status": "scheduled",
+                                        "scheduledAt": due_dt,
+                                        "eventType": rd.get("actionType", "Reminder"),
+                                        "payload": {
+                                            "title": rd.get("title", "Reminder Alert"),
+                                            "body": rd.get("description", "You have a pending commitment due today."),
+                                            "actionRoute": rd.get("actionRoute", "/reminders"),
+                                        },
+                                        "deliveryKey": f"{user.id}_{r.id}_auto",
+                                        "createdAt": datetime.now(timezone.utc),
+                                    }
+                                    if not self.config.dry_run:
+                                        sched_ref.set(sched_data, merge=True)
+                                        fresh_doc = sched_ref.get()
+                                        results.append(fresh_doc)
+                                    else:
+                                        results.append(existing_sched if existing_sched.exists else r)
+                                    if len(results) >= self.config.batch_size:
+                                        return results
+                    except Exception as rem_e:
+                        logger.debug("Error checking reminders for user %s: %s", user.id, rem_e)
         except Exception as e:
             logger.error("Fallback scan error: %s", e)
         return results
@@ -428,6 +497,15 @@ class NotificationWorker:
                 token = d.get("fcmToken", "")
                 if token:
                     devices.append({"id": doc.id, "token": token})
+
+            # Fallback: check top-level user doc for fcmToken
+            if not devices:
+                u_doc = self.db.collection("users").doc(user_id).get()
+                if u_doc.exists:
+                    u_data = u_doc.to_dict() or {}
+                    top_token = u_data.get("fcmToken", "")
+                    if top_token:
+                        devices.append({"id": "top_level_device", "token": top_token})
         except Exception as e:
             logger.error("Error fetching devices for user %s: %s", user_id, e)
         return devices

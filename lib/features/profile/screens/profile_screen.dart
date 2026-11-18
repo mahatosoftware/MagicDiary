@@ -227,6 +227,7 @@ class ProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(userProfileProvider);
     final theme = Theme.of(context);
+    final appInfo = ref.watch(appInfoProvider).value ?? const AppInfo();
 
     // Self-healing: ensure username is reserved and up-to-date in Firestore /usernames registry
     if (user != null && user.username.isNotEmpty) {
@@ -637,10 +638,10 @@ class ProfileScreen extends ConsumerWidget {
                     subtitle: Text('End-to-end user-isolated storage enabled.'),
                   ),
                   const Divider(height: 1),
-                  const ListTile(
-                    leading: Icon(Icons.info_outline, color: Colors.blueGrey),
-                    title: Text('Package & App Version'),
-                    subtitle: Text('in.mahato.magicdiary (v1.0.0+1 Production)'),
+                  ListTile(
+                    leading: const Icon(Icons.info_outline, color: Colors.blueGrey),
+                    title: Text('Mahato Software · ${appInfo.appName}'),
+                    subtitle: Text('${appInfo.packageName} (${appInfo.versionString} Production)\nYour Life. Your Records. Your Reminders.'),
                   ),
                 ],
               ),

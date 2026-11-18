@@ -176,6 +176,35 @@ class DiaryRecordRepository {
         .toList();
   }
 
+  /// Checks for potential duplicate records in the same diary to avoid duplicate entries.
+  /// Matches records with the same title (case-insensitive, trimmed)
+  /// and optionally the same recordDate.
+  Future<DiaryRecord?> findPotentialDuplicate({
+    required String userId,
+    required String diaryId,
+    required String title,
+    DateTime? recordDate,
+    String? excludeRecordId,
+  }) async {
+    final records = await getRecords(userId: userId, diaryId: diaryId);
+    final cleanTitle = title.trim().toLowerCase();
+    for (final rec in records) {
+      if (excludeRecordId != null && rec.id == excludeRecordId) continue;
+      if (rec.title.trim().toLowerCase() == cleanTitle) {
+        if (recordDate != null) {
+          if (rec.recordDate.year == recordDate.year &&
+              rec.recordDate.month == recordDate.month &&
+              rec.recordDate.day == recordDate.day) {
+            return rec;
+          }
+        } else {
+          return rec;
+        }
+      }
+    }
+    return null;
+  }
+
   /// Reads named records individually. This is required for selected-record
   /// shares: Firestore cannot authorize an unconstrained collection query when
   /// access is granted to only a known list of record IDs.

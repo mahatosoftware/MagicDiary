@@ -170,8 +170,13 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
                     style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
                   ),
                   const Text(
-                    'Your Personal Life Organizer',
-                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                    'Your Life. Your Records. Your Reminders.',
+                    style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 2),
+                  const Text(
+                    'Mahato Software · in.mahato.magicdiary',
+                    style: TextStyle(color: Colors.white70, fontSize: 10),
                   ),
                 ],
               ),

@@ -288,8 +288,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             const SizedBox(height: 4),
                             Text(
                               _isSignUp
-                                  ? 'Create an account to securely sync your data'
-                                  : 'Sign in to access your life record platform',
+                                  ? 'One intelligent place to organize, remember, manage and share everything that matters in your life.'
+                                  : 'Your Life. Your Records. Your Reminders.',
                               textAlign: TextAlign.center,
                               style: theme.textTheme.bodyMedium?.copyWith(
                                 color: Colors.grey.shade600,

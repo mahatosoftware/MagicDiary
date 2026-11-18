@@ -17,6 +17,8 @@ class Reminder {
   final String? assignedTo; // For household / family delegation
   final DateTime? snoozedUntil;
   final DateTime? completedAt;
+  final List<int>? remindBeforeDays;
+  final String? repeatSchedule;
   final DateTime createdAt;
 
   Reminder({
@@ -36,6 +38,8 @@ class Reminder {
     this.assignedTo,
     this.snoozedUntil,
     this.completedAt,
+    this.remindBeforeDays,
+    this.repeatSchedule,
     required this.createdAt,
   });
 
@@ -90,6 +94,10 @@ class Reminder {
       completedAt: map['completedAt'] is Timestamp
           ? (map['completedAt'] as Timestamp).toDate()
           : (map['completedAt'] != null ? DateTime.tryParse(map['completedAt'].toString()) : null),
+      remindBeforeDays: (map['remindBeforeDays'] as List<dynamic>?)
+          ?.map((e) => (e as num).toInt())
+          .toList(),
+      repeatSchedule: map['repeatSchedule'] as String?,
       createdAt: map['createdAt'] is Timestamp
           ? (map['createdAt'] as Timestamp).toDate()
           : DateTime.tryParse(map['createdAt'].toString()) ?? DateTime.now(),
@@ -112,6 +120,8 @@ class Reminder {
       'actionType': actionType,
       'priority': priority,
       if (assignedTo != null) 'assignedTo': assignedTo,
+      if (remindBeforeDays != null) 'remindBeforeDays': remindBeforeDays,
+      if (repeatSchedule != null) 'repeatSchedule': repeatSchedule,
       'snoozedUntil': snoozedUntil != null ? Timestamp.fromDate(snoozedUntil!) : null,
       'completedAt': completedAt != null ? Timestamp.fromDate(completedAt!) : null,
       'createdAt': Timestamp.fromDate(createdAt),
@@ -135,6 +145,8 @@ class Reminder {
     String? assignedTo,
     DateTime? snoozedUntil,
     DateTime? completedAt,
+    List<int>? remindBeforeDays,
+    String? repeatSchedule,
     DateTime? createdAt,
   }) {
     return Reminder(
@@ -154,6 +166,8 @@ class Reminder {
       assignedTo: assignedTo ?? this.assignedTo,
       snoozedUntil: snoozedUntil ?? this.snoozedUntil,
       completedAt: completedAt ?? this.completedAt,
+      remindBeforeDays: remindBeforeDays ?? this.remindBeforeDays,
+      repeatSchedule: repeatSchedule ?? this.repeatSchedule,
       createdAt: createdAt ?? this.createdAt,
     );
   }

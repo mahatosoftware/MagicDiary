@@ -47,7 +47,7 @@ class DashboardScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Your complete personal life organizer across 8 specialized diary modules.',
+                        'One intelligent place to organize, remember, manage and share everything that matters in your life.',
                         style: TextStyle(color: Colors.blue.shade800),
                       ),
                       const SizedBox(height: 16),

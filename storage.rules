@@ -57,12 +57,14 @@ service firebase.storage {
       return isAuthenticated() && (
         (
           firestore.exists(/databases/(default)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.uid))
-          && firestore.get(/databases/(default)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.uid)).data.status == 'active'
+          && (!('status' in firestore.get(/databases/(default)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.uid)).data) || firestore.get(/databases/(default)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.uid)).data.status == null || firestore.get(/databases/(default)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.uid)).data.status == 'active')
+          && (!('expiresAt' in firestore.get(/databases/(default)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.uid)).data) || firestore.get(/databases/(default)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.uid)).data.expiresAt == null || request.time < firestore.get(/databases/(default)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.uid)).data.expiresAt)
           && firestore.get(/databases/(default)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.uid)).data.allowAttachments == true
         ) || (
           request.auth.token.email != null
           && firestore.exists(/databases/(default)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.token.email.lower()))
-          && firestore.get(/databases/(default)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.token.email.lower())).data.status == 'active'
+          && (!('status' in firestore.get(/databases/(default)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.token.email.lower())).data) || firestore.get(/databases/(default)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.token.email.lower())).data.status == null || firestore.get(/databases/(default)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.token.email.lower())).data.status == 'active')
+          && (!('expiresAt' in firestore.get(/databases/(default)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.token.email.lower())).data) || firestore.get(/databases/(default)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.token.email.lower())).data.expiresAt == null || request.time < firestore.get(/databases/(default)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.token.email.lower())).data.expiresAt)
           && firestore.get(/databases/(default)/documents/shared_diary_access/$(ownerId + '_' + diaryId + '_' + request.auth.token.email.lower())).data.allowAttachments == true
         )
       );

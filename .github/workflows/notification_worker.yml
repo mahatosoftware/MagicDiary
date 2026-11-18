@@ -12,10 +12,10 @@ on:
         required: false
         default: false
       lookahead_minutes:
-        description: 'Minutes in advance to search for eligible schedules'
+        description: 'Minutes in advance to search for eligible schedules (e.g. 1440 for full 24h)'
         type: number
         required: false
-        default: 30
+        default: 1440
 
 concurrency:
   group: notification-worker-execution
@@ -45,6 +45,15 @@ jobs:
       - name: Run Worker Unit Tests
         run: |
           pytest notification_worker/tests -v --durations=10
+
+      - name: Validate GitHub Secrets Configuration
+        run: |
+          if [ -z "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" ]; then
+            echo "::error title=Missing Secret::FIREBASE_SERVICE_ACCOUNT secret is not set in GitHub Repository Secrets!"
+            echo "::notice::Add your Firebase Service Account JSON key to Repository Settings -> Secrets and variables -> Actions -> Repository secrets -> FIREBASE_SERVICE_ACCOUNT"
+            exit 1
+          fi
+          echo "✅ FIREBASE_SERVICE_ACCOUNT secret is present."
 
       - name: Execute Notification Worker
         env:

@@ -735,6 +735,54 @@ class ReminderSyncService {
       }
     } catch (_) {}
 
+    // 9. GENERIC DIARY RECORDS with Reminder settings
+    try {
+      final recordsSnap = await _firestore.collection('users').doc(userId).collection('diaryRecords').get();
+      for (final doc in recordsSnap.docs) {
+        final d = doc.data();
+        final remindBeforeDaysRaw = d['remindBeforeDays'] as List<dynamic>?;
+        final hasReminder = d['hasReminder'] == true || (remindBeforeDaysRaw != null && remindBeforeDaysRaw.isNotEmpty);
+        if (!hasReminder) continue;
+
+        final title = d['title'] as String? ?? 'Diary Record';
+        final diaryId = d['sourceDiaryId'] as String? ?? '';
+        final subtitle = d['subtitle'] as String?;
+        final amount = (d['amount'] as num?)?.toDouble();
+        final repeatSchedule = d['repeatSchedule'] as String? ?? 'one_time';
+        final remindBeforeDays = remindBeforeDaysRaw != null
+            ? remindBeforeDaysRaw.map((e) => (e as num).toInt()).toList()
+            : <int>[0];
+
+        DateTime recordDate = now;
+        if (d['recordDate'] is Timestamp) {
+          recordDate = (d['recordDate'] as Timestamp).toDate();
+        } else if (d['recordDate'] != null) {
+          recordDate = DateTime.tryParse(d['recordDate'].toString()) ?? now;
+        }
+
+        final docId = d['reminderId'] as String? ?? 'reminder_record_${doc.id}';
+        remindersToSync.add(Reminder(
+          id: docId,
+          userId: userId,
+          title: title,
+          description: subtitle ?? 'Diary entry reminder for $title',
+          module: 'Personal',
+          status: _resolveStatus(existingData[docId], 'pending', recordDate),
+          dueDate: recordDate,
+          relatedId: doc.id,
+          amount: amount,
+          actionRoute: diaryId.isNotEmpty ? '/diary-records/$diaryId' : null,
+          actionType: 'Review',
+          priority: 'medium',
+          remindBeforeDays: remindBeforeDays,
+          repeatSchedule: repeatSchedule,
+          createdAt: _resolveCreatedAt(existingData[docId], now),
+          snoozedUntil: _resolveSnoozedUntil(existingData[docId]),
+          completedAt: _resolveCompletedAt(existingData[docId], now),
+        ));
+      }
+    } catch (_) {}
+
     // Write all synced reminders into Firestore in batches (max 500 per batch)
     if (remindersToSync.isEmpty) return 0;
 

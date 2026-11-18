@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import '../models/notification_device.dart';
@@ -86,6 +87,15 @@ class NotificationFcmService {
     );
 
     await _repository.registerDevice(userId, device);
+
+    // Also persist fcmToken directly on user profile for instant backend discovery
+    try {
+      final firestore = FirebaseFirestore.instance;
+      await firestore.collection('users').doc(userId).set({
+        'fcmToken': token,
+        'lastDeviceActiveAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (_) {}
   }
 
   /// Subscribe to household topic for shared family updates without backend dependencies

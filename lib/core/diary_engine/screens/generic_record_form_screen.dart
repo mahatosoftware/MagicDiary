@@ -8,6 +8,7 @@ import '../models/diary_record.dart';
 import '../models/custom_field_definition.dart';
 import 'generic_diary_list_screen.dart';
 import '../../providers/app_providers.dart';
+import '../../../features/reminders/models/reminder.dart';
 
 class GenericRecordFormScreen extends ConsumerStatefulWidget {
   final String diaryId;
@@ -36,6 +37,26 @@ class _GenericRecordFormScreenState extends ConsumerState<GenericRecordFormScree
   final List<String> _restrictedFields = [];
   bool _isSaving = false;
 
+  // Reminder Configuration
+  bool _hasReminder = false;
+  final Set<int> _selectedRemindBeforeDays = {};
+  String _selectedRepeatSchedule = 'one_time';
+
+  static const List<Map<String, dynamic>> _remindBeforeOptions = [
+    {'days': 30, 'label': '30 Days'},
+    {'days': 15, 'label': '15 Days'},
+    {'days': 7, 'label': '7 Days'},
+    {'days': 1, 'label': '1 Day'},
+    {'days': 0, 'label': 'On the Day'},
+  ];
+
+  static const List<Map<String, String>> _repeatScheduleOptions = [
+    {'value': 'one_time', 'label': 'One Time'},
+    {'value': 'monthly', 'label': 'Every Month'},
+    {'value': 'quarterly', 'label': 'Every Quarter'},
+    {'value': 'yearly', 'label': 'Every Year'},
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -49,6 +70,9 @@ class _GenericRecordFormScreenState extends ConsumerState<GenericRecordFormScree
     if (rec != null) {
       _fieldValues.addAll(rec.fields);
       _restrictedFields.addAll(rec.restrictedFields);
+      _hasReminder = rec.hasReminder;
+      _selectedRemindBeforeDays.addAll(rec.remindBeforeDays);
+      _selectedRepeatSchedule = rec.repeatSchedule;
     }
   }
 
@@ -172,6 +196,121 @@ class _GenericRecordFormScreenState extends ConsumerState<GenericRecordFormScree
                     ...suggestedFields.map((field) => _buildCustomField(field)),
                     const SizedBox(height: 16),
                   ],
+
+                  // Reminder Configuration Section
+                  Card(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SwitchListTile(
+                            title: const Text('Set Reminder', style: TextStyle(fontWeight: FontWeight.w600)),
+                            subtitle: const Text('Get alerts before the date arrives'),
+                            value: _hasReminder,
+                            secondary: Icon(
+                              _hasReminder ? Icons.notifications_active_rounded : Icons.notifications_none_rounded,
+                              color: _hasReminder ? color : Colors.grey,
+                            ),
+                            onChanged: (val) {
+                              setState(() {
+                                _hasReminder = val;
+                                if (val && _selectedRemindBeforeDays.isEmpty) {
+                                  _selectedRemindBeforeDays.add(0); // Default to On the Day
+                                }
+                              });
+                            },
+                          ),
+                          if (_hasReminder) ...[
+                            const Divider(height: 1),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'REMIND ME BEFORE',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.grey.shade600,
+                                      letterSpacing: 1.0,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 4,
+                                    children: _remindBeforeOptions.map((opt) {
+                                      final days = opt['days'] as int;
+                                      final label = opt['label'] as String;
+                                      final isSelected = _selectedRemindBeforeDays.contains(days);
+                                      return FilterChip(
+                                        label: Text(label),
+                                        selected: isSelected,
+                                        selectedColor: color.withValues(alpha: 0.18),
+                                        checkmarkColor: color,
+                                        labelStyle: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                          color: isSelected ? color : Colors.black87,
+                                        ),
+                                        onSelected: (selected) {
+                                          setState(() {
+                                            if (selected) {
+                                              _selectedRemindBeforeDays.add(days);
+                                            } else {
+                                              _selectedRemindBeforeDays.remove(days);
+                                            }
+                                          });
+                                        },
+                                      );
+                                    }).toList(),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'REPEAT SCHEDULE',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.grey.shade600,
+                                      letterSpacing: 1.0,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  DropdownButtonFormField<String>(
+                                    initialValue: _selectedRepeatSchedule,
+                                    decoration: InputDecoration(
+                                      prefixIcon: const Icon(Icons.repeat_rounded),
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                    ),
+                                    items: _repeatScheduleOptions
+                                        .map((opt) => DropdownMenuItem(
+                                              value: opt['value'],
+                                              child: Text(opt['label']!),
+                                            ))
+                                        .toList(),
+                                    onChanged: (val) {
+                                      if (val != null) {
+                                        setState(() => _selectedRepeatSchedule = val);
+                                      }
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
 
                   // Privacy Switch
                   SwitchListTile(
@@ -347,6 +486,56 @@ class _GenericRecordFormScreenState extends ConsumerState<GenericRecordFormScree
       final recordId = widget.initialRecord?.id ?? const Uuid().v4();
       final amount = double.tryParse(_amountController.text.trim());
       final targetUserId = (widget.ownerId != null && widget.ownerId!.isNotEmpty) ? widget.ownerId! : user.uid;
+      final repo = ref.read(diaryRecordRepositoryProvider);
+
+      // Duplicate detection to prevent accidental duplicate entries
+      if (widget.initialRecord == null) {
+        final duplicate = await repo.findPotentialDuplicate(
+          userId: targetUserId,
+          diaryId: widget.diaryId,
+          title: _titleController.text.trim(),
+          recordDate: _recordDate,
+        );
+        if (duplicate != null && mounted) {
+          final proceed = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                  SizedBox(width: 8),
+                  Text('Duplicate Entry Detected'),
+                ],
+              ),
+              content: Text(
+                'An entry with the title "${duplicate.title}" already exists for this date in this diary. Do you want to save anyway?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Save Anyway'),
+                ),
+              ],
+            ),
+          );
+          if (proceed != true) {
+            setState(() => _isSaving = false);
+            return;
+          }
+        }
+      }
+
+      final List<int> remindDays = _hasReminder
+          ? (_selectedRemindBeforeDays.toList()..sort((a, b) => b.compareTo(a)))
+          : const [];
+      final String repeatSchedule = _hasReminder ? _selectedRepeatSchedule : 'one_time';
+      final String? reminderId = _hasReminder
+          ? (widget.initialRecord?.reminderId ?? 'reminder_record_$recordId')
+          : null;
 
       final record = DiaryRecord(
         id: recordId,
@@ -361,15 +550,41 @@ class _GenericRecordFormScreenState extends ConsumerState<GenericRecordFormScree
         restrictedFields: _restrictedFields,
         isPrivate: _isPrivate,
         attachmentIds: widget.initialRecord?.attachmentIds ?? const [],
-        reminderId: widget.initialRecord?.reminderId,
+        reminderId: reminderId,
+        remindBeforeDays: remindDays,
+        repeatSchedule: repeatSchedule,
         createdBy: widget.initialRecord?.createdBy ?? user.uid,
         updatedBy: user.uid,
         createdAt: widget.initialRecord?.createdAt ?? now,
         updatedAt: now,
       );
 
-      final repo = ref.read(diaryRecordRepositoryProvider);
       await repo.saveRecord(userId: targetUserId, record: record);
+
+      // Manage Reminder sync
+      final reminderRepo = ref.read(reminderRepositoryProvider);
+      final diary = DiaryRegistry.getDiaryById(widget.diaryId);
+      if (_hasReminder && reminderId != null) {
+        final reminder = Reminder(
+          id: reminderId,
+          userId: targetUserId,
+          title: record.title,
+          description: record.subtitle ?? '${diary?.name ?? "Diary"} entry reminder',
+          module: diary?.categoryId ?? 'General',
+          dueDate: _recordDate,
+          relatedId: record.id,
+          amount: record.amount,
+          actionRoute: '/diary-records/${widget.diaryId}',
+          actionType: 'Review',
+          remindBeforeDays: remindDays,
+          repeatSchedule: repeatSchedule,
+          createdAt: now,
+        );
+        await reminderRepo.syncReminder(targetUserId, reminder);
+      } else if (widget.initialRecord?.reminderId != null) {
+        // Delete the reminder if it was previously set and is now disabled
+        await reminderRepo.deleteReminder(targetUserId, widget.initialRecord!.reminderId!);
+      }
 
       if (mounted) {
         context.pop();

@@ -1,7 +1,7 @@
 name: magic_diary
 description: "Magic Diary – Personal Information & Life Record Management Platform"
 publish_to: 'none'
-version: 1.0.6+6
+version: 1.0.7+7
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -46,6 +46,7 @@ dependencies:
   firebase_app_check: ^0.5.1
   qr_flutter: ^4.1.0
   mobile_scanner: ^7.5.0
+  package_info_plus: ^9.0.1
 
 dev_dependencies:
   flutter_test:

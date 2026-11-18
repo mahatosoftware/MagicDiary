@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../security/security.dart';
 import '../../features/auth/repositories/auth_repository.dart';
 import '../../features/auth/models/user_profile.dart';
@@ -58,6 +59,38 @@ final propertyRepositoryProvider = Provider<PropertyRepository>((ref) => Propert
 final personalRepositoryProvider = Provider<PersonalRepository>((ref) => PersonalRepository());
 final domesticHelpRepositoryProvider = Provider<DomesticHelpRepository>((ref) => DomesticHelpRepository());
 final householdWorkspaceRepositoryProvider = Provider<HouseholdWorkspaceRepository>((ref) => HouseholdWorkspaceRepository());
+
+// App Package & Version Information
+class AppInfo {
+  final String appName;
+  final String packageName;
+  final String version;
+  final String buildNumber;
+
+  const AppInfo({
+    this.appName = 'Magic Diary',
+    this.packageName = 'in.mahato.magicdiary',
+    this.version = '1.0.7',
+    this.buildNumber = '7',
+  });
+
+  String get versionString => 'v$version+$buildNumber';
+  String get displaySubtitle => '$packageName (v$version+$buildNumber Production)\nYour Life. Your Records. Your Reminders.';
+}
+
+final appInfoProvider = FutureProvider<AppInfo>((ref) async {
+  try {
+    final info = await PackageInfo.fromPlatform();
+    return AppInfo(
+      appName: info.appName.isNotEmpty ? info.appName : 'Magic Diary',
+      packageName: info.packageName.isNotEmpty ? info.packageName : 'in.mahato.magicdiary',
+      version: info.version.isNotEmpty ? info.version : '1.0.7',
+      buildNumber: info.buildNumber.isNotEmpty ? info.buildNumber : '7',
+    );
+  } catch (_) {
+    return const AppInfo();
+  }
+});
 
 // Auth State Provider
 final userProfileProvider = StateNotifierProvider<UserNotifier, UserProfile?>((ref) {
