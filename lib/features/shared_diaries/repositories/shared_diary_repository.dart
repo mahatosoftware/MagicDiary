@@ -40,7 +40,6 @@ class SharedDiaryRepository {
         final userDoc = await _firestore.collection('users').doc(targetUid).get();
         if (userDoc.exists && userDoc.data() != null) {
           final profile = UserProfile.fromMap(userDoc.data()!, targetUid);
-          _seedUsernameMapping(profile.username.isNotEmpty ? profile.username : upper, targetUid, profile.displayName, profile.email);
           return profile;
         }
       } catch (e) {
@@ -87,9 +86,7 @@ class SharedDiaryRepository {
     try {
       final doc = await _firestore.collection('users').doc(clean).get();
       if (doc.exists && doc.data() != null) {
-        final profile = UserProfile.fromMap(doc.data()!, clean);
-        _seedUsernameMapping(profile.username.isNotEmpty ? profile.username : upper, clean, profile.displayName, profile.email);
-        return profile;
+        return UserProfile.fromMap(doc.data()!, clean);
       }
     } catch (_) {}
 
@@ -109,9 +106,7 @@ class SharedDiaryRepository {
       }
       if (query.docs.isNotEmpty) {
         final doc = query.docs.first;
-        final profile = UserProfile.fromMap(doc.data(), doc.id);
-        _seedUsernameMapping(profile.username.isNotEmpty ? profile.username : upper, doc.id, profile.displayName, profile.email);
-        return profile;
+        return UserProfile.fromMap(doc.data(), doc.id);
       }
     } catch (e) {
       debugPrint('Note: Error querying users by username "$upper": $e');
@@ -130,24 +125,6 @@ class SharedDiaryRepository {
     }
 
     return null;
-  }
-
-  void _seedUsernameMapping(String username, String uid, String displayName, String email) {
-    final clean = username.trim().toUpperCase();
-    if (clean.isEmpty) return;
-    try {
-      final data = <String, dynamic>{
-        'uid': uid,
-        'username': clean,
-        'createdAt': FieldValue.serverTimestamp(),
-      };
-      if (displayName.trim().isNotEmpty) data['displayName'] = displayName.trim();
-      if (email.trim().isNotEmpty) data['email'] = email.trim().toLowerCase();
-      _firestore.collection('usernames').doc(clean).set(data, SetOptions(merge: true)).catchError((_) {});
-      if (clean != clean.toLowerCase()) {
-        _firestore.collection('usernames').doc(clean.toLowerCase()).set(data, SetOptions(merge: true)).catchError((_) {});
-      }
-    } catch (_) {}
   }
 
   /// Creates a one-time usable share invitation

@@ -9,6 +9,11 @@ import 'local_notification_service.dart';
 import 'notification_channel_manager.dart';
 import 'notification_scheduler.dart';
 
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  debugPrint('FCM background message received: ${message.messageId}');
+}
+
 class NotificationFcmService {
   final FirebaseMessaging _fcm;
   final NotificationRepository _repository;
@@ -37,15 +42,32 @@ class NotificationFcmService {
 
       if (settings.authorizationStatus == AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional) {
-        // Listen for FCM token registration & refresh
+        // 1. Immediately attempt direct token acquisition to register device instantly
+        try {
+          // ignore: deprecated_member_use
+          final directToken = await _fcm.getToken();
+          if (directToken != null && directToken.isNotEmpty) {
+            debugPrint('FCM direct token acquired: $directToken');
+            await registerDeviceToken(userId, directToken);
+          }
+        } catch (e) {
+          debugPrint('FCM direct token note: $e');
+        }
+
+        // 2. Listen for modern FirebaseMessaging registration stream
         _fcm.onRegistered.listen((newToken) {
+          debugPrint('FCM Token onRegistered received: $newToken');
           registerDeviceToken(userId, newToken);
         });
 
-        // Register the current app instance with FCM
-        await _fcm.register();
+        // 3. Trigger registration
+        try {
+          await _fcm.register();
+        } catch (e) {
+          debugPrint('FCM register note: $e');
+        }
 
-        // Listen for foreground FCM messages
+        // 3. Listen for foreground FCM messages
         FirebaseMessaging.onMessage.listen((RemoteMessage message) {
           handleIncomingMessage(userId, message);
         });

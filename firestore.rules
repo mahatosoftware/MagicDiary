@@ -96,6 +96,8 @@ rules_version = '2';
 //   - /share_invitations/{inviteId} (One-Time Shared Diary Deep Link Invitations)
 //     - Document ID format: {inviteId} (unique invite token)
 //     - Fields: id, diaryId, diaryName, ownerUid, ownerName, permission, sharingMode, grantedRecordIds, allowAttachments, allowComments, allowExport, restrictedFields, isOneTime, isClaimed, claimedByUid, claimedByEmail, claimedByName, claimedAt, expiresAt, createdAt, updatedAt
+//   - /app_config/{configId} (Global Application Configuration & Version Control - Public Read-only)
+//   - /config/{configId} (Global Application Configuration & Version Control - Public Read-only)
 //
 // ===============================================================
 
@@ -2069,6 +2071,19 @@ service cloud.firestore {
 
       // Only the owner can delete the invitation
       allow delete: if isAuthenticated() && resource.data.ownerUid == request.auth.uid;
+    }
+
+    // ===============================================================
+    // App Configuration & Version Control (Public Read-only)
+    // ===============================================================
+    match /app_config/{configId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /config/{configId} {
+      allow read: if true;
+      allow write: if false;
     }
 
     // ===============================================================

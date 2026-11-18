@@ -16,6 +16,7 @@ import '../../features/reminders/repositories/reminder_repository.dart';
 import '../../features/reminders/models/reminder.dart';
 import '../../features/reminders/services/reminder_sync_service.dart';
 import '../utils/date_calculators.dart';
+import '../notifications/services/notification_manager.dart';
 
 // New Diary Repositories
 import '../../features/vehicle/repositories/vehicle_repository.dart';
@@ -109,6 +110,11 @@ class UserNotifier extends StateNotifier<UserProfile?> {
     final repo = ref.read(authRepositoryProvider);
     _authSubscription = repo.authStateChanges.listen((profile) {
       state = profile;
+      if (profile != null && profile.uid.isNotEmpty) {
+        try {
+          NotificationManager().fcmService.initialize(profile.uid);
+        } catch (_) {}
+      }
     });
   }
 
@@ -148,8 +154,9 @@ class UserNotifier extends StateNotifier<UserProfile?> {
   }
 
   Future<void> updateProfile(UserProfile updated) async {
+    final oldUsername = state?.username;
     final repo = ref.read(authRepositoryProvider);
-    await repo.updateUserProfile(updated);
+    await repo.updateUserProfile(updated, oldUsername: oldUsername);
     state = updated;
   }
 

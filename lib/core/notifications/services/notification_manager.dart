@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../analytics/notification_analytics.dart';
 import '../models/notification_enums.dart';
 import '../models/notification_schedule.dart';
@@ -95,14 +97,37 @@ class NotificationManager {
       actionPromptHandler: actionPromptHandler,
     );
 
-    // 3. If user is currently signed in, reconcile startup & initialize FCM
-    if (currentUserId != null && currentUserId.isNotEmpty) {
-      await recoveryManager.reconcile(userId: currentUserId);
-      await fcmService.initialize(currentUserId);
+    // 3. Listen to auth state to automatically register device for notifications
+    _startAutoRegistration();
+
+    // 4. If user is currently signed in, reconcile startup & initialize FCM immediately
+    final resolvedUid = (currentUserId != null && currentUserId.isNotEmpty)
+        ? currentUserId
+        : FirebaseAuth.instance.currentUser?.uid;
+
+    if (resolvedUid != null && resolvedUid.isNotEmpty) {
+      await recoveryManager.reconcile(userId: resolvedUid);
+      await fcmService.initialize(resolvedUid);
     }
 
     _initialized = true;
     debugPrint('NotificationManager successfully initialized.');
+  }
+
+  StreamSubscription<User?>? _authSubscription;
+
+  void _startAutoRegistration() {
+    _authSubscription?.cancel();
+    _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) async {
+      if (user != null && user.uid.isNotEmpty) {
+        debugPrint('[NotificationManager] Auth state changed: auto-registering device for UID ${user.uid}');
+        try {
+          await fcmService.initialize(user.uid);
+        } catch (e) {
+          debugPrint('[NotificationManager] Auto-registration note: $e');
+        }
+      }
+    });
   }
 
   // =========================================================================

@@ -75,7 +75,8 @@ class AuthRepository {
       final doc = await _firestore.collection('users').doc(uid).get();
       if (doc.exists && doc.data() != null) {
         final profile = UserProfile.fromMap(doc.data()!, uid);
-        if (profile.username.trim().isEmpty || UserProfile.hasConfusingChars(profile.username)) {
+        // Only backfill a username if it is completely blank (never overwrite or auto-regenerate existing usernames)
+        if (profile.username.trim().isEmpty) {
           final newUsername = await generateUniqueUsername();
           final updated = profile.copyWith(username: newUsername);
           try {
@@ -86,8 +87,8 @@ class AuthRepository {
           }
           return updated;
         } else {
-          // Self-heal & ensure username is in public /usernames collection for fast O(1) lookup
-          reserveUsername(profile.username, uid, displayName: profile.displayName, email: profile.email);
+          // Asynchronously prune any duplicate lowercase or stale username records in /usernames
+          _cleanupOrphanedUsernamesForUid(uid, profile.username.trim().toUpperCase());
         }
         return profile;
       }
@@ -262,16 +263,33 @@ class AuthRepository {
         data['email'] = email.trim().toLowerCase();
       }
 
+      // Store single canonical uppercase document ID in /usernames
       await _firestore.collection('usernames').doc(clean).set(data, SetOptions(merge: true));
-      // Also alias lowercase doc for case-insensitive lookup compatibility
-      if (clean != clean.toLowerCase()) {
-        try {
-          await _firestore.collection('usernames').doc(clean.toLowerCase()).set(data, SetOptions(merge: true));
-        } catch (_) {}
-      }
+
+      // Asynchronously prune any stale/orphaned username records in /usernames claiming this same UID
+      _cleanupOrphanedUsernamesForUid(uid, clean);
     } catch (e) {
       debugPrint('Username reservation note: $e');
     }
+  }
+
+  /// Asynchronously prunes old, lowercase duplicates, or orphaned username records in /usernames belonging to this UID
+  Future<void> _cleanupOrphanedUsernamesForUid(String uid, String currentUsernameUpper) async {
+    if (uid.isEmpty) return;
+    try {
+      final query = await _firestore
+          .collection('usernames')
+          .where('uid', isEqualTo: uid)
+          .get();
+      for (final doc in query.docs) {
+        // Delete anything that doesn't strictly match the canonical uppercase document ID
+        // (including lowercase duplicate documents and old abandoned usernames)
+        if (doc.id != currentUsernameUpper) {
+          await doc.reference.delete();
+          debugPrint('Pruned duplicate or stale username document: ${doc.id} for UID $uid');
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> signOut() async {
@@ -287,10 +305,18 @@ class AuthRepository {
     await _auth.sendPasswordResetEmail(email: email.trim());
   }
 
-  Future<void> updateUserProfile(UserProfile updatedProfile) async {
+  Future<void> updateUserProfile(UserProfile updatedProfile, {String? oldUsername}) async {
     await _firestore.collection('users').doc(updatedProfile.uid).update(updatedProfile.toMap());
     if (updatedProfile.username.isNotEmpty) {
-      reserveUsername(
+      if (oldUsername != null &&
+          oldUsername.trim().isNotEmpty &&
+          oldUsername.trim().toUpperCase() != updatedProfile.username.trim().toUpperCase()) {
+        try {
+          await _firestore.collection('usernames').doc(oldUsername.trim().toUpperCase()).delete();
+          await _firestore.collection('usernames').doc(oldUsername.trim().toLowerCase()).delete();
+        } catch (_) {}
+      }
+      await reserveUsername(
         updatedProfile.username,
         updatedProfile.uid,
         displayName: updatedProfile.displayName,

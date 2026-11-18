@@ -6,6 +6,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../auth/models/user_profile.dart';
+import '../../../core/notifications/providers/notification_providers.dart';
+import '../../../core/notifications/models/notification_device.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -223,23 +225,183 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
+  void _showNotificationDevicesDialog(BuildContext context, WidgetRef ref) {
+    final user = ref.read(userProfileProvider);
+    if (user == null) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => FutureBuilder<List<NotificationDevice>>(
+        future: ref.read(notificationRepositoryProvider).getDevices(user.uid),
+        builder: (ctx, snapshot) {
+          final devices = snapshot.data ?? [];
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Registered Devices & FCM',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'These devices receive push notifications from Magic Diary and GitHub Actions scheduled workers.',
+                  style: TextStyle(fontSize: 13, color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
+                if (snapshot.connectionState == ConnectionState.waiting)
+                  const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()))
+                else if (devices.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.orange.shade200),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'No devices registered yet',
+                          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Open the app on an Android, iOS, or Web device with notifications enabled to automatically register.',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        const SizedBox(height: 12),
+                        ElevatedButton.icon(
+                          onPressed: () async {
+                            final fcmService = ref.read(notificationManagerProvider).fcmService;
+                            await fcmService.initialize(user.uid);
+                            if (ctx.mounted) {
+                              Navigator.pop(ctx);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Device registration initiated.')),
+                              );
+                            }
+                          },
+                          icon: const Icon(Icons.refresh_rounded, size: 16),
+                          label: const Text('Register This Device Now'),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  ...devices.map((d) => Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    d.platform == 'android'
+                                        ? Icons.android_rounded
+                                        : (d.platform == 'ios' ? Icons.apple_rounded : Icons.computer_rounded),
+                                    color: Colors.teal,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      d.deviceName.isNotEmpty ? d.deviceName : d.id,
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.teal.shade50,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      d.platform.toUpperCase(),
+                                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.teal.shade800),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      'Device ID: ${d.id}',
+                                      style: const TextStyle(fontSize: 12, fontFamily: 'monospace', color: Colors.black87),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.copy_rounded, size: 16),
+                                    tooltip: 'Copy Device ID',
+                                    onPressed: () {
+                                      Clipboard.setData(ClipboardData(text: d.id));
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('Copied Device ID: ${d.id}')),
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
+                              if (d.fcmToken.isNotEmpty) ...[
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        'FCM Token: ${d.fcmToken.substring(0, d.fcmToken.length > 24 ? 24 : d.fcmToken.length)}...',
+                                        style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.grey),
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.token_rounded, size: 16),
+                                      tooltip: 'Copy Full FCM Token',
+                                      onPressed: () {
+                                        Clipboard.setData(ClipboardData(text: d.fcmToken));
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('FCM Token copied to clipboard')),
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      )),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(userProfileProvider);
     final theme = Theme.of(context);
     final appInfo = ref.watch(appInfoProvider).value ?? const AppInfo();
-
-    // Self-healing: ensure username is reserved and up-to-date in Firestore /usernames registry
-    if (user != null && user.username.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ref.read(authRepositoryProvider).reserveUsername(
-          user.username,
-          user.uid,
-          displayName: user.displayName,
-          email: user.email,
-        );
-      });
-    }
 
     User? currentUser;
     try {
@@ -626,10 +788,10 @@ class ProfileScreen extends ConsumerWidget {
                   const Divider(height: 1),
                   ListTile(
                     leading: const Icon(Icons.notifications_active_outlined, color: Colors.orange),
-                    title: const Text('Notification Preferences'),
-                    subtitle: const Text('Alerts 7 days & 1 day before due dates.'),
+                    title: const Text('Notification Preferences & Devices'),
+                    subtitle: const Text('View registered devices, copy Device ID & FCM Token.'),
                     trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-                    onTap: () {},
+                    onTap: () => _showNotificationDevicesDialog(context, ref),
                   ),
                   const Divider(height: 1),
                   const ListTile(
