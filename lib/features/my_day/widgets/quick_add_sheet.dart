@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../reminders/models/reminder.dart';
+import '../../../core/notifications/services/notification_manager.dart';
 
 class QuickAddSheet extends ConsumerStatefulWidget {
   const QuickAddSheet({super.key});
@@ -70,7 +71,7 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
     setState(() => _isSaving = true);
     try {
       final repo = ref.read(reminderRepositoryProvider);
-      await repo.addReminder(
+      final saved = await repo.addReminder(
         user.uid,
         Reminder(
           id: '',
@@ -84,6 +85,22 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
           createdAt: DateTime.now(),
         ),
       );
+
+      // Schedule directly for local & GitHub Actions worker delivery
+      try {
+        final notifManager = NotificationManager();
+        await notifManager.scheduleForRecord(
+          userId: user.uid,
+          recordId: saved.id,
+          moduleId: _selectedModule.toLowerCase(),
+          categoryId: _selectedModule.toLowerCase(),
+          eventType: _selectedActionType.toLowerCase(),
+          title: title,
+          dueDate: _selectedDate,
+          tokenData: {'description': _descController.text.trim()},
+        );
+      } catch (_) {}
+
       ref.invalidate(remindersProvider);
       if (mounted) Navigator.pop(context);
     } catch (e) {

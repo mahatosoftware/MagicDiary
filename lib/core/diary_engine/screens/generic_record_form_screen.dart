@@ -9,6 +9,7 @@ import '../models/custom_field_definition.dart';
 import 'generic_diary_list_screen.dart';
 import '../../providers/app_providers.dart';
 import '../../../features/reminders/models/reminder.dart';
+import '../../notifications/services/notification_manager.dart';
 
 class GenericRecordFormScreen extends ConsumerStatefulWidget {
   final String diaryId;
@@ -581,9 +582,33 @@ class _GenericRecordFormScreenState extends ConsumerState<GenericRecordFormScree
           createdAt: now,
         );
         await reminderRepo.syncReminder(targetUserId, reminder);
+
+        // Standardize schedule in notification_schedules for GitHub Actions Worker & Local Push
+        try {
+          final notifManager = NotificationManager();
+          await notifManager.scheduleForRecord(
+            userId: targetUserId,
+            recordId: record.id,
+            moduleId: diary?.categoryId ?? 'general',
+            categoryId: diary?.categoryId ?? 'general',
+            eventType: 'diary_entry_reminder',
+            title: record.title,
+            dueDate: _recordDate,
+            amount: record.amount,
+            actionRoute: '/diary-records/${widget.diaryId}',
+            tokenData: {'description': record.subtitle ?? ''},
+          );
+        } catch (_) {}
       } else if (widget.initialRecord?.reminderId != null) {
         // Delete the reminder if it was previously set and is now disabled
         await reminderRepo.deleteReminder(targetUserId, widget.initialRecord!.reminderId!);
+        try {
+          final notifManager = NotificationManager();
+          await notifManager.cancelForRecord(
+            userId: targetUserId,
+            recordId: widget.initialRecord!.id,
+          );
+        } catch (_) {}
       }
 
       if (mounted) {
