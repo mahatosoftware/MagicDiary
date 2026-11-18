@@ -129,6 +129,44 @@ class ReminderSyncService {
           completedAt: isPaid ? _resolveCompletedAt(existingData[docId], now) : null,
         ));
       }
+
+      // Also generate reminders for bill accounts that don't have explicit bill docs yet
+      for (final doc in accountsSnap.docs) {
+        final d = doc.data();
+        final accId = doc.id;
+        final hasBill = billsSnap.docs.any((b) => b.data()['billAccountId'] == accId);
+        if (!hasBill && (d['autoReminder'] as bool? ?? true)) {
+          final dueDay = (d['dueDayOfMonth'] as num?)?.toInt() ?? 1;
+          final targetDay = dueDay.clamp(1, 28);
+          DateTime targetDueDate;
+          if (now.day <= targetDay) {
+            targetDueDate = DateTime(now.year, now.month, targetDay, 9, 0);
+          } else {
+            final nextMonth = now.month == 12 ? 1 : now.month + 1;
+            final nextYear = now.month == 12 ? now.year + 1 : now.year;
+            targetDueDate = DateTime(nextYear, nextMonth, targetDay, 9, 0);
+          }
+          final name = d['name'] as String? ?? 'Bill';
+          final provider = d['providerName'] as String? ?? '';
+          final amount = (d['defaultAmount'] as num?)?.toDouble() ?? 0.0;
+          final docId = 'reminder_bill_acc_$accId';
+          remindersToSync.add(Reminder(
+            id: docId,
+            userId: userId,
+            title: 'Bill: $name',
+            description: '${d['category'] ?? "Utility"} bill from $provider. Amount: ₹${amount.toStringAsFixed(0)}.',
+            module: 'Bills',
+            status: 'pending',
+            dueDate: targetDueDate,
+            relatedId: accId,
+            amount: amount,
+            actionRoute: '/bills',
+            actionType: 'Pay',
+            priority: 'high',
+            createdAt: _resolveCreatedAt(existingData[docId], now),
+          ));
+        }
+      }
     } catch (_) {}
 
     // 3. VEHICLE: Insurance, PUCC, Routine Servicing & Odometer Milestones

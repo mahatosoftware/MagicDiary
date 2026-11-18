@@ -71,8 +71,8 @@ class AppInfo {
   const AppInfo({
     this.appName = 'Magic Diary',
     this.packageName = 'in.mahato.magicdiary',
-    this.version = '1.0.7',
-    this.buildNumber = '7',
+    this.version = '1.0.8',
+    this.buildNumber = '8',
   });
 
   String get versionString => 'v$version+$buildNumber';
@@ -85,8 +85,8 @@ final appInfoProvider = FutureProvider<AppInfo>((ref) async {
     return AppInfo(
       appName: info.appName.isNotEmpty ? info.appName : 'Magic Diary',
       packageName: info.packageName.isNotEmpty ? info.packageName : 'in.mahato.magicdiary',
-      version: info.version.isNotEmpty ? info.version : '1.0.7',
-      buildNumber: info.buildNumber.isNotEmpty ? info.buildNumber : '7',
+      version: info.version.isNotEmpty ? info.version : '1.0.8',
+      buildNumber: info.buildNumber.isNotEmpty ? info.buildNumber : '8',
     );
   } catch (_) {
     return const AppInfo();

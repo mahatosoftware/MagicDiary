@@ -290,107 +290,115 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> with SingleTi
           children: [
             // Top Row: Module Badge, Due Pill, and Context Actions
             Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: moduleColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+                Expanded(
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      Icon(moduleIcon, size: 14, color: moduleColor),
-                      const SizedBox(width: 4),
-                      Text(
-                        r.module,
-                        style: TextStyle(
-                          color: moduleColor,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: moduleColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(moduleIcon, size: 14, color: moduleColor),
+                            const SizedBox(width: 4),
+                            Text(
+                              r.module,
+                              style: TextStyle(
+                                color: moduleColor,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
+
+                      // Status indicator pill
+                      if (r.isCompleted)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade50,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: Colors.green.shade300),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.check_circle, size: 12, color: Colors.green),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Completed ${r.completedAt != null ? DateFormat('dd MMM').format(r.completedAt!) : ''}',
+                                style: TextStyle(color: Colors.green.shade900, fontSize: 11, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        )
+                      else if (isOverdue)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade50,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: Colors.red.shade400),
+                          ),
+                          child: Text(
+                            'Overdue by ${daysUntil.abs()}d',
+                            style: TextStyle(color: Colors.red.shade900, fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
+                        )
+                      else if (isToday)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade100,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: Colors.amber.shade600),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.star, size: 12, color: Colors.amber.shade900),
+                              const SizedBox(width: 4),
+                              Text(
+                                'DUE TODAY',
+                                style: TextStyle(color: Colors.brown.shade900, fontSize: 11, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        )
+                      else if (daysUntil == 1)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'Due Tomorrow',
+                            style: TextStyle(color: Colors.blue, fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
+                        )
+                      else
+                        Text(
+                          'In $daysUntil days',
+                          style: TextStyle(color: Colors.grey.shade700, fontSize: 11, fontWeight: FontWeight.w600),
+                        ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
-
-                // Status indicator pill
-                if (r.isCompleted)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.green.shade50,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: Colors.green.shade300),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.check_circle, size: 12, color: Colors.green),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Completed ${r.completedAt != null ? DateFormat('dd MMM').format(r.completedAt!) : ''}',
-                          style: TextStyle(color: Colors.green.shade900, fontSize: 11, fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ),
-                  )
-                else if (isOverdue)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.red.shade50,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: Colors.red.shade400),
-                    ),
-                    child: Text(
-                      'Overdue by ${daysUntil.abs()}d',
-                      style: TextStyle(color: Colors.red.shade900, fontSize: 11, fontWeight: FontWeight.bold),
-                    ),
-                  )
-                else if (isToday)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.shade100,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: Colors.amber.shade600),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.star, size: 12, color: Colors.amber.shade900),
-                        const SizedBox(width: 4),
-                        Text(
-                          'DUE TODAY',
-                          style: TextStyle(color: Colors.brown.shade900, fontSize: 11, fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ),
-                  )
-                else if (daysUntil == 1)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Text(
-                      'Due Tomorrow',
-                      style: TextStyle(color: Colors.blue, fontSize: 11, fontWeight: FontWeight.bold),
-                    ),
-                  )
-                else
-                  Text(
-                    'In $daysUntil days',
-                    style: TextStyle(color: Colors.grey.shade700, fontSize: 11, fontWeight: FontWeight.w600),
-                  ),
-
-                const Spacer(),
 
                 // Amount Pill (if this reminder has a scheduled payment)
-                if (r.amount != null && r.amount! > 0)
+                if (r.amount != null && r.amount! > 0) ...[
+                  const SizedBox(width: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
@@ -407,6 +415,7 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> with SingleTi
                       ),
                     ),
                   ),
+                ],
               ],
             ),
 
@@ -433,23 +442,34 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> with SingleTi
             const SizedBox(height: 8),
 
             // Due Date & Snooze Information
-            Row(
+            Wrap(
+              spacing: 12,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                const Icon(Icons.calendar_today, size: 14, color: Colors.grey),
-                const SizedBox(width: 4),
-                Text(
-                  'Due: ${AppFormatters.date(r.dueDate)}',
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade800, fontWeight: FontWeight.w500),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.calendar_today, size: 14, color: Colors.grey),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Due: ${AppFormatters.date(r.dueDate)}',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade800, fontWeight: FontWeight.w500),
+                    ),
+                  ],
                 ),
-                if (r.isSnoozed && r.snoozedUntil != null) ...[
-                  const SizedBox(width: 12),
-                  const Icon(Icons.snooze, size: 14, color: Colors.orange),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Snoozed until: ${AppFormatters.date(r.snoozedUntil!)}',
-                    style: const TextStyle(fontSize: 12, color: Colors.orange, fontWeight: FontWeight.bold),
+                if (r.isSnoozed && r.snoozedUntil != null)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.snooze, size: 14, color: Colors.orange),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Snoozed until: ${AppFormatters.date(r.snoozedUntil!)}',
+                        style: const TextStyle(fontSize: 12, color: Colors.orange, fontWeight: FontWeight.bold),
+                      ),
+                    ],
                   ),
-                ],
               ],
             ),
 

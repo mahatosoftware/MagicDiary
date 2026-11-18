@@ -24,7 +24,10 @@ class _BillAccountFormScreenState extends ConsumerState<BillAccountFormScreen> {
 
   final List<String> _categories = [
     'Telecom',
+    'Broadband / Internet',
+    'Electricity',
     'Credit Card',
+    'Water / Gas',
     'Newspaper',
     'Utility',
     'Subscription',
@@ -102,23 +105,29 @@ class _BillAccountFormScreenState extends ConsumerState<BillAccountFormScreen> {
                 controller: _nameController,
                 decoration: const InputDecoration(
                   labelText: 'Account Name *',
-                  hintText: 'e.g., Airtel Postpaid, HDFC Credit Card',
+                  hintText: 'e.g., Electricity Bill, Airtel Broadband',
                   border: OutlineInputBorder(),
                 ),
                 validator: (v) => v == null || v.isEmpty ? 'Enter name' : null,
               ),
               const SizedBox(height: 16),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
+                    flex: 5,
                     child: DropdownButtonFormField<String>(
                       initialValue: _category,
                       decoration: const InputDecoration(
                         labelText: 'Category',
                         border: OutlineInputBorder(),
                       ),
+                      isExpanded: true,
                       items: _categories
-                          .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                          .map((c) => DropdownMenuItem(
+                                value: c,
+                                child: Text(c, overflow: TextOverflow.ellipsis),
+                              ))
                           .toList(),
                       onChanged: (val) {
                         if (val != null) setState(() => _category = val);
@@ -127,11 +136,12 @@ class _BillAccountFormScreenState extends ConsumerState<BillAccountFormScreen> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
+                    flex: 6,
                     child: TextFormField(
                       controller: _providerController,
                       decoration: const InputDecoration(
-                        labelText: 'Provider Name *',
-                        hintText: 'e.g. Airtel',
+                        labelText: 'Provider *',
+                        hintText: 'e.g. WBSEDCL, Airtel',
                         border: OutlineInputBorder(),
                       ),
                       validator: (v) => v == null || v.isEmpty ? 'Enter provider' : null,
@@ -141,22 +151,27 @@ class _BillAccountFormScreenState extends ConsumerState<BillAccountFormScreen> {
               ),
               const SizedBox(height: 16),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
+                    flex: 6,
                     child: TextFormField(
                       controller: _accNoController,
                       decoration: const InputDecoration(
-                        labelText: 'Account / Card Number',
+                        labelText: 'Account / ID No.',
+                        hintText: 'Consumer ID / No.',
                         border: OutlineInputBorder(),
                       ),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
+                    flex: 5,
                     child: TextFormField(
                       controller: _amountController,
                       decoration: const InputDecoration(
-                        labelText: 'Average Monthly Amount (₹)',
+                        labelText: 'Avg. Amount (₹)',
+                        hintText: 'e.g. 1500',
                         border: OutlineInputBorder(),
                       ),
                       keyboardType: TextInputType.number,
@@ -165,32 +180,41 @@ class _BillAccountFormScreenState extends ConsumerState<BillAccountFormScreen> {
                 ],
               ),
               const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: DropdownButtonFormField<int>(
-                      initialValue: _dueDay,
-                      decoration: const InputDecoration(
-                        labelText: 'Monthly Due Day',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: List.generate(31, (i) => i + 1)
-                          .map((d) => DropdownMenuItem(value: d, child: Text('Day $d of month')))
-                          .toList(),
-                      onChanged: (val) {
-                        if (val != null) setState(() => _dueDay = val);
-                      },
-                    ),
+              DropdownButtonFormField<int>(
+                initialValue: _dueDay,
+                decoration: const InputDecoration(
+                  labelText: 'Monthly Due Day *',
+                  hintText: 'Select day of month',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.calendar_today_rounded, size: 20),
+                ),
+                items: List.generate(31, (i) => i + 1)
+                    .map((d) => DropdownMenuItem(value: d, child: Text('Day $d of every month')))
+                    .toList(),
+                onChanged: (val) {
+                  if (val != null) setState(() => _dueDay = val);
+                },
+              ),
+              const SizedBox(height: 16),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.orange.shade200),
+                ),
+                child: SwitchListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  title: const Text(
+                    'Auto Reminder',
+                    style: TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: SwitchListTile(
-                      title: const Text('Auto Reminder'),
-                      value: _autoReminder,
-                      onChanged: (val) => setState(() => _autoReminder = val),
-                    ),
+                  subtitle: const Text(
+                    'Automatically generate reminders and push notifications for this bill',
+                    style: TextStyle(fontSize: 12),
                   ),
-                ],
+                  value: _autoReminder,
+                  onChanged: (val) => setState(() => _autoReminder = val),
+                ),
               ),
               const SizedBox(height: 24),
               SizedBox(

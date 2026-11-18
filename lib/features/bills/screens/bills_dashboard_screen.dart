@@ -57,10 +57,13 @@ class BillsDashboardScreen extends ConsumerWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Bill Accounts & Subscriptions',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                Expanded(
+                  child: Text(
+                    'Bill Accounts & Subscriptions',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                  ),
                 ),
+                const SizedBox(width: 8),
                 TextButton(
                   onPressed: () => context.push('/bills/add-account'),
                   child: const Text('+ Add Account'),
@@ -79,17 +82,18 @@ class BillsDashboardScreen extends ConsumerWidget {
                   );
                 }
                 return SizedBox(
-                  height: 110,
+                  height: 125,
                   child: ListView.builder(
                     scrollDirection: Axis.horizontal,
                     itemCount: accounts.length,
                     itemBuilder: (context, index) {
                       final acc = accounts[index];
                       return Container(
-                        width: 240,
+                        width: 250,
                         margin: const EdgeInsets.only(right: 12),
                         child: Card(
                           color: Colors.orange.shade50,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           child: Padding(
                             padding: const EdgeInsets.all(12.0),
                             child: Column(
@@ -102,13 +106,17 @@ class BillsDashboardScreen extends ConsumerWidget {
                                       radius: 16,
                                       backgroundColor: Colors.orange,
                                       child: Icon(
-                                        acc.category == 'Telecom'
+                                        acc.category == 'Telecom' || acc.category.toLowerCase().contains('broadband') || acc.category.toLowerCase().contains('internet')
                                             ? Icons.wifi
-                                            : acc.category == 'Credit Card'
-                                                ? Icons.credit_card
-                                                : acc.category == 'Newspaper'
-                                                    ? Icons.newspaper
-                                                    : Icons.receipt,
+                                            : acc.category == 'Electricity'
+                                                ? Icons.bolt_rounded
+                                                : acc.category == 'Credit Card'
+                                                    ? Icons.credit_card
+                                                    : acc.category == 'Water / Gas'
+                                                        ? Icons.water_drop_rounded
+                                                        : acc.category == 'Newspaper'
+                                                            ? Icons.newspaper
+                                                            : Icons.receipt,
                                         size: 18,
                                         color: Colors.white,
                                       ),
@@ -118,19 +126,25 @@ class BillsDashboardScreen extends ConsumerWidget {
                                       child: Text(
                                         acc.name,
                                         style: const TextStyle(fontWeight: FontWeight.bold),
+                                        maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 8),
+                                const SizedBox(height: 6),
                                 Text(
                                   'Due on day ${acc.dueDayOfMonth} of month',
                                   style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
+                                const SizedBox(height: 2),
                                 Text(
                                   'Avg: ${AppFormatters.currency(acc.defaultAmount)}',
                                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ],
                             ),
@@ -168,45 +182,76 @@ class BillsDashboardScreen extends ConsumerWidget {
                     final isUnpaid = b.status == 'unpaid';
                     return Card(
                       margin: const EdgeInsets.only(bottom: 12),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: isUnpaid ? Colors.red.shade100 : Colors.green.shade100,
-                          child: Icon(
-                            isUnpaid ? Icons.receipt_long : Icons.check_circle,
-                            color: isUnpaid ? Colors.red.shade800 : Colors.green.shade800,
-                          ),
-                        ),
-                        title: Text('Bill (${b.billPeriod})', style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12.0),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            Text('Due Date: ${AppFormatters.date(b.dueDate)}'),
-                            if (b.notes != null) Text('Notes: ${b.notes}'),
-                          ],
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
+                            CircleAvatar(
+                              radius: 20,
+                              backgroundColor: isUnpaid ? Colors.red.shade100 : Colors.green.shade100,
+                              child: Icon(
+                                isUnpaid ? Icons.receipt_long : Icons.check_circle,
+                                color: isUnpaid ? Colors.red.shade800 : Colors.green.shade800,
+                                size: 22,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'Bill (${b.billPeriod})',
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Due Date: ${AppFormatters.date(b.dueDate)}',
+                                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  if (b.notes != null && b.notes!.isNotEmpty) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      b.notes!,
+                                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
                             Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
                               crossAxisAlignment: CrossAxisAlignment.end,
+                              mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
                                   AppFormatters.currency(b.amount),
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                                 ),
+                                const SizedBox(height: 2),
                                 StatusBadge(status: b.status),
                               ],
                             ),
-                            const SizedBox(width: 8),
-                            if (isUnpaid)
+                            if (isUnpaid) ...[
+                              const SizedBox(width: 4),
                               IconButton(
                                 icon: const Icon(Icons.payment, color: Colors.blue),
                                 tooltip: 'Pay Bill',
+                                visualDensity: VisualDensity.compact,
                                 onPressed: () {
-                                  context.push('/bills/record-payment');
+                                  context.push('/bills/record-payment', extra: b);
                                 },
                               ),
+                            ],
                           ],
                         ),
                       ),

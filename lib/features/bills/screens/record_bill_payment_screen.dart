@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../core/providers/app_providers.dart';
+import '../../../core/utils/formatters.dart';
 import '../models/bills_models.dart';
 
 class RecordBillPaymentScreen extends ConsumerStatefulWidget {
-  const RecordBillPaymentScreen({super.key});
+  final Bill? bill;
+  const RecordBillPaymentScreen({super.key, this.bill});
 
   @override
   ConsumerState<RecordBillPaymentScreen> createState() => _RecordBillPaymentScreenState();
@@ -14,13 +16,23 @@ class RecordBillPaymentScreen extends ConsumerStatefulWidget {
 
 class _RecordBillPaymentScreenState extends ConsumerState<RecordBillPaymentScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _amountController = TextEditingController(text: '1499');
+  late final TextEditingController _amountController;
   final _refController = TextEditingController(text: 'UPI-PAY-441199');
   final _notesController = TextEditingController();
   DateTime _paymentDate = DateTime.now();
   String _paymentMethod = 'UPI';
 
   final List<String> _methods = ['UPI', 'Credit Card', 'Net Banking', 'Auto-Debit', 'Cash'];
+
+  @override
+  void initState() {
+    super.initState();
+    _amountController = TextEditingController(
+      text: widget.bill != null
+          ? widget.bill!.amount.toStringAsFixed(widget.bill!.amount.truncateToDouble() == widget.bill!.amount ? 0 : 2)
+          : '1499',
+    );
+  }
 
   @override
   void dispose() {
@@ -38,8 +50,8 @@ class _RecordBillPaymentScreenState extends ConsumerState<RecordBillPaymentScree
 
     final payment = BillPayment(
       id: '',
-      billId: 'bill_1',
-      billAccountId: 'acc_1',
+      billId: widget.bill?.id ?? 'bill_1',
+      billAccountId: widget.bill?.billAccountId ?? 'acc_1',
       amountPaid: double.parse(_amountController.text.trim()),
       paymentDate: _paymentDate,
       paymentMethod: _paymentMethod,
@@ -87,18 +99,36 @@ class _RecordBillPaymentScreenState extends ConsumerState<RecordBillPaymentScree
             children: [
               Card(
                 color: Colors.orange.shade50,
-                child: const Padding(
-                  padding: EdgeInsets.all(16.0),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
                   child: Row(
                     children: [
-                      Icon(Icons.receipt_long, size: 36, color: Colors.orange),
-                      SizedBox(width: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Airtel Fiber Broadband', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                          Text('Bill Period: October 2026 • Amount: ₹1,499'),
-                        ],
+                      const Icon(Icons.receipt_long, size: 36, color: Colors.orange),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.bill != null
+                                  ? 'Bill (${widget.bill!.billPeriod})'
+                                  : 'Airtel Fiber Broadband',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              widget.bill != null
+                                  ? 'Due: ${DateFormat('dd MMM yyyy').format(widget.bill!.dueDate)} • Amount: ${AppFormatters.currency(widget.bill!.amount)}'
+                                  : 'Bill Period: October 2026 • Amount: ₹1,499',
+                              style: TextStyle(fontSize: 13, color: Colors.grey.shade800),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -116,16 +146,21 @@ class _RecordBillPaymentScreenState extends ConsumerState<RecordBillPaymentScree
               ),
               const SizedBox(height: 16),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
                     child: DropdownButtonFormField<String>(
+                      isExpanded: true,
                       initialValue: _paymentMethod,
                       decoration: const InputDecoration(
                         labelText: 'Payment Method',
                         border: OutlineInputBorder(),
                       ),
                       items: _methods
-                          .map((m) => DropdownMenuItem(value: m, child: Text(m)))
+                          .map((m) => DropdownMenuItem(
+                                value: m,
+                                child: Text(m, overflow: TextOverflow.ellipsis),
+                              ))
                           .toList(),
                       onChanged: (val) {
                         if (val != null) setState(() => _paymentMethod = val);
@@ -134,13 +169,7 @@ class _RecordBillPaymentScreenState extends ConsumerState<RecordBillPaymentScree
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: ListTile(
-                      shape: RoundedRectangleBorder(
-                        side: const BorderSide(color: Colors.grey),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      title: const Text('Payment Date'),
-                      subtitle: Text(DateFormat('yyyy-MM-dd').format(_paymentDate)),
+                    child: InkWell(
                       onTap: () async {
                         final picked = await showDatePicker(
                           context: context,
@@ -150,6 +179,19 @@ class _RecordBillPaymentScreenState extends ConsumerState<RecordBillPaymentScree
                         );
                         if (picked != null) setState(() => _paymentDate = picked);
                       },
+                      child: InputDecorator(
+                        decoration: const InputDecoration(
+                          labelText: 'Payment Date',
+                          border: OutlineInputBorder(),
+                          suffixIcon: Icon(Icons.calendar_today, size: 18),
+                        ),
+                        child: Text(
+                          DateFormat('yyyy-MM-dd').format(_paymentDate),
+                          style: const TextStyle(fontSize: 14),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     ),
                   ),
                 ],

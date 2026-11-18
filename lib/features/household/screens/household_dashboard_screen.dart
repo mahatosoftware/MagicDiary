@@ -83,6 +83,7 @@ class _HouseholdDashboardScreenState extends ConsumerState<HouseholdDashboardScr
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         DropdownButtonFormField<String>(
+                          isExpanded: true,
                           initialValue: category,
                           decoration: const InputDecoration(
                             labelText: 'Expense Category *',
@@ -90,7 +91,10 @@ class _HouseholdDashboardScreenState extends ConsumerState<HouseholdDashboardScr
                             prefixIcon: Icon(Icons.category),
                           ),
                           items: categories.map((c) {
-                            return DropdownMenuItem(value: c, child: Text(c));
+                            return DropdownMenuItem(
+                              value: c,
+                              child: Text(c, overflow: TextOverflow.ellipsis),
+                            );
                           }).toList(),
                           onChanged: (val) {
                             if (val != null) setState(() => category = val);

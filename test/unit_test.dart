@@ -162,12 +162,12 @@ void main() {
       const appInfo = AppInfo(
         appName: 'Magic Diary',
         packageName: 'in.mahato.magicdiary',
-        version: '1.0.7',
-        buildNumber: '7',
+        version: '1.0.8',
+        buildNumber: '8',
       );
 
-      expect(appInfo.versionString, equals('v1.0.7+7'));
-      expect(appInfo.displaySubtitle, contains('in.mahato.magicdiary (v1.0.7+7 Production)'));
+      expect(appInfo.versionString, equals('v1.0.8+8'));
+      expect(appInfo.displaySubtitle, contains('in.mahato.magicdiary (v1.0.8+8 Production)'));
       expect(appInfo.displaySubtitle, contains('Your Life. Your Records. Your Reminders.'));
     });
   });

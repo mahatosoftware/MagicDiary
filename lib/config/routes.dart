@@ -48,6 +48,7 @@ import '../features/school_fees/screens/record_fee_payment_screen.dart';
 import '../features/bills/screens/bills_dashboard_screen.dart';
 import '../features/bills/screens/bill_account_form_screen.dart';
 import '../features/bills/screens/record_bill_payment_screen.dart';
+import '../features/bills/models/bills_models.dart';
 import '../features/vehicle/screens/vehicle_dashboard_screen.dart';
 import '../features/vehicle/screens/vehicle_form_screen.dart';
 import '../features/vehicle/models/vehicle_models.dart';
@@ -282,7 +283,7 @@ final router = GoRouter(
         ),
         GoRoute(
           path: '/bills/record-payment',
-          builder: (context, state) => const RecordBillPaymentScreen(),
+          builder: (context, state) => RecordBillPaymentScreen(bill: state.extra as Bill?),
         ),
         GoRoute(
           path: '/vehicle',

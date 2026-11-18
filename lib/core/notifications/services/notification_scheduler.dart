@@ -168,6 +168,79 @@ class NotificationScheduler {
       generatedSchedules.add(schedule);
     }
 
+    // If no advance reminders could be scheduled because their trigger times were already in the past
+    // (e.g., user adds a bill due tomorrow or today, but 9:00 AM has already passed today),
+    // schedule an immediate upcoming reminder so the user actually receives a notification!
+    if (generatedSchedules.isEmpty && dueDate.isAfter(now.subtract(const Duration(hours: 12)))) {
+      final immediateTrigger = now.add(const Duration(minutes: 1));
+      final scheduleId = 'sched_${recordId}_urgent_$occurrenceId';
+      final localId = LocalNotificationService.generateStableId(scheduleId);
+      final intervalTokens = Map<String, dynamic>.from(mergedTokens);
+      intervalTokens['days'] = dueDate.difference(now).inDays;
+
+      final formattedTitle = 'Reminder: $title';
+      final formattedBody = 'Payment of ${amount != null ? "$currency ${amount.toStringAsFixed(0)}" : "bill"} is due ${dueDate.day == now.day ? "today" : "tomorrow"}!';
+
+      final payload = NotificationPayload(
+        scheduleId: scheduleId,
+        recordId: recordId,
+        moduleId: moduleId,
+        categoryId: categoryId,
+        eventType: eventType,
+        occurrenceId: occurrenceId,
+        title: formattedTitle,
+        body: formattedBody,
+        amount: amount,
+        currency: currency,
+        dueDate: dueDate,
+        actionRoute: actionRoute,
+        actionType: 'OPEN',
+        notificationType: 'reminder',
+        isOverdue: false,
+      );
+
+      final schedule = NotificationSchedule(
+        id: scheduleId,
+        userId: userId,
+        moduleId: moduleId,
+        categoryId: categoryId,
+        recordId: recordId,
+        occurrenceId: occurrenceId,
+        eventType: eventType,
+        notificationType: 'reminder',
+        scheduledAt: immediateTrigger,
+        originalScheduledAt: immediateTrigger,
+        reminderOffset: 'urgent',
+        status: NotificationScheduleStatus.scheduled,
+        scheduleSource: ScheduleSource.defaultTemplate,
+        isSnoozed: false,
+        isDeferred: false,
+        localNotificationId: localId,
+        payload: payload.toMap(),
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      final details = NotificationChannelManager().buildNotificationDetails(
+        channelType: template.channelType,
+        soundEnabled: effectivePref.soundEnabled,
+        vibrationEnabled: effectivePref.vibrationEnabled,
+        privacyMode: effectivePref.privacyMode,
+        actions: template.suggestedActions,
+      );
+
+      await _localNotificationService.scheduleNotification(
+        id: localId,
+        title: formattedTitle,
+        body: formattedBody,
+        scheduledDate: immediateTrigger,
+        details: details,
+        payload: payload.toJsonString(),
+      );
+
+      generatedSchedules.add(schedule);
+    }
+
     // 5. Schedule Overdue Alerts if enabled
     if (effectivePref.overdueAlertsEnabled) {
       for (final overdueDays in effectivePref.overdueIntervalsDays) {

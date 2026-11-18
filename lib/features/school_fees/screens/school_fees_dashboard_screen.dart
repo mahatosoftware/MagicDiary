@@ -66,9 +66,11 @@ class _SchoolFeesDashboardScreenState extends ConsumerState<SchoolFeesDashboardS
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Children Enrolled',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                Expanded(
+                  child: Text(
+                    'Children Enrolled',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                  ),
                 ),
                 TextButton.icon(
                   icon: const Icon(Icons.add, size: 18),
