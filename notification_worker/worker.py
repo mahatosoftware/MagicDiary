@@ -289,9 +289,9 @@ class NotificationWorker:
         # 6. Retrieve User Device Tokens & Send FCM Push
         devices = self._get_user_devices(user_id)
         if not devices:
-            logger.warning("No registered devices for user %s on schedule %s.", user_id, schedule_id)
-            self._mark_failed(doc.reference, "No registered FCM devices found for user.", now, data)
-            summary.failed_count += 1
+            logger.warning("No registered devices for user %s on schedule %s. Postponing until device registers.", user_id, schedule_id)
+            self._update_status(doc.reference, "scheduled", now, error_msg="Waiting for device to register")
+            summary.skipped_count += 1
             return
 
         tokens = [d["token"] for d in devices if d.get("token")]

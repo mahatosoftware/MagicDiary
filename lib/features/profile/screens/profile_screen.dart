@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../auth/models/user_profile.dart';
@@ -389,6 +390,81 @@ class ProfileScreen extends ConsumerWidget {
                           ),
                         ),
                       )),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.teal.shade700,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    icon: const Icon(Icons.send_rounded, size: 18),
+                    label: const Text(
+                      'Queue Immediate Test Notification',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    onPressed: () async {
+                      try {
+                        // 1. Ensure device is registered
+                        final fcmService = ref.read(notificationManagerProvider).fcmService;
+                        await fcmService.initialize(user.uid);
+
+                        // 2. Queue a test schedule due right now
+                        final now = DateTime.now();
+                        final schedId = 'test_push_${now.millisecondsSinceEpoch}';
+                        await FirebaseFirestore.instance
+                            .collection('users')
+                            .doc(user.uid)
+                            .collection('notification_schedules')
+                            .doc(schedId)
+                            .set({
+                          'id': schedId,
+                          'userId': user.uid,
+                          'recordId': 'test_push_record',
+                          'moduleId': 'general',
+                          'categoryId': 'general',
+                          'status': 'scheduled',
+                          'scheduledAt': now.subtract(const Duration(minutes: 1)),
+                          'eventType': 'Test Alert',
+                          'payload': {
+                            'title': '🔔 Magic Diary Test Push',
+                            'body': 'Push notification triggered successfully by GitHub Worker!',
+                            'actionRoute': '/notifications',
+                          },
+                          'deliveryKey': '${user.uid}_test_${now.millisecondsSinceEpoch}',
+                          'createdAt': FieldValue.serverTimestamp(),
+                        });
+
+                        if (ctx.mounted) {
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Test schedule created! Run GitHub Action now to receive push.'),
+                              duration: Duration(seconds: 4),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Error queuing test: $e')),
+                          );
+                        }
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Center(
+                  child: Text(
+                    'Creates a schedule due right now so the GitHub Worker sends push immediately.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                  ),
+                ),
               ],
             ),
           );
