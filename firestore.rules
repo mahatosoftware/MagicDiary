@@ -42,6 +42,7 @@ rules_version = '2';
 //   - billPayments/{paymentId} (Bill Payments)
 //   - documents/{documentId} (Document & Vault Records; supports cross-user read when attached to a shared diary with allowAttachments)
 //   - reminders/{reminderId} (Task & Event Reminders)
+//     - occurrences/{occurrenceId} (Historical Occurrence Completion Ledger)
 //   - vehicles/{vehicleId} (Vehicle Profiles)
 //   - serviceRecords/{serviceId} (Vehicle Maintenance Services)
 //   - transactions/{transactionId} (Income & Expense Transactions)
@@ -361,15 +362,50 @@ service cloud.firestore {
     function isValidReminder(data, userId) {
       return hasRequiredFields(data, ['userId', 'title', 'module', 'status', 'dueDate', 'createdAt'])
         && data.userId == userId
-        && data.title is string && data.title.size() <= 150
+        && data.title is string && data.title.size() <= 250
         && data.module is string && data.module.size() <= 50
-        && data.status in ['pending', 'snoozed', 'completed']
+        && data.status in ['pending', 'snoozed', 'completed', 'paid', 'resolved', 'acknowledged', 'due', 'overdue', 'skipped', 'cancelled']
         && isTimestampOrDateString(data.dueDate)
-        && data.createdAt is timestamp
+        && isTimestampOrDateString(data.createdAt)
+        && isValidOptionalString(data, 'id', 100)
         && isValidOptionalString(data, 'description', 1000)
         && isValidOptionalString(data, 'relatedId', 100)
         && isValidOptionalDate(data, 'snoozedUntil')
-        && isValidOptionalDate(data, 'completedAt');
+        && isValidOptionalDate(data, 'completedAt')
+        && isValidOptionalString(data, 'actionType', 50)
+        && isValidOptionalString(data, 'actionRoute', 200)
+        && isValidOptionalString(data, 'priority', 20)
+        && isValidOptionalString(data, 'assignedTo', 128)
+        && isValidOptionalString(data, 'completedBy', 128)
+        && isValidOptionalString(data, 'occurrenceId', 100)
+        && isValidOptionalString(data, 'linkedRecordId', 100)
+        && isValidOptionalString(data, 'linkedDiaryId', 100)
+        && isValidOptionalString(data, 'currencyCode', 10)
+        && isValidOptionalNumber(data, 'amount')
+        && isValidOptionalNumber(data, 'actualCost')
+        && isValidOptionalString(data, 'serviceProvider', 200)
+        && isValidOptionalString(data, 'completionNotes', 2000)
+        && isValidOptionalString(data, 'repeatSchedule', 50)
+        && (!('isFinancial' in data) || data.isFinancial == null || data.isFinancial is bool)
+        && (!('remindBeforeDays' in data) || data.remindBeforeDays == null || data.remindBeforeDays is list)
+        && (!('payment' in data) || data.payment == null || data.payment is map)
+        && (!('lastCompletedOccurrence' in data) || data.lastCompletedOccurrence == null || data.lastCompletedOccurrence is map);
+    }
+
+    function isValidReminderOccurrence(data) {
+      return hasRequiredFields(data, ['occurrenceId', 'reminderId', 'status', 'actionType', 'dueDate', 'completedAt', 'recordedAt'])
+        && data.occurrenceId is string && data.occurrenceId.size() <= 100
+        && data.reminderId is string && data.reminderId.size() <= 100
+        && data.status in ['completed', 'paid', 'resolved', 'acknowledged', 'skipped', 'cancelled', 'pending']
+        && data.actionType is string && data.actionType.size() <= 50
+        && isTimestampOrDateString(data.dueDate)
+        && isTimestampOrDateString(data.completedAt)
+        && isTimestampOrDateString(data.recordedAt)
+        && isValidOptionalString(data, 'completedBy', 128)
+        && isValidOptionalString(data, 'completionNotes', 2000)
+        && isValidOptionalString(data, 'serviceProvider', 200)
+        && isValidOptionalNumber(data, 'actualCost')
+        && (!('payment' in data) || data.payment == null || data.payment is map);
     }
 
     function isValidVehicle(data) {
@@ -1514,6 +1550,11 @@ service cloud.firestore {
         allow update: if isOwner(userId)
                       && isValidReminder(request.resource.data, userId)
                       && areImmutableFieldsUnchanged(['userId', 'createdAt']);
+
+        match /occurrences/{occurrenceId} {
+          allow read, delete: if isOwner(userId);
+          allow create, update: if isOwner(userId) && isValidReminderOccurrence(request.resource.data);
+        }
       }
 
       match /vehicles/{vehicleId} {
