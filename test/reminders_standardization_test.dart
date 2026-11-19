@@ -1,5 +1,53 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:magic_diary/config/routes.dart';
+import 'package:magic_diary/core/providers/app_providers.dart';
+import 'package:magic_diary/features/auth/models/user_profile.dart';
+import 'package:magic_diary/features/auth/repositories/auth_repository.dart';
+import 'package:magic_diary/features/finance/models/finance_models.dart';
+import 'package:magic_diary/features/finance/repositories/finance_repository.dart';
+import 'package:magic_diary/features/my_day/widgets/reminder_action_tile.dart';
 import 'package:magic_diary/features/reminders/models/reminder.dart';
+import 'package:magic_diary/features/reminders/repositories/reminder_repository.dart';
+
+class FakeUserNotifier extends UserNotifier {
+  FakeUserNotifier(super.ref, UserProfile initialUser) {
+    state = initialUser;
+  }
+}
+
+class FakeAuthRepo extends AuthRepository {
+  final UserProfile user;
+  FakeAuthRepo(this.user);
+
+  @override
+  Stream<UserProfile?> get authStateChanges => Stream.value(user);
+}
+
+class MockReminderRepository extends ReminderRepository {
+  final List<String> completedIds = [];
+
+  @override
+  Future<void> completeReminder(String userId, String reminderId, {DateTime? completedAt}) async {
+    completedIds.add(reminderId);
+  }
+}
+
+class MockFinanceRepository extends FinanceRepository {
+  final List<String> paidTransactionIds = [];
+
+  @override
+  Future<void> markTransactionAsPaid(
+    String userId,
+    String transactionId, {
+    DateTime? paidAt,
+    String? paymentMethod,
+  }) async {
+    paidTransactionIds.add(transactionId);
+  }
+}
 
 void main() {
   group('Standardized Reminders Across Diaries Tests', () {
@@ -224,6 +272,286 @@ void main() {
       expect(updatedWarranty.dueDate, equals(extendedDate));
       expect(updatedWarranty.title, contains('Samsung Convection'));
       expect(updatedWarranty.createdAt, equals(now));
+    });
+  });
+
+  group('ReminderActionTile Mark as Done & Route Safety Tests', () {
+    testWidgets('Tapping Mark as Done completes reminder instead of failing with Page Not Found', (tester) async {
+      final mockRepo = MockReminderRepository();
+      final mockUser = UserProfile(
+        uid: 'user_123',
+        email: 'user@magicdiary.app',
+        displayName: 'Test User',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      final testReminder = Reminder(
+        id: 'rem_task_999',
+        userId: 'user_123',
+        title: 'Complete annual property audit',
+        description: 'Verify tax papers',
+        module: 'Property',
+        status: 'pending',
+        dueDate: DateTime.now().add(const Duration(days: 1)),
+        actionType: 'complete',
+        actionRoute: null, // previously fell back to '/my-day' causing 404
+        createdAt: DateTime.now(),
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authRepositoryProvider.overrideWith((ref) => FakeAuthRepo(mockUser)),
+            userProfileProvider.overrideWith((ref) => FakeUserNotifier(ref, mockUser)),
+            reminderRepositoryProvider.overrideWith((ref) => mockRepo),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: ReminderActionTile(reminder: testReminder),
+            ),
+          ),
+        ),
+      );
+
+      // Verify the button says "Mark as Done"
+      final markDoneFinder = find.widgetWithText(FilledButton, 'Mark as Done');
+      expect(markDoneFinder, findsOneWidget);
+
+      // Tap "Mark as Done"
+      await tester.tap(markDoneFinder);
+      await tester.pumpAndSettle();
+
+      // Verify the reminder was completed via the repository!
+      expect(mockRepo.completedIds, contains('rem_task_999'));
+    });
+
+    test('Route /my-day exists in app router configuration without 404', () {
+      final shellRoute = router.configuration.routes.whereType<ShellRoute>().first;
+      final match = shellRoute.routes.any((r) => r is GoRoute && r.path == '/my-day');
+      expect(match, isTrue);
+    });
+
+    test('FinancialTransaction model supports isPaid, hasReminder, and payment state transitions', () {
+      final now = DateTime.now();
+      final pendingTx = FinancialTransaction(
+        id: 'tx_emi_101',
+        type: 'Expense',
+        category: 'EMI & Loan Payment',
+        amount: 32000.0,
+        date: now.add(const Duration(days: 5)),
+        description: 'Home Loan EMI - HDFC Bank',
+        paymentMethod: 'Auto-Debit',
+        isPaid: false,
+        hasReminder: true,
+      );
+
+      expect(pendingTx.isPaid, isFalse);
+      expect(pendingTx.hasReminder, isTrue);
+      expect(pendingTx.paidAt, isNull);
+
+      final json = pendingTx.toJson();
+      expect(json['isPaid'], isFalse);
+      expect(json['hasReminder'], isTrue);
+
+      final deserialized = FinancialTransaction.fromJson(json);
+      expect(deserialized.id, equals('tx_emi_101'));
+      expect(deserialized.isPaid, isFalse);
+      expect(deserialized.hasReminder, isTrue);
+
+      // Transition to paid
+      final paidTx = deserialized.copyWith(
+        isPaid: true,
+        paidAt: now,
+      );
+      expect(paidTx.isPaid, isTrue);
+      expect(paidTx.paidAt, equals(now));
+    });
+
+    testWidgets('Completing financial reminder on My Day marks transaction as paid and removes reminder', (tester) async {
+      final mockRemRepo = MockReminderRepository();
+      final mockFinRepo = MockFinanceRepository();
+      final mockUser = UserProfile(
+        uid: 'user_123',
+        email: 'user@magicdiary.app',
+        displayName: 'Test User',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      final financeReminder = Reminder(
+        id: 'reminder_tx_loan_555',
+        userId: 'user_123',
+        title: 'Payment Due: Home Loan EMI - SBI',
+        description: 'EMI & Loan Payment of ₹45,000 due on 10 Nov 2026.',
+        module: 'Finance',
+        status: 'pending',
+        dueDate: DateTime.now().add(const Duration(days: 2)),
+        relatedId: 'loan_555',
+        amount: 45000.0,
+        actionType: 'complete',
+        createdAt: DateTime.now(),
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authRepositoryProvider.overrideWith((ref) => FakeAuthRepo(mockUser)),
+            userProfileProvider.overrideWith((ref) => FakeUserNotifier(ref, mockUser)),
+            reminderRepositoryProvider.overrideWith((ref) => mockRemRepo),
+            financeRepositoryProvider.overrideWith((ref) => mockFinRepo),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: ReminderActionTile(reminder: financeReminder),
+            ),
+          ),
+        ),
+      );
+
+      // Verify the tile is displayed and shows "Mark as Paid" for EMI payment reminder
+      expect(find.text('Payment Due: Home Loan EMI - SBI'), findsOneWidget);
+      final markPaidFinder = find.widgetWithText(FilledButton, 'Mark as Paid');
+      expect(markPaidFinder, findsOneWidget);
+
+      // Tap Mark as Paid
+      await tester.tap(markPaidFinder);
+      await tester.pumpAndSettle();
+
+      // Verify the reminder was completed
+      expect(mockRemRepo.completedIds, contains('reminder_tx_loan_555'));
+      // Verify the financial transaction was marked as paid!
+      expect(mockFinRepo.paidTransactionIds, contains('loan_555'));
+    });
+
+    testWidgets('Loan EMI reminder with actionType pay displays Mark as Paid button and Pay Online link', (tester) async {
+      final mockRemRepo = MockReminderRepository();
+      final mockFinRepo = MockFinanceRepository();
+      final mockUser = UserProfile(
+        uid: 'user_123',
+        email: 'user@magicdiary.app',
+        displayName: 'Test User',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      final emiReminder = Reminder(
+        id: 'reminder_loan_emi_home_10',
+        userId: 'user_123',
+        title: 'Home Loan EMI: HDFC Bank',
+        description: 'Monthly Home Loan installment of ₹35,000 due to HDFC Bank.',
+        module: 'Finance',
+        status: 'pending',
+        dueDate: DateTime.now().add(const Duration(days: 3)),
+        amount: 35000.0,
+        actionType: 'pay',
+        actionRoute: '/finance',
+        createdAt: DateTime.now(),
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authRepositoryProvider.overrideWith((ref) => FakeAuthRepo(mockUser)),
+            userProfileProvider.overrideWith((ref) => FakeUserNotifier(ref, mockUser)),
+            reminderRepositoryProvider.overrideWith((ref) => mockRemRepo),
+            financeRepositoryProvider.overrideWith((ref) => mockFinRepo),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: ReminderActionTile(reminder: emiReminder),
+            ),
+          ),
+        ),
+      );
+
+      // Verify "Mark as Paid" is prominently present on the tile
+      final markPaidFinder = find.widgetWithText(FilledButton, 'Mark as Paid');
+      expect(markPaidFinder, findsOneWidget);
+
+      // Verify "Pay ₹35000" secondary action is also present
+      expect(find.text('Pay ₹35000'), findsOneWidget);
+
+      // Tap "Mark as Paid"
+      await tester.tap(markPaidFinder);
+      await tester.pumpAndSettle();
+
+      // Verify reminder is completed
+      expect(mockRemRepo.completedIds, contains('reminder_loan_emi_home_10'));
+    });
+
+    test('Reminder deduplication merges duplicate event reminders by relatedId or signature', () {
+      final testNow = DateTime(2026, 11, 19, 10, 0);
+      final dueDate = DateTime(2026, 11, 20, 10, 0);
+
+      // Simulating duplicates from generic form save, reminder sync service, and proactive synthesis
+      final rem1 = Reminder(
+        id: 'reminder_record_evt_123',
+        userId: 'u1',
+        title: 'Event: Wedding Anniversary',
+        description: 'Wedding Anniversary celebration',
+        module: 'Personal',
+        status: 'pending',
+        dueDate: dueDate,
+        relatedId: 'evt_123',
+        actionRoute: '/diaries/event',
+        createdAt: testNow,
+      );
+
+      final rem2 = Reminder(
+        id: 'reminder_diary_evt_evt_123',
+        userId: 'u1',
+        title: 'Wedding Anniversary',
+        description: 'Event Diary reminder',
+        module: 'Personal',
+        status: 'completed',
+        dueDate: dueDate,
+        relatedId: 'evt_123',
+        createdAt: testNow,
+      );
+
+      final rem3 = Reminder(
+        id: 'reminder_evt_evt_123',
+        userId: 'u1',
+        title: 'Special Event: Wedding Anniversary',
+        description: 'Synthesized reminder',
+        module: 'Personal',
+        status: 'pending',
+        dueDate: dueDate,
+        relatedId: 'evt_123',
+        createdAt: testNow,
+      );
+
+      final rawList = [rem1, rem2, rem3];
+
+      // Simulate deduplication logic
+      final Map<String, Reminder> uniqueMap = {};
+      for (final r in rawList) {
+        final cleanTitle = r.title.toLowerCase().replaceAll(RegExp(r'^(event|special event|reminder|payment due|bill|birthday|anniversary):\s*'), '').trim();
+        final dateKey = '${r.dueDate.year}-${r.dueDate.month.toString().padLeft(2, '0')}-${r.dueDate.day.toString().padLeft(2, '0')}';
+        final key = (r.relatedId != null && r.relatedId!.isNotEmpty)
+            ? 'rel_${r.relatedId}_$dateKey'
+            : 'sig_${r.module.toLowerCase()}_${cleanTitle}_$dateKey';
+
+        if (!uniqueMap.containsKey(key)) {
+          uniqueMap[key] = r;
+        } else {
+          final existing = uniqueMap[key]!;
+          if (existing.isCompleted && !r.isCompleted) {
+            uniqueMap[key] = r;
+          } else if ((existing.amount == null && r.amount != null) ||
+                     ((existing.actionRoute == null || existing.actionRoute!.isEmpty) && (r.actionRoute != null && r.actionRoute!.isNotEmpty))) {
+            uniqueMap[key] = r;
+          }
+        }
+      }
+
+      final deduplicated = uniqueMap.values.toList();
+      expect(deduplicated.length, equals(1));
+      expect(deduplicated.first.relatedId, equals('evt_123'));
+      // Prefer pending over completed and has actionRoute
+      expect(deduplicated.first.isCompleted, isFalse);
+      expect(deduplicated.first.actionRoute, equals('/diaries/event'));
     });
   });
 }

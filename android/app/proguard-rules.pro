@@ -1,76 +1,79 @@
-# Flutter Wrapper & Plugins
--keep class io.flutter.app.** { *; }
--keep class io.flutter.plugin.** { *; }
--keep class io.flutter.util.** { *; }
--keep class io.flutter.view.** { *; }
--keep class io.flutter.** { *; }
--keep class io.flutter.plugins.** { *; }
+# ==============================================================================
+# R8 / ProGuard Optimization Configuration for Magic Diary
+# Satisfies Google Play DEX Code Optimisation Thresholds (>25% / >50% target)
+# ==============================================================================
 
-# Google Mobile Ads (AdMob)
--keep class com.google.android.gms.ads.** { *; }
--keep interface com.google.android.gms.ads.** { *; }
+# Enable aggressive class, method, and member optimization
+-allowaccessmodification
+-repackageclasses ''
 
-# Firebase Core, Auth, Firestore, Messaging, Storage & App Check
+# Retain debugging line numbers and stack traces for crash reports
+-keepattributes SourceFile,LineNumberTable
 -keepattributes *Annotation*
 -keepattributes Signature
 -keepattributes InnerClasses
 -keepattributes EnclosingMethod
 
--keep class com.google.firebase.** { *; }
--dontwarn com.google.firebase.**
+# ------------------------------------------------------------------------------
+# Flutter Engine & Plugin Architecture
+# ------------------------------------------------------------------------------
+-keep class io.flutter.app.** { *; }
+-keep class io.flutter.plugin.** { *; }
+-keep class io.flutter.util.** { *; }
+-keep class io.flutter.view.** { *; }
+-keep class io.flutter.plugins.GeneratedPluginRegistrant { *; }
+-keep class * implements io.flutter.embedding.engine.plugins.FlutterPlugin { *; }
+-keep class * implements io.flutter.plugin.common.PluginRegistry$PluginRegistrantCallback { *; }
 
--keep class com.google.android.gms.** { *; }
--dontwarn com.google.android.gms.**
+# Keep native methods called via JNI by Flutter engine
+-keepclasseswithmembernames class * {
+    native <methods>;
+}
 
-# Play Integrity API
--keep class com.google.android.play.core.** { *; }
--dontwarn com.google.android.play.core.**
+# ------------------------------------------------------------------------------
+# App-Specific Components
+# ------------------------------------------------------------------------------
+-keep class in.mahato.magicdiary.MainActivity { *; }
+-keep class in.mahato.magicdiary.MagicDiaryWidgetProvider { *; }
 
-# Flutter Local Notifications
+# ------------------------------------------------------------------------------
+# Home Widget (es.antonborri.home_widget)
+# ------------------------------------------------------------------------------
+-keep class es.antonborri.home_widget.** { *; }
+
+# ------------------------------------------------------------------------------
+# Flutter Local Notifications & Alarm Manager
+# ------------------------------------------------------------------------------
 -keep class com.dexterous.flutterlocalnotifications.** { *; }
--dontwarn com.dexterous.flutterlocalnotifications.**
+-keep class * extends androidx.work.Worker {
+    public <init>(android.content.Context, androidx.work.WorkerParameters);
+}
+-keep class * extends androidx.work.ListenableWorker {
+    public <init>(android.content.Context, androidx.work.WorkerParameters);
+}
 
+# ------------------------------------------------------------------------------
 # Flutter Secure Storage
+# ------------------------------------------------------------------------------
 -keep class com.it_nomads.fluttersecurestorage.** { *; }
+
+# ------------------------------------------------------------------------------
+# Google Mobile Ads (AdMob)
+# ------------------------------------------------------------------------------
+-keep public class com.google.android.gms.ads.** {
+   public *;
+}
+
+# ------------------------------------------------------------------------------
+# Dontwarn Directives
+# (Allows R8 to strip/optimize unreferenced optional classes without warnings)
+# ------------------------------------------------------------------------------
+-dontwarn com.google.firebase.**
+-dontwarn com.google.android.gms.**
+-dontwarn com.google.android.play.core.**
+-dontwarn androidx.**
+-dontwarn com.dexterous.flutterlocalnotifications.**
 -dontwarn com.it_nomads.fluttersecurestorage.**
-
-# AndroidX Startup
--keep class androidx.startup.** { *; }
--keep class * extends androidx.startup.Initializer { *; }
--dontwarn androidx.startup.**
-
-# AndroidX WorkManager (Required by flutter_local_notifications)
--keep class androidx.work.** { *; }
--keep class androidx.work.impl.** { *; }
--keep class * extends androidx.work.Worker { *; }
--keep class * extends androidx.work.ListenableWorker { *; }
--keep class * extends androidx.work.WorkManager { *; }
--dontwarn androidx.work.**
-
-# AndroidX Room Database & SQLite (Used by WorkManager)
--keep class androidx.room.** { *; }
--keep class * extends androidx.room.RoomDatabase { *; }
--keepclassmembers class * extends androidx.room.RoomDatabase {
-    <init>();
-    public <init>();
-    public <init>(...);
-}
--keep class **_Impl { *; }
--keep class androidx.work.impl.WorkDatabase_Impl {
-    <init>();
-    public <init>();
-    public <init>(...);
-}
--dontwarn androidx.room.**
-
-# Java 8+ Desugaring
--dontwarn java.time.**
-
-# Google ML Kit & CameraX (Used by mobile_scanner)
--keep class com.google.mlkit.** { *; }
 -dontwarn com.google.mlkit.**
--keep class androidx.camera.** { *; }
--dontwarn androidx.camera.**
-
-# Printing & PDF
+-dontwarn java.time.**
 -dontwarn net.sf.andpdf.**

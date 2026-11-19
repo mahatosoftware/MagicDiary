@@ -8,6 +8,7 @@ import '../models/diary_record.dart';
 import '../models/custom_field_definition.dart';
 import 'generic_diary_list_screen.dart';
 import '../../providers/app_providers.dart';
+import '../../constants/event_types.dart';
 import '../../../features/reminders/models/reminder.dart';
 import '../../notifications/services/notification_manager.dart';
 
@@ -194,7 +195,7 @@ class _GenericRecordFormScreenState extends ConsumerState<GenericRecordFormScree
                       ),
                     ),
                     const SizedBox(height: 12),
-                    ...suggestedFields.map((field) => _buildCustomField(field)),
+                    ...suggestedFields.map((field) => _buildCustomField(field, color)),
                     const SizedBox(height: 16),
                   ],
 
@@ -348,22 +349,67 @@ class _GenericRecordFormScreenState extends ConsumerState<GenericRecordFormScree
     );
   }
 
-  Widget _buildCustomField(CustomFieldDefinition field) {
+  Widget _buildCustomField(CustomFieldDefinition field, Color color) {
     switch (field.type) {
       case CustomFieldType.dropdown:
+        final isEventType = field.key == 'event_type';
+        final items = isEventType
+            ? [
+                for (final cat in EventTypeRegistry.categories) ...[
+                  DropdownMenuItem<String>(
+                    enabled: false,
+                    value: '__cat_${cat.id}__',
+                    child: Row(
+                      children: [
+                        Icon(cat.icon, size: 15, color: color),
+                        const SizedBox(width: 6),
+                        Text(
+                          cat.title,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                            color: color,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  for (final opt in cat.types)
+                    DropdownMenuItem<String>(
+                      value: opt,
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 12.0),
+                        child: Text(opt),
+                      ),
+                    ),
+                ],
+              ]
+            : field.dropdownOptions
+                .map((opt) => DropdownMenuItem(value: opt, child: Text(opt)))
+                .toList();
+
+        final currentVal = _fieldValues[field.key] as String? ??
+            (isEventType ? 'Birthday' : field.dropdownOptions.firstOrNull);
+
         return Padding(
           padding: const EdgeInsets.only(bottom: 14.0),
           child: DropdownButtonFormField<String>(
-            initialValue: _fieldValues[field.key] as String? ?? field.dropdownOptions.firstOrNull,
+            initialValue: currentVal,
+            isExpanded: true,
             decoration: InputDecoration(
               labelText: field.label,
+              prefixIcon: isEventType
+                  ? Icon(
+                      EventTypeRegistry.getIconForType(currentVal ?? 'Birthday'),
+                      color: color,
+                    )
+                  : null,
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             ),
-            items: field.dropdownOptions
-                .map((opt) => DropdownMenuItem(value: opt, child: Text(opt)))
-                .toList(),
+            items: items,
             onChanged: (val) {
-              if (val != null) {
+              if (val != null && !val.startsWith('__cat_')) {
                 setState(() => _fieldValues[field.key] = val);
               }
             },

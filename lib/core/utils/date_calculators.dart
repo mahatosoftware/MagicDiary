@@ -1,3 +1,6 @@
+import 'package:intl/intl.dart';
+import '../diary_engine/models/diary_record.dart';
+
 enum DeferOption { plus1Day, plus1Week, plus1Month, customDays }
 
 class WarrantyCalculation {
@@ -73,11 +76,28 @@ class DateCalculators {
   }
 
   /// Formats milestone label e.g., "30th Birthday (Born 1996)" or "10th Anniversary (Est. 2016)".
-  static String formatMilestoneLabel(DateTime originalDate, String eventType, DateTime targetOccurrence) {
+  /// When [isShared] is true (viewed by others via individual share or circle),
+  /// the birth/milestone year is strictly suppressed to preserve user privacy,
+  /// exposing only the generic occasion type and recurrence date.
+  static String formatMilestoneLabel(
+    DateTime originalDate,
+    String eventType,
+    DateTime targetOccurrence, {
+    bool isShared = false,
+  }) {
+    final lower = eventType.toLowerCase();
+    if (isShared) {
+      if (lower.contains('birthday') || lower.contains('birth')) {
+        return 'Birthday';
+      } else if (lower.contains('anniversary')) {
+        return 'Anniversary';
+      }
+      return eventType;
+    }
+
     final years = targetOccurrence.year - originalDate.year;
     if (years <= 0) return eventType;
 
-    final lower = eventType.toLowerCase();
     final suffix = _ordinalSuffix(years);
     if (lower.contains('birthday') || lower.contains('birth')) {
       return '$years$suffix Birthday (Born ${originalDate.year})';
@@ -85,6 +105,78 @@ class DateCalculators {
       return '$years$suffix Anniversary (Est. ${originalDate.year})';
     }
     return '$years$suffix Year Milestone';
+  }
+
+  /// Checks if a field key or diary represents a birthday or anniversary.
+  static bool isBirthdayOrAnniversaryField(String key, {String? diaryId}) {
+    final k = key.toLowerCase().trim();
+    if (k.contains('birth') ||
+        k.contains('dob') ||
+        k.contains('anniversary') ||
+        k.contains('anniv')) {
+      return true;
+    }
+    if (diaryId == 'family' && (k == 'date_of_birth' || k == 'anniversary')) {
+      return true;
+    }
+    if (diaryId == 'marriage' &&
+        (k == 'date' || k == 'wedding_date' || k == 'anniversary')) {
+      return true;
+    }
+    return false;
+  }
+
+  /// Checks if a diary record represents an anniversary or birthday.
+  static bool isBirthdayOrAnniversaryRecord(DiaryRecord record, {String? diaryId}) {
+    final dId = (diaryId ?? record.sourceDiaryId).toLowerCase();
+    if (dId == 'marriage') return true;
+    final lowerTitle = record.title.toLowerCase();
+    final lowerSub = (record.subtitle ?? '').toLowerCase();
+    if (lowerTitle.contains('birthday') ||
+        lowerTitle.contains('anniversary') ||
+        lowerTitle.contains('wedding')) {
+      return true;
+    }
+    if (lowerSub.contains('birthday') || lowerSub.contains('anniversary')) {
+      return true;
+    }
+    for (final key in record.fields.keys) {
+      if (isBirthdayOrAnniversaryField(key, diaryId: dId)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Formats a date value (DateTime or String) to show ONLY date and month (e.g. "24 October").
+  static String formatDateAndMonth(dynamic dateValue, {String pattern = 'd MMMM'}) {
+    if (dateValue == null) return '';
+    DateTime? dt;
+    if (dateValue is DateTime) {
+      dt = dateValue;
+    } else if (dateValue is String) {
+      dt = DateTime.tryParse(dateValue);
+    }
+    if (dt != null) {
+      return DateFormat(pattern).format(dt);
+    }
+    return dateValue.toString();
+  }
+
+  /// Formats a date based on viewer relationship:
+  /// If the event is an annual birthday/anniversary and the viewer is NOT the owner
+  /// (individual share or circle), returns date and month only (no year).
+  static String formatDateForViewer(
+    DateTime date, {
+    required bool isAnnual,
+    required bool isOwner,
+    String ownerPattern = 'd MMM yyyy',
+    String othersPattern = 'd MMM',
+  }) {
+    if (!isOwner && isAnnual) {
+      return DateFormat(othersPattern).format(date);
+    }
+    return DateFormat(ownerPattern).format(date);
   }
 
   static String _ordinalSuffix(int n) {

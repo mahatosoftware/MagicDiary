@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'diary_category.dart';
 import 'diary_definition.dart';
 import '../diary_engine/models/custom_field_definition.dart';
+import '../constants/event_types.dart';
 
 class DiaryRegistry {
   DiaryRegistry._();
@@ -570,12 +571,19 @@ class DiaryRegistry {
       icon: Icons.event_rounded,
       color: Colors.purple.shade600,
       defaultSharingClassification: DefaultSharingClassification.sharedByNature,
-      suggestedFields: const [
-        CustomFieldDefinition(key: 'event_name', label: 'Event Name', type: CustomFieldType.text, isRequired: true),
-        CustomFieldDefinition(key: 'event_date', label: 'Event Date & Time', type: CustomFieldType.date, isRequired: true),
-        CustomFieldDefinition(key: 'venue', label: 'Venue / Location', type: CustomFieldType.text),
-        CustomFieldDefinition(key: 'budget', label: 'Event Budget', type: CustomFieldType.currency),
-        CustomFieldDefinition(key: 'guest_count', label: 'Estimated Guest Count', type: CustomFieldType.number),
+      suggestedFields: [
+        const CustomFieldDefinition(key: 'event_name', label: 'Event Name', type: CustomFieldType.text, isRequired: true),
+        CustomFieldDefinition(
+          key: 'event_type',
+          label: 'Event Type',
+          type: CustomFieldType.dropdown,
+          dropdownOptions: EventTypeRegistry.allTypes,
+          isRequired: true,
+        ),
+        const CustomFieldDefinition(key: 'event_date', label: 'Event Date & Time', type: CustomFieldType.date, isRequired: true),
+        const CustomFieldDefinition(key: 'venue', label: 'Venue / Location', type: CustomFieldType.text),
+        const CustomFieldDefinition(key: 'budget', label: 'Event Budget', type: CustomFieldType.currency),
+        const CustomFieldDefinition(key: 'guest_count', label: 'Estimated Guest Count', type: CustomFieldType.number),
       ],
       keywords: const ['event', 'celebration', 'party', 'birthday party', 'gathering', 'reunion', 'invitation', 'anniversary', 'planning'],
       createdAt: _epoch,

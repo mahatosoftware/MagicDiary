@@ -296,6 +296,30 @@ class ReminderSyncService {
             ));
           }
         }
+
+        // Vehicle Loan EMI
+        final loanEmiAmount = (d['loanEmiAmount'] as num?)?.toDouble();
+        if (loanEmiAmount != null && loanEmiAmount > 0) {
+          final docId = 'reminder_veh_${doc.id}_emi_${now.month}';
+          final existingStatus = existingData[docId]?['status'] as String? ?? 'pending';
+          final emiDueDate = DateTime(now.year, now.month, 10, 9, 0);
+          remindersToSync.add(Reminder(
+            id: docId,
+            userId: userId,
+            title: 'Vehicle Loan EMI: $name',
+            description: 'Monthly vehicle loan EMI of ₹${loanEmiAmount.toStringAsFixed(0)} for $name ($regNo).',
+            module: 'Vehicle',
+            status: existingStatus,
+            dueDate: emiDueDate,
+            relatedId: doc.id,
+            amount: loanEmiAmount,
+            actionRoute: '/vehicle',
+            actionType: 'Pay',
+            priority: 'high',
+            createdAt: _resolveCreatedAt(existingData[docId], now),
+            completedAt: existingStatus == 'completed' ? _resolveCompletedAt(existingData[docId], now) : null,
+          ));
+        }
       }
     } catch (_) {}
 
@@ -646,7 +670,15 @@ class ReminderSyncService {
                 : evDate;
             final targetEvDate = DateTime(nextEvDate.year, nextEvDate.month, nextEvDate.day);
             final daysUntil = targetEvDate.difference(today).inDays;
-            final docId = 'reminder_diary_evt_${doc.id}';
+            final docId = d['reminderId'] as String? ?? 'reminder_record_${doc.id}';
+
+            // Clean up any legacy duplicate doc created with alternate prefix 'reminder_diary_evt_${doc.id}'
+            final legacyDocId = 'reminder_diary_evt_${doc.id}';
+            if (docId != legacyDocId && existingData.containsKey(legacyDocId)) {
+              try {
+                await reminderCol.doc(legacyDocId).delete();
+              } catch (_) {}
+            }
 
             if (isAnnual && (daysUntil < 0 || daysUntil > 30)) {
               if (existingData.containsKey(docId)) {
@@ -821,14 +853,123 @@ class ReminderSyncService {
       }
     } catch (_) {}
 
+    // 10. FINANCE TRANSACTIONS: Pending expenses, EMIs & Scheduled commitments
+    try {
+      final txSnap = await _firestore.collection('users').doc(userId).collection('transactions').get();
+      for (final doc in txSnap.docs) {
+        final d = doc.data();
+        final isPaid = d['isPaid'] as bool? ?? true;
+        final hasReminder = d['hasReminder'] as bool? ?? false;
+        final type = d['type'] as String? ?? 'Expense';
+
+        if (type.toLowerCase() == 'expense' && (!isPaid || hasReminder)) {
+          final desc = d['description'] as String? ?? 'Financial Transaction';
+          final category = d['category'] as String? ?? 'Expense';
+          final amount = (d['amount'] as num?)?.toDouble() ?? 0.0;
+          DateTime txDate = now;
+          if (d['date'] != null) {
+            txDate = DateTime.tryParse(d['date'].toString()) ?? now;
+          }
+
+          final docId = 'reminder_tx_${doc.id}';
+          remindersToSync.add(Reminder(
+            id: docId,
+            userId: userId,
+            title: 'Payment Due: $desc',
+            description: '$category payment of ₹${amount.toStringAsFixed(0)} due on ${dateFormat.format(txDate)}.',
+            module: 'Finance',
+            status: isPaid ? 'completed' : 'pending',
+            dueDate: txDate,
+            relatedId: doc.id,
+            amount: amount,
+            actionRoute: '/finance',
+            actionType: 'Pay',
+            priority: isPaid ? 'low' : 'high',
+            createdAt: _resolveCreatedAt(existingData[docId], now),
+            completedAt: isPaid ? _resolveCompletedAt(existingData[docId], now) : null,
+          ));
+        }
+      }
+    } catch (_) {}
+
+    // 11. LOAN & EMI DIARY: Home, Personal, Education & Other Loans
+    try {
+      final loanSnap = await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('diaries')
+          .doc('loan_emi')
+          .collection('records')
+          .get();
+
+      for (final doc in loanSnap.docs) {
+        final d = doc.data();
+        final fields = (d['fields'] as Map<String, dynamic>?) ?? {};
+        final lender = fields['lender'] as String? ?? (d['title'] as String? ?? 'Loan');
+        final loanType = fields['loan_type'] as String? ?? 'Loan';
+        final emiAmount = (fields['emi_amount'] as num?)?.toDouble() ??
+            (fields['principal'] as num?)?.toDouble() ??
+            (d['amount'] as num?)?.toDouble() ?? 0.0;
+
+        final dueDay = (fields['due_day'] as num?)?.toInt() ??
+            (fields['emi_day'] as num?)?.toInt() ?? 10;
+        final targetDay = dueDay.clamp(1, 28);
+
+        final targetDueDate = DateTime(now.year, now.month, targetDay, 9, 0);
+        final docId = 'reminder_loan_emi_${doc.id}_${now.month}';
+        final existingStatus = existingData[docId]?['status'] as String? ?? 'pending';
+
+        remindersToSync.add(Reminder(
+          id: docId,
+          userId: userId,
+          title: '$loanType EMI: $lender',
+          description: 'Monthly $loanType installment of ₹${emiAmount.toStringAsFixed(0)} due to $lender.',
+          module: 'Finance',
+          status: existingStatus,
+          dueDate: targetDueDate,
+          relatedId: doc.id,
+          amount: emiAmount,
+          actionRoute: '/finance',
+          actionType: 'Pay',
+          priority: 'high',
+          createdAt: _resolveCreatedAt(existingData[docId], now),
+          completedAt: existingStatus == 'completed' ? _resolveCompletedAt(existingData[docId], now) : null,
+        ));
+      }
+    } catch (_) {}
+
     // Write all synced reminders into Firestore in batches (max 500 per batch)
-    if (remindersToSync.isEmpty) return 0;
+    // Deduplicate remindersToSync prior to saving to prevent duplicate documents
+    final Map<String, Reminder> uniqueSyncMap = {};
+    for (final rem in remindersToSync) {
+      final cleanTitle = rem.title.toLowerCase().replaceAll(RegExp(r'^(event|special event|reminder|payment due|bill|birthday|anniversary):\s*'), '').trim();
+      final dateKey = '${rem.dueDate.year}-${rem.dueDate.month.toString().padLeft(2, '0')}-${rem.dueDate.day.toString().padLeft(2, '0')}';
+      final key = (rem.relatedId != null && rem.relatedId!.isNotEmpty)
+          ? 'rel_${rem.relatedId}_$dateKey'
+          : 'sig_${rem.module.toLowerCase()}_${cleanTitle}_$dateKey';
+
+      if (!uniqueSyncMap.containsKey(key)) {
+        uniqueSyncMap[key] = rem;
+      } else {
+        final existing = uniqueSyncMap[key]!;
+        // Prefer pending over completed, or prefer explicit actionRoute/amount
+        if (existing.isCompleted && !rem.isCompleted) {
+          uniqueSyncMap[key] = rem;
+        } else if ((existing.amount == null && rem.amount != null) ||
+                   ((existing.actionRoute == null || existing.actionRoute!.isEmpty) && (rem.actionRoute != null && rem.actionRoute!.isNotEmpty))) {
+          uniqueSyncMap[key] = rem;
+        }
+      }
+    }
+    final deduplicatedSyncList = uniqueSyncMap.values.toList();
+
+    if (deduplicatedSyncList.isEmpty) return 0;
 
     int syncedCount = 0;
     const batchLimit = 400;
-    for (int i = 0; i < remindersToSync.length; i += batchLimit) {
+    for (int i = 0; i < deduplicatedSyncList.length; i += batchLimit) {
       final batch = _firestore.batch();
-      final chunk = remindersToSync.skip(i).take(batchLimit);
+      final chunk = deduplicatedSyncList.skip(i).take(batchLimit);
 
       for (final rem in chunk) {
         final docRef = reminderCol.doc(rem.id);
@@ -841,7 +982,7 @@ class ReminderSyncService {
     // Standardize & schedule notifications through Central Notification Framework
     try {
       final notifManager = NotificationManager();
-      for (final rem in remindersToSync) {
+      for (final rem in deduplicatedSyncList) {
         if (rem.isCompleted) {
           await notifManager.onRecordPaidOrCompleted(
             userId: userId,

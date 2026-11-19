@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/date_calculators.dart';
+import '../../../core/constants/event_types.dart';
 import '../models/personal_models.dart';
 
 class PersonalDashboardScreen extends ConsumerWidget {
@@ -645,8 +646,6 @@ class PersonalDashboardScreen extends ConsumerWidget {
     DateTime selectedDate = DateTime.now().add(const Duration(days: 7));
     String selectedType = 'Birthday';
 
-    final types = ['Birthday', 'Anniversary', 'Milestone', 'Holiday', 'Celebration'];
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -681,26 +680,57 @@ class PersonalDashboardScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 14),
-                const Text('Event Type', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                const SizedBox(height: 6),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: types.map((type) {
-                      final isSelected = selectedType == type;
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 6.0),
-                        child: ChoiceChip(
-                          label: Text(type),
-                          selected: isSelected,
-                          selectedColor: Colors.pink.shade100,
-                          onSelected: (val) {
-                            if (val) setModalState(() => selectedType = type);
-                          },
-                        ),
-                      );
-                    }).toList(),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedType,
+                  isExpanded: true,
+                  menuMaxHeight: 380,
+                  decoration: InputDecoration(
+                    labelText: 'Event Type',
+                    prefixIcon: Icon(
+                      EventTypeRegistry.getIconForType(selectedType),
+                      color: Colors.pink,
+                    ),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
+                  items: [
+                    for (final cat in EventTypeRegistry.categories) ...[
+                      DropdownMenuItem<String>(
+                        enabled: false,
+                        value: '__cat_${cat.id}__',
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Row(
+                            children: [
+                              Icon(cat.icon, size: 16, color: Colors.pink.shade700),
+                              const SizedBox(width: 6),
+                              Text(
+                                cat.title,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                  color: Colors.pink.shade900,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      for (final type in cat.types)
+                        DropdownMenuItem<String>(
+                          value: type,
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 12.0),
+                            child: Text(type, style: const TextStyle(fontSize: 14)),
+                          ),
+                        ),
+                    ],
+                  ],
+                  onChanged: (val) {
+                    if (val != null && !val.startsWith('__cat_')) {
+                      setModalState(() => selectedType = val);
+                    }
+                  },
                 ),
                 const SizedBox(height: 14),
                 ListTile(
@@ -710,13 +740,18 @@ class PersonalDashboardScreen extends ConsumerWidget {
                   subtitle: Text(DateFormat('dd MMMM yyyy').format(selectedDate)),
                   trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
                   onTap: () async {
-                    final isBirthday = selectedType == 'Birthday';
+                    final isBirthOrHistorical = selectedType.toLowerCase().contains('birth') ||
+                        selectedType.toLowerCase().contains('anniversary') ||
+                        selectedType.toLowerCase().contains('marriage') ||
+                        selectedType.toLowerCase().contains('joining') ||
+                        selectedType.toLowerCase().contains('foundation') ||
+                        selectedType.toLowerCase().contains('graduation');
                     final picked = await showDatePicker(
                       context: ctx,
                       initialDate: selectedDate,
                       firstDate: DateTime(1900),
                       lastDate: DateTime(2200),
-                      initialDatePickerMode: isBirthday ? DatePickerMode.year : DatePickerMode.day,
+                      initialDatePickerMode: isBirthOrHistorical ? DatePickerMode.year : DatePickerMode.day,
                     );
                     if (picked != null) {
                       setModalState(() => selectedDate = picked);

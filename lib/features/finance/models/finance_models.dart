@@ -6,6 +6,9 @@ class FinancialTransaction {
   final DateTime date;
   final String description;
   final String paymentMethod; // "UPI", "Credit Card", "Bank Transfer", "Cash"
+  final bool isPaid; // true if settled/paid; false if pending/scheduled
+  final DateTime? paidAt;
+  final bool hasReminder; // true if reminder is configured for this transaction
 
   FinancialTransaction({
     required this.id,
@@ -15,7 +18,35 @@ class FinancialTransaction {
     required this.date,
     required this.description,
     required this.paymentMethod,
+    this.isPaid = true,
+    this.paidAt,
+    this.hasReminder = false,
   });
+
+  FinancialTransaction copyWith({
+    String? id,
+    String? type,
+    String? category,
+    double? amount,
+    DateTime? date,
+    String? description,
+    String? paymentMethod,
+    bool? isPaid,
+    DateTime? paidAt,
+    bool? hasReminder,
+  }) =>
+      FinancialTransaction(
+        id: id ?? this.id,
+        type: type ?? this.type,
+        category: category ?? this.category,
+        amount: amount ?? this.amount,
+        date: date ?? this.date,
+        description: description ?? this.description,
+        paymentMethod: paymentMethod ?? this.paymentMethod,
+        isPaid: isPaid ?? this.isPaid,
+        paidAt: paidAt ?? this.paidAt,
+        hasReminder: hasReminder ?? this.hasReminder,
+      );
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -25,6 +56,9 @@ class FinancialTransaction {
         'date': date.toIso8601String(),
         'description': description,
         'paymentMethod': paymentMethod,
+        'isPaid': isPaid,
+        'paidAt': paidAt?.toIso8601String(),
+        'hasReminder': hasReminder,
       };
 
   factory FinancialTransaction.fromJson(Map<String, dynamic> json) =>
@@ -36,6 +70,9 @@ class FinancialTransaction {
         date: DateTime.parse(json['date'] as String),
         description: json['description'] as String,
         paymentMethod: json['paymentMethod'] as String,
+        isPaid: json['isPaid'] as bool? ?? true,
+        paidAt: json['paidAt'] != null ? DateTime.tryParse(json['paidAt'] as String) : null,
+        hasReminder: json['hasReminder'] as bool? ?? false,
       );
 }
 

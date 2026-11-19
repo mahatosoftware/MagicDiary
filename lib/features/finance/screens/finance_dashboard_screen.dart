@@ -239,6 +239,8 @@ class FinanceDashboardScreen extends ConsumerWidget {
 
     String txType = initialType;
     DateTime txDate = DateTime.now();
+    bool isPaid = true;
+    bool createReminder = false;
 
     final expenseCategories = [
       'Groceries & Food',
@@ -431,6 +433,82 @@ class FinanceDashboardScreen extends ConsumerWidget {
                             if (val != null) setState(() => paymentMethod = val);
                           },
                         ),
+                        if (txType == 'Expense') ...[
+                          const SizedBox(height: 12),
+                          InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'Payment Status',
+                              border: OutlineInputBorder(),
+                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: ChoiceChip(
+                                    label: const Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.check_circle_outline, size: 16),
+                                        SizedBox(width: 4),
+                                        Text('Paid'),
+                                      ],
+                                    ),
+                                    selected: isPaid,
+                                    onSelected: (selected) {
+                                      if (selected) {
+                                        setState(() {
+                                          isPaid = true;
+                                          createReminder = false;
+                                        });
+                                      }
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: ChoiceChip(
+                                    label: const Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.schedule, size: 16),
+                                        SizedBox(width: 4),
+                                        Text('Pending / Due'),
+                                      ],
+                                    ),
+                                    selected: !isPaid,
+                                    onSelected: (selected) {
+                                      if (selected) {
+                                        setState(() {
+                                          isPaid = false;
+                                          createReminder = true;
+                                        });
+                                      }
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (!isPaid) ...[
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                Checkbox(
+                                  value: createReminder,
+                                  onChanged: (val) {
+                                    setState(() => createReminder = val ?? true);
+                                  },
+                                ),
+                                const Expanded(
+                                  child: Text(
+                                    'Create reminder on My Day for this payment due date',
+                                    style: TextStyle(fontSize: 12, color: Colors.blueGrey),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
                       ],
                     ),
                   ),
@@ -457,11 +535,14 @@ class FinanceDashboardScreen extends ConsumerWidget {
                       date: txDate,
                       description: descController.text.trim(),
                       paymentMethod: paymentMethod,
+                      isPaid: isPaid,
+                      hasReminder: createReminder,
                     );
 
                     final repo = ref.read(financeRepositoryProvider);
                     await repo.addTransaction(user.uid, newTx);
                     ref.invalidate(financialTransactionsProvider);
+                    ref.invalidate(remindersProvider);
 
                     if (ctx.mounted) {
                       Navigator.pop(ctx);
@@ -481,6 +562,34 @@ class FinanceDashboardScreen extends ConsumerWidget {
         );
       },
     );
+  }
+
+  void _handleMarkAsPaid(BuildContext context, WidgetRef ref, FinancialTransaction tx) async {
+    final user = ref.read(userProfileProvider);
+    if (user == null) return;
+
+    try {
+      final repo = ref.read(financeRepositoryProvider);
+      await repo.markTransactionAsPaid(user.uid, tx.id);
+      ref.invalidate(financialTransactionsProvider);
+      ref.invalidate(remindersProvider);
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Marked "${tx.description}" as paid! Reminder removed.'),
+            backgroundColor: Colors.green.shade800,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update transaction: $e')),
+        );
+      }
+    }
   }
 
   void _showDeleteTransactionConfirmation(
@@ -988,21 +1097,72 @@ class FinanceDashboardScreen extends ConsumerWidget {
                 return Column(
                   children: txs.map((t) {
                     final isIncome = t.type == 'Income';
+                    final isPending = !isIncome && !t.isPaid;
                     return Card(
                       margin: const EdgeInsets.only(bottom: 8),
                       elevation: 1,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       child: ListTile(
                         leading: CircleAvatar(
-                          backgroundColor: isIncome ? Colors.green.shade100 : Colors.red.shade100,
+                          backgroundColor: isIncome
+                              ? Colors.green.shade100
+                              : (isPending ? Colors.amber.shade100 : Colors.red.shade100),
                           child: Icon(
-                            isIncome ? Icons.arrow_downward : Icons.arrow_upward,
-                            color: isIncome ? Colors.green.shade800 : Colors.red.shade800,
+                            isIncome
+                                ? Icons.arrow_downward
+                                : (isPending ? Icons.pending_actions_rounded : Icons.arrow_upward),
+                            color: isIncome
+                                ? Colors.green.shade800
+                                : (isPending ? Colors.amber.shade900 : Colors.red.shade800),
                           ),
                         ),
-                        title: Text(t.description, style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text(
-                          '${t.category} • ${DateFormat('dd MMM yyyy').format(t.date)}\nVia ${t.paymentMethod}',
+                        title: Row(
+                          children: [
+                            Expanded(
+                              child: Text(t.description, style: const TextStyle(fontWeight: FontWeight.bold)),
+                            ),
+                            if (isPending)
+                              Container(
+                                margin: const EdgeInsets.only(left: 6),
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.amber.shade100,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: Colors.amber.shade400),
+                                ),
+                                child: Text(
+                                  'Pending',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.amber.shade900,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 2),
+                            Text(
+                              '${t.category} • ${DateFormat('dd MMM yyyy').format(t.date)}\nVia ${t.paymentMethod}',
+                            ),
+                            if (isPending) ...[
+                              const SizedBox(height: 6),
+                              OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
+                                  foregroundColor: Colors.green.shade800,
+                                  side: BorderSide(color: Colors.green.shade600),
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                ),
+                                icon: const Icon(Icons.check_circle_outline, size: 16),
+                                label: const Text('Mark as Paid', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                onPressed: () => _handleMarkAsPaid(context, ref, t),
+                              ),
+                            ],
+                          ],
                         ),
                         isThreeLine: true,
                         trailing: Row(
@@ -1015,7 +1175,7 @@ class FinanceDashboardScreen extends ConsumerWidget {
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 15,
-                                  color: isIncome ? Colors.green.shade800 : Colors.red.shade800,
+                                  color: isIncome ? Colors.green.shade800 : (isPending ? Colors.amber.shade900 : Colors.red.shade800),
                                 ),
                               ),
                             ),

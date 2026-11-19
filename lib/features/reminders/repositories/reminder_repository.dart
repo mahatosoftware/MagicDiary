@@ -65,11 +65,11 @@ class ReminderRepository {
     });
   }
 
-  Future<void> completeReminder(String userId, String reminderId) async {
+  Future<void> completeReminder(String userId, String reminderId, {DateTime? completedAt}) async {
     if (userId.isEmpty || reminderId.isEmpty) return;
     await firestore.collection('users').doc(userId).collection('reminders').doc(reminderId).update({
       'status': 'completed',
-      'completedAt': Timestamp.fromDate(DateTime.now()),
+      'completedAt': Timestamp.fromDate(completedAt ?? DateTime.now()),
     });
     try {
       await NotificationManager().onRecordPaidOrCompleted(userId: userId, recordId: reminderId);

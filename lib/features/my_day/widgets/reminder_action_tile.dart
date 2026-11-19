@@ -54,7 +54,37 @@ class ReminderActionTile extends ConsumerWidget {
 
     try {
       await repo.completeReminder(user.uid, reminder.id);
+
+      // If linked to a finance transaction, also mark that transaction as paid
+      if (reminder.module.toLowerCase() == 'finance' || reminder.id.startsWith('reminder_tx_')) {
+        final txId = reminder.relatedId ??
+            (reminder.id.startsWith('reminder_tx_') ? reminder.id.substring('reminder_tx_'.length) : null);
+        if (txId != null && txId.isNotEmpty) {
+          try {
+            await ref.read(financeRepositoryProvider).markTransactionAsPaid(user.uid, txId);
+            ref.invalidate(financialTransactionsProvider);
+          } catch (_) {}
+        }
+      }
+
+      final isPayment = reminder.actionType.toLowerCase().trim() == 'pay' ||
+          reminder.title.toLowerCase().contains('emi') ||
+          reminder.title.toLowerCase().contains('loan') ||
+          reminder.module.toLowerCase() == 'finance' ||
+          reminder.module.toLowerCase() == 'bills';
+
       ref.invalidate(remindersProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(isPayment
+                ? 'Marked as paid: "${reminder.title}"'
+                : 'Completed: "${reminder.title}"'),
+            duration: const Duration(seconds: 2),
+            backgroundColor: Colors.green.shade800,
+          ),
+        );
+      }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -168,9 +198,11 @@ class ReminderActionTile extends ConsumerWidget {
                 if (!isCompleted)
                   PopupMenuButton<String>(
                     icon: const Icon(Icons.more_vert, size: 20),
-                    tooltip: 'Snooze or Reschedule',
+                    tooltip: 'Options',
                     onSelected: (val) async {
-                      if (val == '1day') {
+                      if (val == 'mark_paid') {
+                        await _handleComplete(context, ref);
+                      } else if (val == '1day') {
                         await _handleSnooze(context, ref, DeferOption.plus1Day);
                       } else if (val == '1week') {
                         await _handleSnooze(context, ref, DeferOption.plus1Week);
@@ -192,6 +224,17 @@ class ReminderActionTile extends ConsumerWidget {
                       }
                     },
                     itemBuilder: (ctx) => [
+                      const PopupMenuItem(
+                        value: 'mark_paid',
+                        child: Row(
+                          children: [
+                            Icon(Icons.check_circle_outline, color: Colors.green, size: 18),
+                            SizedBox(width: 8),
+                            Text('Mark as Paid / Done'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuDivider(),
                       const PopupMenuItem(value: '1day', child: Text('Snooze +1 Day')),
                       const PopupMenuItem(value: '1week', child: Text('Snooze +1 Week')),
                       const PopupMenuItem(value: '1month', child: Text('Snooze +1 Month')),
@@ -271,7 +314,7 @@ class ReminderActionTile extends ConsumerWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  _buildActionButton(context),
+                  _buildActionButton(context, ref),
                 ],
               ),
           ],
@@ -280,45 +323,94 @@ class ReminderActionTile extends ConsumerWidget {
     );
   }
 
-  Widget _buildActionButton(BuildContext context) {
-    final route = reminder.actionRoute ?? '/my-day';
-    final actionType = reminder.actionType;
+  Widget _buildActionButton(BuildContext context, WidgetRef ref) {
+    final route = (reminder.actionRoute != null && reminder.actionRoute!.isNotEmpty)
+        ? reminder.actionRoute!
+        : '/';
+    final actionType = reminder.actionType.toLowerCase().trim();
+    final isPayment = actionType == 'pay' ||
+        reminder.title.toLowerCase().contains('emi') ||
+        reminder.title.toLowerCase().contains('loan') ||
+        reminder.module.toLowerCase() == 'finance' ||
+        reminder.module.toLowerCase() == 'bills';
+
+    if (isPayment) {
+      final hasExternalRoute = route != '/' && route.isNotEmpty;
+      return Wrap(
+        spacing: 8,
+        runSpacing: 4,
+        alignment: WrapAlignment.end,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          if (hasExternalRoute)
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+              icon: const Icon(Icons.open_in_new, size: 14),
+              label: Text(reminder.amount != null
+                  ? 'Pay ₹${reminder.amount!.toStringAsFixed(0)}'
+                  : 'Pay Online'),
+              onPressed: () => context.push(route),
+            ),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.green.shade700,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+            ),
+            icon: const Icon(Icons.check_circle_outline, size: 16),
+            label: const Text('Mark as Paid'),
+            onPressed: () => _handleComplete(context, ref),
+          ),
+        ],
+      );
+    }
 
     String label;
     IconData icon;
     Color buttonColor;
+    VoidCallback onPressed;
 
-    switch (actionType.toLowerCase()) {
-      case 'pay':
-        label = reminder.amount != null ? 'Pay ₹${reminder.amount!.toStringAsFixed(0)}' : 'Pay Now';
-        icon = Icons.payment;
-        buttonColor = Colors.green.shade700;
-        break;
+    switch (actionType) {
       case 'renew':
         label = 'Renew Policy / Item';
         icon = Icons.refresh;
         buttonColor = Colors.blue.shade700;
+        onPressed = () => context.push(route);
         break;
       case 'schedule service':
         label = 'Schedule Service';
         icon = Icons.build_circle_outlined;
         buttonColor = Colors.deepOrange;
+        onPressed = () => context.push(route);
         break;
       case 'upload receipt':
         label = 'Upload Receipt';
         icon = Icons.upload_file;
         buttonColor = Colors.indigo;
+        onPressed = () => context.push(route);
         break;
       case 'review':
         label = 'Review Details';
         icon = Icons.visibility_outlined;
         buttonColor = Colors.purple;
+        onPressed = () => context.push(route);
+        break;
+      case 'celebrate':
+        label = 'Open in Diary';
+        icon = Icons.celebration_rounded;
+        buttonColor = Colors.pink;
+        onPressed = () => context.push(route);
         break;
       case 'complete':
+      case 'done':
       default:
         label = 'Mark as Done';
         icon = Icons.done;
         buttonColor = Colors.teal;
+        onPressed = () => _handleComplete(context, ref);
         break;
     }
 
@@ -330,7 +422,7 @@ class ReminderActionTile extends ConsumerWidget {
       ),
       icon: Icon(icon, size: 16),
       label: Text(label),
-      onPressed: () => context.push(route),
+      onPressed: onPressed,
     );
   }
 }

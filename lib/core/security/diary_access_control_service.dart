@@ -1,5 +1,6 @@
 import '../../features/shared_diaries/models/shared_diary_models.dart';
 import '../diary_engine/models/diary_record.dart';
+import '../utils/date_calculators.dart';
 
 enum DiaryAccessRole {
   owner,
@@ -184,50 +185,69 @@ class DiaryAccessControlService {
   }
 
   /// Filters records according to granular share configuration and future-record policies.
+  /// Automatically enforces birthday/anniversary date-and-month privacy for any recipient.
   static List<DiaryRecord> filterRecordsForUser({
     required List<DiaryRecord> allRecords,
     required String currentUserId,
     required String diaryOwnerId,
     SharedDiaryAccess? shareAccess,
+    bool isCircleShare = false,
   }) {
-    if (currentUserId == diaryOwnerId) {
+    if (currentUserId.isNotEmpty && currentUserId == diaryOwnerId) {
       return allRecords;
     }
-    if (shareAccess == null || !shareAccess.isActive) {
+    if (!isCircleShare && (shareAccess == null || !shareAccess.isActive)) {
       return const [];
     }
 
     return allRecords.where((record) {
-      return canAccessRecord(
-        record: record,
-        currentUserId: currentUserId,
-        diaryOwnerId: diaryOwnerId,
-        shareAccess: shareAccess,
-      );
+      if (shareAccess != null) {
+        return canAccessRecord(
+          record: record,
+          currentUserId: currentUserId,
+          diaryOwnerId: diaryOwnerId,
+          shareAccess: shareAccess,
+        );
+      }
+      return true;
     }).map((record) {
-      return filterRecordFieldsForUser(record: record, shareAccess: shareAccess);
+      return filterRecordFieldsForUser(
+        record: record,
+        shareAccess: shareAccess,
+        isShared: true,
+      );
     }).toList();
   }
 
-  /// Redacts sensitive fields if the share specifies restricted fields.
+  /// Redacts sensitive fields if the share specifies restricted fields,
+  /// and sanitizes anniversary and birthday fields so that other users
+  /// (individual shares or circles) can only see the date and month.
   static DiaryRecord filterRecordFieldsForUser({
     required DiaryRecord record,
     SharedDiaryAccess? shareAccess,
+    bool isShared = false,
   }) {
-    if (shareAccess == null || shareAccess.restrictedFields.isEmpty) {
-      return record;
-    }
-
-    final restrictedSet = shareAccess.restrictedFields.toSet();
+    final restrictedSet = shareAccess?.restrictedFields.toSet() ?? const <String>{};
     final sanitizedFields = Map<String, dynamic>.from(record.fields)
       ..removeWhere((key, _) => restrictedSet.contains(key));
 
     final isAmountRestricted = restrictedSet.contains('amount');
 
+    // Birthday & Anniversary Privacy Rule:
+    // When shared with others (individual share or circle), others must only
+    // see the date and month for anniversaries and birthdays.
+    if (isShared || shareAccess != null) {
+      for (final entry in sanitizedFields.entries.toList()) {
+        if (DateCalculators.isBirthdayOrAnniversaryField(entry.key, diaryId: record.sourceDiaryId)) {
+          sanitizedFields[entry.key] = DateCalculators.formatDateAndMonth(entry.value);
+        }
+      }
+    }
+
     return record.copyWith(
       fields: sanitizedFields,
       clearAmount: isAmountRestricted,
-      attachmentIds: shareAccess.allowAttachments ? record.attachmentIds : const [],
+      attachmentIds: (shareAccess?.allowAttachments ?? true) ? record.attachmentIds : const [],
     );
   }
 }

@@ -262,6 +262,30 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> with SingleTi
     );
   }
 
+  List<Reminder> _deduplicateReminders(List<Reminder> reminders) {
+    final Map<String, Reminder> uniqueMap = {};
+    for (final r in reminders) {
+      final cleanTitle = r.title.toLowerCase().replaceAll(RegExp(r'^(event|special event|reminder|payment due|bill|birthday|anniversary):\s*'), '').trim();
+      final dateKey = '${r.dueDate.year}-${r.dueDate.month.toString().padLeft(2, '0')}-${r.dueDate.day.toString().padLeft(2, '0')}';
+      final key = (r.relatedId != null && r.relatedId!.isNotEmpty)
+          ? 'rel_${r.relatedId}_$dateKey'
+          : 'sig_${r.module.toLowerCase()}_${cleanTitle}_$dateKey';
+
+      if (!uniqueMap.containsKey(key)) {
+        uniqueMap[key] = r;
+      } else {
+        final existing = uniqueMap[key]!;
+        if (existing.isCompleted && !r.isCompleted) {
+          uniqueMap[key] = r;
+        } else if ((existing.amount == null && r.amount != null) ||
+                   ((existing.actionRoute == null || existing.actionRoute!.isEmpty) && (r.actionRoute != null && r.actionRoute!.isNotEmpty))) {
+          uniqueMap[key] = r;
+        }
+      }
+    }
+    return uniqueMap.values.toList();
+  }
+
   Widget _buildReminderCard(BuildContext context, Reminder r, DateTime now) {
     final moduleColor = _getModuleColor(r.module);
     final moduleIcon = _getModuleIcon(r.module);
@@ -622,10 +646,11 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> with SingleTi
       ),
       body: remindersAsync.when(
         data: (allReminders) {
+          final deduplicated = _deduplicateReminders(allReminders);
           // Filter by selected diary module if not 'All'
           final filtered = _selectedModuleFilter == 'All'
-              ? allReminders
-              : allReminders.where((r) => r.module == _selectedModuleFilter).toList();
+              ? deduplicated
+              : deduplicated.where((r) => r.module == _selectedModuleFilter).toList();
 
           final todayReminders = filtered.where((r) => r.isToday(now)).toList();
           final upcomingReminders = filtered.where((r) => r.isUpcoming(now)).toList();

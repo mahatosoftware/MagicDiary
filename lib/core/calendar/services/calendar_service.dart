@@ -196,10 +196,17 @@ class CalendarService {
 
     // 9. Generic Diary Engine Records
     for (final rec in diaryRecords) {
+      final isCircleOrShared = rec.circleId != null;
+      final isAnnivOrBday = DateCalculators.isBirthdayOrAnniversaryRecord(rec);
+      String? cleanSubtitle = rec.subtitle;
+      if (isCircleOrShared && isAnnivOrBday) {
+        cleanSubtitle = 'Annual • ${DateCalculators.formatDateAndMonth(rec.recordDate, pattern: 'd MMMM')}';
+      }
+
       events.add(CalendarEventItem(
         id: 'rec_${rec.id}',
         title: rec.title,
-        subtitle: rec.subtitle,
+        subtitle: cleanSubtitle,
         startTime: rec.recordDate,
         sourceType: rec.circleId != null ? CalendarSourceType.circleDiary : CalendarSourceType.personalDiary,
         sourceDiaryId: rec.sourceDiaryId,

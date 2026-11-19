@@ -71,8 +71,8 @@ class AppInfo {
   const AppInfo({
     this.appName = 'Magic Diary',
     this.packageName = 'in.mahato.magicdiary',
-    this.version = '1.0.9',
-    this.buildNumber = '9',
+    this.version = '1.0.10',
+    this.buildNumber = '10',
   });
 
   String get versionString => 'v$version+$buildNumber';
@@ -85,8 +85,8 @@ final appInfoProvider = FutureProvider<AppInfo>((ref) async {
     return AppInfo(
       appName: info.appName.isNotEmpty ? info.appName : 'Magic Diary',
       packageName: info.packageName.isNotEmpty ? info.packageName : 'in.mahato.magicdiary',
-      version: info.version.isNotEmpty ? info.version : '1.0.9',
-      buildNumber: info.buildNumber.isNotEmpty ? info.buildNumber : '9',
+      version: info.version.isNotEmpty ? info.version : '1.0.10',
+      buildNumber: info.buildNumber.isNotEmpty ? info.buildNumber : '10',
     );
   } catch (_) {
     return const AppInfo();
@@ -255,13 +255,30 @@ final remindersProvider = FutureProvider<List<Reminder>>((ref) async {
 
   final List<Reminder> synthesized = [];
   final existingIds = reminders.map((r) => r.id).toSet();
+  final existingRelatedIds = reminders
+      .where((r) => r.relatedId != null && r.relatedId!.isNotEmpty)
+      .map((r) => r.relatedId!)
+      .toSet();
+
+  // Helper to normalize reminder title for duplicate checking
+  String normalizeTitle(String title) {
+    return title.toLowerCase().replaceAll(RegExp(r'^(event|special event|reminder|payment due|bill|birthday|anniversary):\s*'), '').trim();
+  }
 
   // 1. Proactive synthesis for Personal Life Events (Birthdays, Anniversaries, Milestones)
   try {
     final events = await ref.watch(specialEventsProvider.future);
     for (final ev in events) {
       final docId = 'reminder_evt_${ev.id}';
-      if (!existingIds.contains(docId)) {
+      final cleanEvTitle = normalizeTitle(ev.title);
+      final isAlreadyPresent = existingIds.contains(docId) ||
+          existingRelatedIds.contains(ev.id) ||
+          reminders.any((r) {
+            final isSameDay = r.dueDate.month == ev.date.month && r.dueDate.day == ev.date.day;
+            return isSameDay && normalizeTitle(r.title) == cleanEvTitle;
+          });
+
+      if (!isAlreadyPresent) {
         final isAnnual = ev.eventType.toLowerCase().contains('birthday') ||
             ev.eventType.toLowerCase().contains('anniversary') ||
             ev.title.toLowerCase().contains('birthday') ||
@@ -292,6 +309,7 @@ final remindersProvider = FutureProvider<List<Reminder>>((ref) async {
           ),
         );
         existingIds.add(docId);
+        existingRelatedIds.add(ev.id);
       }
     }
   } catch (_) {}
@@ -303,7 +321,9 @@ final remindersProvider = FutureProvider<List<Reminder>>((ref) async {
 
     for (final prop in properties) {
       final taxId = 'reminder_prop_${prop.id}_tax';
-      if (!existingIds.contains(taxId)) {
+      final hasTaxReminder = existingIds.contains(taxId) ||
+          reminders.any((r) => r.relatedId == prop.id && r.title.toLowerCase().contains('property tax'));
+      if (!hasTaxReminder) {
         synthesized.add(
           Reminder(
             id: taxId,
@@ -326,7 +346,9 @@ final remindersProvider = FutureProvider<List<Reminder>>((ref) async {
 
       if (prop.leaseEndDate != null) {
         final leaseId = 'reminder_prop_${prop.id}_lease';
-        if (!existingIds.contains(leaseId)) {
+        final hasLeaseReminder = existingIds.contains(leaseId) ||
+            reminders.any((r) => r.relatedId == prop.id && r.title.toLowerCase().contains('lease'));
+        if (!hasLeaseReminder) {
           final tenantInfo = prop.tenantName != null && prop.tenantName!.isNotEmpty ? ' (${prop.tenantName})' : '';
           synthesized.add(
             Reminder(
@@ -354,9 +376,42 @@ final remindersProvider = FutureProvider<List<Reminder>>((ref) async {
     reminders.addAll(synthesized);
   }
 
+  // Deduplicate all reminders: Ensure identical events from different diary syncs or collections appear only once
+  final Map<String, Reminder> deduplicatedMap = {};
+  for (final r in reminders) {
+    final cleanTitle = normalizeTitle(r.title);
+    final dateKey = '${r.dueDate.year}-${r.dueDate.month.toString().padLeft(2, '0')}-${r.dueDate.day.toString().padLeft(2, '0')}';
+    final keyByRelated = (r.relatedId != null && r.relatedId!.isNotEmpty)
+        ? 'rel_${r.relatedId}_$dateKey'
+        : null;
+    final keyBySignature = 'sig_${r.module.toLowerCase()}_${cleanTitle}_$dateKey';
+
+    final effectiveKey = keyByRelated ?? keyBySignature;
+
+    if (!deduplicatedMap.containsKey(effectiveKey)) {
+      deduplicatedMap[effectiveKey] = r;
+    } else {
+      final existing = deduplicatedMap[effectiveKey]!;
+      // Prefer active (pending) reminders over completed ones
+      if (existing.isCompleted && !r.isCompleted) {
+        deduplicatedMap[effectiveKey] = r;
+      } else if (!existing.isCompleted && !r.isCompleted) {
+        // If both pending, prefer the one with a destination actionRoute or defined amount
+        if ((existing.actionRoute == null || existing.actionRoute!.isEmpty) &&
+            (r.actionRoute != null && r.actionRoute!.isNotEmpty)) {
+          deduplicatedMap[effectiveKey] = r;
+        } else if (existing.amount == null && r.amount != null) {
+          deduplicatedMap[effectiveKey] = r;
+        }
+      }
+    }
+  }
+
+  final allDeduplicatedReminders = deduplicatedMap.values.toList();
+
   // Filter: Show birthdays and anniversaries in reminder ONLY if due in the next 30 days (0 <= daysUntil <= 30)
   final today = DateTime(now.year, now.month, now.day);
-  final visibleReminders = reminders.where((r) {
+  final visibleReminders = allDeduplicatedReminders.where((r) {
     final lowerTitle = r.title.toLowerCase();
     final isAnnual = r.module == 'Personal' &&
         (lowerTitle.contains('birthday') || lowerTitle.contains('anniversary'));

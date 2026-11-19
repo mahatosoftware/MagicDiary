@@ -62,9 +62,13 @@ import '../features/cash_forecast/screens/cash_forecast_screen.dart';
 
 class AuthRefreshListenable extends ChangeNotifier {
   AuthRefreshListenable() {
-    FirebaseAuth.instance.authStateChanges().listen((_) {
-      notifyListeners();
-    });
+    try {
+      FirebaseAuth.instance.authStateChanges().listen((_) {
+        notifyListeners();
+      });
+    } catch (_) {
+      // Firebase not initialized in tests or offline mode
+    }
   }
 }
 
@@ -74,7 +78,12 @@ final router = GoRouter(
   initialLocation: '/',
   refreshListenable: _authRefreshListenable,
   redirect: (context, state) {
-    final bool loggedIn = FirebaseAuth.instance.currentUser != null;
+    bool loggedIn = false;
+    try {
+      loggedIn = FirebaseAuth.instance.currentUser != null;
+    } catch (_) {
+      loggedIn = false;
+    }
     final bool isLoggingIn = state.matchedLocation == '/auth/login';
 
     if (!loggedIn && !isLoggingIn) {
@@ -97,6 +106,10 @@ final router = GoRouter(
         GoRoute(
           path: '/',
           builder: (context, state) => const MyDayScreen(),
+        ),
+        GoRoute(
+          path: '/my-day',
+          redirect: (context, state) => '/',
         ),
         // 2. Primary Destination A: My Diaries (Life OS 45 Subdiaries)
         GoRoute(

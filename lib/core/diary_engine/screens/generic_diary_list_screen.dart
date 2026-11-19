@@ -8,6 +8,7 @@ import '../models/diary_record.dart';
 import '../repositories/diary_record_repository.dart';
 import '../../providers/app_providers.dart';
 import '../../security/diary_access_control_service.dart';
+import '../../utils/date_calculators.dart';
 import '../../../features/shared_diaries/models/shared_diary_models.dart';
 import '../../../features/shared_diaries/widgets/sharing_wizard_sheet.dart';
 
@@ -272,12 +273,14 @@ class GenericDiaryListScreen extends ConsumerWidget {
               error: (err, stack) =>
                   Center(child: Text('Error loading records: $err')),
               data: (records) {
-                final visibleRecords = isShared && shareAccess != null
+                final isOthers = effectiveUserId != currentUser?.uid;
+                final visibleRecords = isOthers
                     ? DiaryAccessControlService.filterRecordsForUser(
                         allRecords: records,
                         currentUserId: currentUser?.uid ?? '',
                         diaryOwnerId: effectiveUserId,
                         shareAccess: shareAccess,
+                        isCircleShare: isShared && shareAccess == null,
                       )
                     : records;
 
@@ -377,12 +380,42 @@ class GenericDiaryListScreen extends ConsumerWidget {
                                   Icon(Icons.calendar_today,
                                       size: 13, color: Colors.grey.shade500),
                                   const SizedBox(width: 4),
-                                  Text(
-                                    DateFormat('d MMM yyyy')
-                                        .format(record.recordDate),
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey.shade600),
+                                  Builder(
+                                    builder: (_) {
+                                      final isAnnivOrBday = DateCalculators.isBirthdayOrAnniversaryRecord(record, diaryId: diaryId);
+                                      final isOthers = effectiveUserId != currentUser?.uid;
+                                      return Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            (isOthers && isAnnivOrBday)
+                                                ? DateFormat('d MMM').format(record.recordDate)
+                                                : DateFormat('d MMM yyyy').format(record.recordDate),
+                                            style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey.shade600),
+                                          ),
+                                          if (isOthers && isAnnivOrBday) ...[
+                                            const SizedBox(width: 6),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                              decoration: BoxDecoration(
+                                                color: Colors.blue.shade50,
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: Text(
+                                                'Date & Month',
+                                                style: TextStyle(
+                                                  fontSize: 9,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.blue.shade800,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      );
+                                    },
                                   ),
                                   const Spacer(),
                                   if (record.isPrivate)

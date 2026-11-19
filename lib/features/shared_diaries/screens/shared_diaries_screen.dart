@@ -11,6 +11,7 @@ import '../../../core/diary_registry/diary_category.dart';
 import '../../../core/diary_engine/models/diary_record.dart';
 import '../../../core/diary_engine/repositories/diary_record_repository.dart';
 import '../../../core/providers/app_providers.dart';
+import '../../../core/utils/date_calculators.dart';
 
 final sharedWithMeStreamProvider =
     StreamProvider<List<SharedDiaryAccess>>((ref) {
@@ -917,8 +918,15 @@ class _SelectedRecordsPreviewState extends State<_SelectedRecordsPreview> {
                     leading: const Icon(Icons.description_outlined, size: 18),
                     title: Text(record.title,
                         maxLines: 1, overflow: TextOverflow.ellipsis),
-                    subtitle: Text(
-                        DateFormat('d MMM yyyy').format(record.recordDate)),
+                    subtitle: Builder(
+                      builder: (ctx) {
+                        final isAnnivOrBday = DateCalculators.isBirthdayOrAnniversaryRecord(record, diaryId: widget.share.diaryId);
+                        final dateStr = isAnnivOrBday
+                            ? '${DateFormat('d MMM').format(record.recordDate)} (Date & Month)'
+                            : DateFormat('d MMM yyyy').format(record.recordDate);
+                        return Text(dateStr);
+                      },
+                    ),
                     trailing: const Icon(Icons.chevron_right_rounded, size: 18),
                     onTap: () => context.push(
                       '/diary-records/${widget.share.diaryId}/${record.id}?ownerId=${widget.share.ownerUid}&ownerName=${Uri.encodeComponent(widget.share.ownerName)}',

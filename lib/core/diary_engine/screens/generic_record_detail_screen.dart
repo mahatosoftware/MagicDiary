@@ -6,6 +6,7 @@ import '../../diary_registry/diary_registry.dart';
 import '../models/diary_record.dart';
 import 'generic_diary_list_screen.dart';
 import '../../providers/app_providers.dart';
+import '../../utils/date_calculators.dart';
 
 class GenericRecordDetailScreen extends ConsumerWidget {
   final String diaryId;
@@ -30,6 +31,8 @@ class GenericRecordDetailScreen extends ConsumerWidget {
     final color = diary?.color ?? Colors.blue;
 
     final effectiveUserId = (ownerId != null && ownerId!.isNotEmpty) ? ownerId! : (user?.uid ?? '');
+    final isOwner = user?.uid != null && user!.uid == effectiveUserId;
+    final isOthers = !isOwner;
     final recordsAsync = ref.watch(diaryUserRecordsStreamProvider((diaryId: diaryId, userId: effectiveUserId)));
     final record = recordsAsync.value?.firstWhere(
           (r) => r.id == recordId,
@@ -51,6 +54,8 @@ class GenericRecordDetailScreen extends ConsumerWidget {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
+    final isAnnivOrBday = DateCalculators.isBirthdayOrAnniversaryRecord(record, diaryId: diaryId);
+
     return Scaffold(
       appBar: AppBar(
         title: Text(record.title),
@@ -62,11 +67,12 @@ class GenericRecordDetailScreen extends ConsumerWidget {
               context.push('/diary-records/$diaryId/edit', extra: record);
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline_rounded),
-            tooltip: 'Delete Record',
-            onPressed: () => _confirmDelete(context, ref, record),
-          ),
+          if (!isOthers)
+            IconButton(
+              icon: const Icon(Icons.delete_outline_rounded),
+              tooltip: 'Delete Record',
+              onPressed: () => _confirmDelete(context, ref, record),
+            ),
         ],
       ),
       body: ListView(
@@ -145,9 +151,29 @@ class GenericRecordDetailScreen extends ConsumerWidget {
                       Icon(Icons.calendar_today, size: 14, color: Colors.grey.shade500),
                       const SizedBox(width: 6),
                       Text(
-                        DateFormat('EEEE, d MMMM yyyy').format(record.recordDate),
+                        (isOthers && isAnnivOrBday)
+                            ? DateFormat('EEEE, d MMMM').format(record.recordDate)
+                            : DateFormat('EEEE, d MMMM yyyy').format(record.recordDate),
                         style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
                       ),
+                      if (isOthers && isAnnivOrBday) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            'Date & Month (Shared)',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.blue.shade800,
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ],
@@ -246,13 +272,49 @@ class GenericRecordDetailScreen extends ConsumerWidget {
               child: Column(
                 children: record.fields.entries.map((entry) {
                   final isRestricted = record.isFieldRestricted(entry.key);
+                  final isBdayAnnivField = DateCalculators.isBirthdayOrAnniversaryField(entry.key, diaryId: diaryId);
+
+                  String displayValue;
+                  if (isRestricted) {
+                    displayValue = '•••••••• (Restricted)';
+                  } else if (isOthers && isBdayAnnivField) {
+                    displayValue = DateCalculators.formatDateAndMonth(entry.value);
+                  } else if (entry.value is String && DateTime.tryParse(entry.value) != null) {
+                    final dt = DateTime.tryParse(entry.value)!;
+                    displayValue = DateFormat('d MMM yyyy').format(dt);
+                  } else {
+                    displayValue = entry.value.toString();
+                  }
+
                   return ListTile(
-                    title: Text(
-                      _formatFieldKey(entry.key),
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    title: Row(
+                      children: [
+                        Text(
+                          _formatFieldKey(entry.key),
+                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                        if (isOthers && isBdayAnnivField) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.shade50,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              'Date & Month Only',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.amber.shade900,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     subtitle: Text(
-                      isRestricted ? '•••••••• (Restricted)' : entry.value.toString(),
+                      displayValue,
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
