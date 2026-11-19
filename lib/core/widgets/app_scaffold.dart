@@ -352,6 +352,15 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
               },
             ),
             ListTile(
+              leading: const Icon(Icons.query_stats_rounded, color: Colors.deepPurpleAccent),
+              title: const Text('Outflow Forecast'),
+              subtitle: const Text('Next month, quarter & year'),
+              onTap: () {
+                Navigator.pop(context);
+                context.push('/outflow-forecast');
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.school_rounded, color: Colors.deepOrange),
               title: const Text('Education Diary'),
               onTap: () {

@@ -109,26 +109,6 @@ class MagicAssistantService {
       }
     }
 
-    // 4. Missing Receipts on Paid Bills
-    for (final b in bills) {
-      if (b.status.toLowerCase() == 'paid' && (b.notes == null || !b.notes!.toLowerCase().contains('receipt'))) {
-        // Flag recently paid bills without receipt mentions
-        final daysAgo = DateTime(now.year, now.month, now.day).difference(b.dueDate).inDays;
-        if (daysAgo >= 0 && daysAgo <= 7) {
-          insights.add(MagicInsight(
-            id: 'insight_receipt_${b.id}',
-            title: 'Attach Payment Receipt',
-            message: 'Bill of ₹${b.amount.toStringAsFixed(0)} for ${b.billPeriod} was settled recently. Store the receipt in Document Vault for tax tracking.',
-            type: InsightType.suggestion,
-            actionLabel: 'Upload Receipt',
-            actionRoute: '/documents',
-            icon: Icons.receipt_long_outlined,
-          ));
-          break; // Show at most one receipt suggestion to prevent clutter
-        }
-      }
-    }
-
     // 5. Unused Subscriptions Alert
     for (final acc in billAccounts) {
       if (acc.isSubscription && acc.isUnusedFlagged) {

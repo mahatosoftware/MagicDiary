@@ -59,6 +59,7 @@ import '../features/property/screens/property_dashboard_screen.dart';
 import '../features/personal/screens/personal_dashboard_screen.dart';
 import '../features/domestic_help/screens/domestic_help_dashboard_screen.dart';
 import '../features/cash_forecast/screens/cash_forecast_screen.dart';
+import '../features/cash_forecast/screens/outflow_forecast_screen.dart';
 
 class AuthRefreshListenable extends ChangeNotifier {
   AuthRefreshListenable() {
@@ -329,6 +330,10 @@ final router = GoRouter(
         GoRoute(
           path: '/cash-forecast',
           builder: (context, state) => const CashForecastScreen(),
+        ),
+        GoRoute(
+          path: '/outflow-forecast',
+          builder: (context, state) => const OutflowForecastScreen(),
         ),
         GoRoute(
           path: '/family-workspace',

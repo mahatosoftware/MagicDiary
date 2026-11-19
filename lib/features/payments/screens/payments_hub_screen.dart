@@ -44,7 +44,7 @@ class PaymentsHubScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Cash Commitment Forecast Shortcut Banner
+            // Cash Commitment & Outflow Forecast Shortcut Banners
             Card(
               elevation: 0,
               color: Colors.blue.shade50,
@@ -61,6 +61,25 @@ class PaymentsHubScreen extends ConsumerWidget {
                 subtitle: const Text('Understand upcoming cash needs before bills fall due & detect shortfalls', style: TextStyle(fontSize: 12)),
                 trailing: const Icon(Icons.arrow_forward_ios, size: 14),
                 onTap: () => context.push('/cash-forecast'),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Card(
+              elevation: 0,
+              color: Colors.deepPurple.shade50,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: Colors.deepPurple.shade200),
+              ),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.deepPurple.shade100,
+                  child: const Icon(Icons.query_stats_rounded, color: Colors.deepPurple),
+                ),
+                title: const Text('Outflow Forecast (Month • Quarter • Year)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                subtitle: const Text('Project total money outflow across next 30 days, 3 months & 12 months', style: TextStyle(fontSize: 12)),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+                onTap: () => context.push('/outflow-forecast'),
               ),
             ),
             const SizedBox(height: 16),

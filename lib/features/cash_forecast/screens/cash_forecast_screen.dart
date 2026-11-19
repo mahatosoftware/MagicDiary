@@ -36,6 +36,11 @@ class _CashForecastScreenState extends ConsumerState<CashForecastScreen> {
         title: const Text('Cash Commitment Forecast 📈'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.query_stats_rounded),
+            tooltip: 'Outflow Forecast (Month • Quarter • Year)',
+            onPressed: () => context.push('/outflow-forecast'),
+          ),
+          IconButton(
             icon: Icon(
               activeScenario != null ? Icons.science : Icons.science_outlined,
               color: activeScenario != null ? Colors.amber : null,

@@ -37,6 +37,8 @@ import '../services/global_search_service.dart';
 import '../services/magic_assistant_service.dart';
 import '../../features/cash_forecast/services/cash_forecast_service.dart';
 import '../../features/cash_forecast/models/cash_forecast_models.dart';
+import '../../features/cash_forecast/models/outflow_forecast_models.dart';
+import '../../features/cash_forecast/services/outflow_forecast_service.dart';
 
 // Domestic Help & Family Workspace
 import '../../features/domestic_help/models/domestic_help_models.dart';
@@ -694,6 +696,74 @@ final cashForecastSummaryProvider = Provider<ForecastSummary>((ref) {
     recurringServices: recurringServices,
     scenario: scenario,
   );
+});
+
+// --- Outflow Forecast (Next Month, Quarter, Year) Providers ---
+final selectedOutflowHorizonProvider = StateProvider<OutflowHorizon>((ref) => OutflowHorizon.quarter);
+
+final outflowForecastReportsProvider = Provider<Map<OutflowHorizon, OutflowHorizonReport>>((ref) {
+  final now = DateTime.now();
+  final bills = ref.watch(billsProvider).value ?? const [];
+  final billAccounts = ref.watch(billAccountsProvider).value ?? const [];
+  final feeInstallments = ref.watch(feeInstallmentsProvider).value ?? const [];
+  final vehicles = ref.watch(vehiclesProvider).value ?? const [];
+  final properties = ref.watch(propertiesProvider).value ?? const [];
+  final householdExpenses = ref.watch(householdExpensesProvider).value ?? const [];
+  final workers = ref.watch(domesticWorkersProvider).value ?? const [];
+  final recurringServices = ref.watch(recurringServicesProvider).value ?? const [];
+  final reminders = ref.watch(remindersProvider).value ?? const [];
+  final products = ref.watch(productsProvider).value ?? const [];
+
+  return {
+    OutflowHorizon.month: OutflowForecastService.generateReport(
+      horizon: OutflowHorizon.month,
+      now: now,
+      bills: bills,
+      billAccounts: billAccounts,
+      feeInstallments: feeInstallments,
+      vehicles: vehicles,
+      properties: properties,
+      domesticWorkers: workers,
+      recurringServices: recurringServices,
+      householdExpenses: householdExpenses,
+      reminders: reminders,
+      products: products,
+    ),
+    OutflowHorizon.quarter: OutflowForecastService.generateReport(
+      horizon: OutflowHorizon.quarter,
+      now: now,
+      bills: bills,
+      billAccounts: billAccounts,
+      feeInstallments: feeInstallments,
+      vehicles: vehicles,
+      properties: properties,
+      domesticWorkers: workers,
+      recurringServices: recurringServices,
+      householdExpenses: householdExpenses,
+      reminders: reminders,
+      products: products,
+    ),
+    OutflowHorizon.year: OutflowForecastService.generateReport(
+      horizon: OutflowHorizon.year,
+      now: now,
+      bills: bills,
+      billAccounts: billAccounts,
+      feeInstallments: feeInstallments,
+      vehicles: vehicles,
+      properties: properties,
+      domesticWorkers: workers,
+      recurringServices: recurringServices,
+      householdExpenses: householdExpenses,
+      reminders: reminders,
+      products: products,
+    ),
+  };
+});
+
+final activeOutflowReportProvider = Provider<OutflowHorizonReport>((ref) {
+  final horizon = ref.watch(selectedOutflowHorizonProvider);
+  final reports = ref.watch(outflowForecastReportsProvider);
+  return reports[horizon]!;
 });
 
 // --- Centralized Security Providers ---
