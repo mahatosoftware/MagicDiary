@@ -165,6 +165,7 @@ class Bill {
   final String id;
   final String billAccountId;
   final String userId;
+  final String? title; // e.g. "BESCOM Electricity", "Airtel Broadband", etc.
   final String billPeriod; // e.g. 'Oct 2026'
   final DateTime billDate;
   final DateTime dueDate;
@@ -181,6 +182,7 @@ class Bill {
     required this.id,
     required this.billAccountId,
     required this.userId,
+    this.title,
     required this.billPeriod,
     required this.billDate,
     required this.dueDate,
@@ -194,11 +196,76 @@ class Bill {
     this.notes,
   });
 
+  /// Returns a clean, context-aware display title for the bill.
+  /// Priority:
+  /// 1. Explicit [title]
+  /// 2. Provided [accountName]
+  /// 3. Name extracted from [notes] (e.g. "Auto-generated bill for BESCOM Electricity")
+  /// 4. Fallback to 'Bill'
+  String displayTitle({String? accountName}) {
+    final effectiveName = (title != null && title!.trim().isNotEmpty)
+        ? title!.trim()
+        : ((accountName != null && accountName.trim().isNotEmpty)
+            ? accountName.trim()
+            : _extractNameFromNotes());
+
+    if (effectiveName.isNotEmpty) {
+      return billPeriod.isNotEmpty ? '$effectiveName ($billPeriod)' : effectiveName;
+    }
+    return billPeriod.isNotEmpty ? 'Bill ($billPeriod)' : 'Bill';
+  }
+
+  String _extractNameFromNotes() {
+    if (notes == null || notes!.isEmpty) return '';
+    final autoGenMatch = RegExp(r'Auto-(?:generated bill|rolled over) for ([^(]+)').firstMatch(notes!);
+    if (autoGenMatch != null && autoGenMatch.group(1) != null) {
+      return autoGenMatch.group(1)!.trim();
+    }
+    return '';
+  }
+
+  Bill copyWith({
+    String? id,
+    String? billAccountId,
+    String? userId,
+    String? title,
+    String? billPeriod,
+    DateTime? billDate,
+    DateTime? dueDate,
+    double? amount,
+    double? expectedAmount,
+    double? previousAmount,
+    double? lateFee,
+    double? minimumDue,
+    String? status,
+    String? invoiceDocumentId,
+    String? notes,
+  }) {
+    return Bill(
+      id: id ?? this.id,
+      billAccountId: billAccountId ?? this.billAccountId,
+      userId: userId ?? this.userId,
+      title: title ?? this.title,
+      billPeriod: billPeriod ?? this.billPeriod,
+      billDate: billDate ?? this.billDate,
+      dueDate: dueDate ?? this.dueDate,
+      amount: amount ?? this.amount,
+      expectedAmount: expectedAmount ?? this.expectedAmount,
+      previousAmount: previousAmount ?? this.previousAmount,
+      lateFee: lateFee ?? this.lateFee,
+      minimumDue: minimumDue ?? this.minimumDue,
+      status: status ?? this.status,
+      invoiceDocumentId: invoiceDocumentId ?? this.invoiceDocumentId,
+      notes: notes ?? this.notes,
+    );
+  }
+
   factory Bill.fromMap(Map<String, dynamic> map, String id) {
     return Bill(
       id: id,
       billAccountId: map['billAccountId'] ?? '',
       userId: map['userId'] ?? '',
+      title: map['title'],
       billPeriod: map['billPeriod'] ?? '',
       billDate: map['billDate'] is Timestamp
           ? (map['billDate'] as Timestamp).toDate()
@@ -221,6 +288,7 @@ class Bill {
     return {
       'billAccountId': billAccountId,
       'userId': userId,
+      if (title != null) 'title': title,
       'billPeriod': billPeriod,
       'billDate': Timestamp.fromDate(billDate),
       'dueDate': Timestamp.fromDate(dueDate),

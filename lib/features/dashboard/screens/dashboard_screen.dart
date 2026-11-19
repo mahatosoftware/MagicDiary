@@ -6,6 +6,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/utils/date_calculators.dart';
 import '../../../core/widgets/summary_card.dart';
 import '../../../core/widgets/status_badge.dart';
+import '../../bills/models/bills_models.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -15,6 +16,7 @@ class DashboardScreen extends ConsumerWidget {
     final productsAsync = ref.watch(productsProvider);
     final installmentsAsync = ref.watch(feeInstallmentsProvider);
     final billsAsync = ref.watch(billsProvider);
+    final billAccountsAsync = ref.watch(billAccountsProvider);
     final remindersAsync = ref.watch(remindersProvider);
 
     return Scaffold(
@@ -309,15 +311,22 @@ class DashboardScreen extends ConsumerWidget {
                       ),
                     );
                   }
+                  final accountsMap = {
+                    for (final a in (billAccountsAsync.valueOrNull ?? <BillAccount>[])) a.id: a,
+                  };
+
                   return Column(
                     children: unpaidBills.map((b) {
+                      final acc = accountsMap[b.billAccountId];
+                      final billTitle = b.displayTitle(accountName: acc?.name);
+
                       return Card(
                         child: ListTile(
                           leading: const CircleAvatar(
                             backgroundColor: Colors.orangeAccent,
                             child: Icon(Icons.receipt, color: Colors.white),
                           ),
-                          title: Text('Bill (${b.billPeriod})', style: const TextStyle(fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                          title: Text(billTitle, style: const TextStyle(fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
                           subtitle: Text('Due: ${AppFormatters.date(b.dueDate)}', maxLines: 1, overflow: TextOverflow.ellipsis),
                           trailing: Column(
                             mainAxisAlignment: MainAxisAlignment.center,

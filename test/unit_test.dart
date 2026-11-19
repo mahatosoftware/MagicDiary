@@ -3,6 +3,7 @@ import 'package:magic_diary/core/utils/date_calculators.dart';
 import 'package:magic_diary/core/utils/formatters.dart';
 import 'package:magic_diary/core/diary_engine/models/diary_record.dart';
 import 'package:magic_diary/core/providers/app_providers.dart';
+import 'package:magic_diary/features/bills/models/bills_models.dart';
 
 void main() {
   group('DateCalculators Unit Tests', () {
@@ -162,13 +163,74 @@ void main() {
       const appInfo = AppInfo(
         appName: 'Magic Diary',
         packageName: 'in.mahato.magicdiary',
-        version: '1.0.10',
-        buildNumber: '10',
+        version: '1.0.11',
+        buildNumber: '11',
       );
 
-      expect(appInfo.versionString, equals('v1.0.10+10'));
-      expect(appInfo.displaySubtitle, contains('in.mahato.magicdiary (v1.0.10+10 Production)'));
+      expect(appInfo.versionString, equals('v1.0.11+11'));
+      expect(appInfo.displaySubtitle, contains('in.mahato.magicdiary (v1.0.11+11 Production)'));
       expect(appInfo.displaySubtitle, contains('Your Life. Your Records. Your Reminders.'));
+    });
+  });
+
+  group('Bill Display Title & Distinguishable Name Tests', () {
+    test('Bill displayTitle prefers explicit title when set', () {
+      final bill = Bill(
+        id: 'b1',
+        billAccountId: 'acc1',
+        userId: 'u1',
+        title: 'BESCOM Electricity Bill',
+        billPeriod: 'November 2026',
+        billDate: DateTime(2026, 11, 1),
+        dueDate: DateTime(2026, 11, 15),
+        amount: 2450.0,
+      );
+
+      expect(bill.displayTitle(), equals('BESCOM Electricity Bill (November 2026)'));
+      expect(bill.displayTitle(accountName: 'Fallback Account'), equals('BESCOM Electricity Bill (November 2026)'));
+    });
+
+    test('Bill displayTitle uses accountName when title is null or empty', () {
+      final bill = Bill(
+        id: 'b2',
+        billAccountId: 'acc2',
+        userId: 'u1',
+        billPeriod: 'Dec 2026',
+        billDate: DateTime(2026, 12, 1),
+        dueDate: DateTime(2026, 12, 20),
+        amount: 1199.0,
+      );
+
+      expect(bill.displayTitle(accountName: 'Airtel Broadband'), equals('Airtel Broadband (Dec 2026)'));
+    });
+
+    test('Bill displayTitle extracts account name from auto-generated notes fallback', () {
+      final bill = Bill(
+        id: 'b3',
+        billAccountId: 'acc3',
+        userId: 'u1',
+        billPeriod: 'October 2026',
+        billDate: DateTime(2026, 10, 1),
+        dueDate: DateTime(2026, 10, 10),
+        amount: 850.0,
+        notes: 'Auto-generated bill for Mahanagar Gas',
+      );
+
+      expect(bill.displayTitle(), equals('Mahanagar Gas (October 2026)'));
+    });
+
+    test('Bill displayTitle falls back safely to Bill (period) when no name is available', () {
+      final bill = Bill(
+        id: 'b4',
+        billAccountId: 'acc4',
+        userId: 'u1',
+        billPeriod: 'Q4 2026',
+        billDate: DateTime(2026, 10, 1),
+        dueDate: DateTime(2026, 10, 15),
+        amount: 5000.0,
+      );
+
+      expect(bill.displayTitle(), equals('Bill (Q4 2026)'));
     });
   });
 }

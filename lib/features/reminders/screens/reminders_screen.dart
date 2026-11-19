@@ -6,6 +6,9 @@ import '../../../core/providers/app_providers.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/date_calculators.dart';
 import '../models/reminder.dart';
+import '../services/reminder_action_resolver.dart';
+import '../widgets/completion_details_dialog.dart';
+import '../widgets/payment_confirmation_dialog.dart';
 import '../../../core/ads/admob_config.dart';
 import '../../../core/ads/widgets/native_ad_card_widget.dart';
 
@@ -133,11 +136,20 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> with SingleTi
             ),
             ListTile(
               leading: const Icon(Icons.edit_calendar, color: Colors.teal),
-              title: const Text('Custom (+3 days)'),
+              title: const Text('Custom Date...'),
               onTap: () async {
                 Navigator.pop(context);
-                await repo.deferReminder(user.uid, reminder.id, DeferOption.customDays, customDays: 3);
-                ref.invalidate(remindersProvider);
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: reminder.dueDate.add(const Duration(days: 3)),
+                  firstDate: DateTime.now(),
+                  lastDate: DateTime.now().add(const Duration(days: 365)),
+                );
+                if (picked != null) {
+                  final days = picked.difference(DateTime.now()).inDays + 1;
+                  await repo.deferReminder(user.uid, reminder.id, DeferOption.customDays, customDays: days);
+                  ref.invalidate(remindersProvider);
+                }
               },
             ),
           ],
@@ -155,21 +167,29 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> with SingleTi
   void _showDeleteDialog(BuildContext context, Reminder reminder) {
     final user = ref.read(userProfileProvider);
     if (user == null) return;
+    final repo = ref.read(reminderRepositoryProvider);
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (context) => AlertDialog(
         title: const Text('Delete Reminder?'),
         content: Text('Are you sure you want to delete "${reminder.title}"?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
             onPressed: () async {
-              Navigator.pop(ctx);
-              final repo = ref.read(reminderRepositoryProvider);
+              Navigator.pop(context);
               await repo.deleteReminder(user.uid, reminder.id);
               ref.invalidate(remindersProvider);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Reminder deleted')),
+                );
+              }
             },
             child: const Text('Delete'),
           ),
@@ -191,7 +211,7 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> with SingleTi
       case 'Property':
         return Colors.indigo;
       case 'Warranty':
-        return Colors.cyan.shade700;
+        return Colors.cyan;
       case 'Personal':
         return Colors.deepOrange;
       case 'Finance':
@@ -220,39 +240,44 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> with SingleTi
       case 'Finance':
         return Icons.account_balance_wallet;
       default:
-        return Icons.notifications_active;
+        return Icons.notifications;
     }
   }
 
   Widget _buildSummaryCard(String title, String count, IconData icon, Color color, {VoidCallback? onTap}) {
     return Expanded(
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
         onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
           decoration: BoxDecoration(
             color: color.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withValues(alpha: 0.3), width: 1.2),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: color.withValues(alpha: 0.2)),
           ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Icon(icon, color: color, size: 20),
-                  Text(
-                    count,
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color),
-                  ),
-                ],
+              Icon(icon, size: 18, color: color),
+              const SizedBox(height: 3),
+              Text(
+                count,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: color,
+                ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 1),
               Text(
                 title,
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade800),
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade700,
+                ),
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
             ],
@@ -292,6 +317,7 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> with SingleTi
     final isOverdue = r.isOverdue(now);
     final isToday = r.isToday(now);
     final daysUntil = r.daysUntil(now);
+    final resolvedAction = ReminderActionResolver.resolve(r);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -360,7 +386,9 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> with SingleTi
                               const Icon(Icons.check_circle, size: 12, color: Colors.green),
                               const SizedBox(width: 4),
                               Text(
-                                'Completed ${r.completedAt != null ? DateFormat('dd MMM').format(r.completedAt!) : ''}',
+                                r.isPaid
+                                    ? 'Paid ${r.completedAt != null ? DateFormat('dd MMM').format(r.completedAt!) : ''}'
+                                    : 'Completed ${r.completedAt != null ? DateFormat('dd MMM').format(r.completedAt!) : ''}',
                                 style: TextStyle(color: Colors.green.shade900, fontSize: 11, fontWeight: FontWeight.bold),
                               ),
                             ],
@@ -393,8 +421,8 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> with SingleTi
                               Icon(Icons.star, size: 12, color: Colors.amber.shade900),
                               const SizedBox(width: 4),
                               Text(
-                                'DUE TODAY',
-                                style: TextStyle(color: Colors.brown.shade900, fontSize: 11, fontWeight: FontWeight.bold),
+                                'Due Today',
+                                style: TextStyle(color: Colors.amber.shade900, fontSize: 11, fontWeight: FontWeight.bold),
                               ),
                             ],
                           ),
@@ -499,7 +527,7 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> with SingleTi
 
             const Divider(height: 18),
 
-            // Action Buttons Row
+            // Action Buttons Row (Same compact look & feel as before)
             Row(
               children: [
                 // Direct Pay / Open in Diary Module Button
@@ -531,17 +559,77 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> with SingleTi
                     visualDensity: VisualDensity.compact,
                     onPressed: () => _showDeferDialog(context, r),
                   ),
-                  // Mark Completed Button
+                  // Mark Completed / Paid Button
                   IconButton(
                     icon: const Icon(Icons.check_circle_outline, size: 20, color: Colors.green),
-                    tooltip: 'Mark Done',
+                    tooltip: resolvedAction == ReminderActionType.markPaid ? 'Mark as Paid' : 'Mark Done',
                     visualDensity: VisualDensity.compact,
                     onPressed: () async {
                       final user = ref.read(userProfileProvider);
                       if (user == null) return;
-                      final repo = ref.read(reminderRepositoryProvider);
-                      await repo.completeReminder(user.uid, r.id);
-                      ref.invalidate(remindersProvider);
+
+                      if (resolvedAction == ReminderActionType.markPaid) {
+                        await PaymentConfirmationDialog.show(
+                          context,
+                          reminder: r,
+                          onConfirm: (details) async {
+                            final repo = ref.read(reminderRepositoryProvider);
+                            await repo.markAsPaid(
+                              userId: user.uid,
+                              reminderId: r.id,
+                              paymentDetails: details,
+                            );
+
+                            final txId = r.effectiveLinkedRecordId;
+                            if (txId.isNotEmpty &&
+                                (r.module.toLowerCase() == 'finance' || r.id.startsWith('reminder_tx_'))) {
+                              try {
+                                await ref.read(financeRepositoryProvider).markTransactionAsPaid(
+                                  user.uid,
+                                  txId,
+                                  paidAt: details.paidAt,
+                                  paymentMethod: details.paymentMethod,
+                                );
+                                ref.invalidate(financialTransactionsProvider);
+                              } catch (_) {}
+                            }
+
+                            ref.invalidate(remindersProvider);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Marked as paid: "${r.title}" (₹${details.amount.toStringAsFixed(0)})'),
+                                  backgroundColor: Colors.green.shade800,
+                                ),
+                              );
+                            }
+                          },
+                        );
+                      } else {
+                        await CompletionDetailsDialog.show(
+                          context,
+                          reminder: r,
+                          actionType: resolvedAction,
+                          onConfirm: (details) async {
+                            final repo = ref.read(reminderRepositoryProvider);
+                            await repo.markAsComplete(
+                              userId: user.uid,
+                              reminderId: r.id,
+                              completionDetails: details,
+                              actionType: resolvedAction,
+                            );
+                            ref.invalidate(remindersProvider);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Completed: "${r.title}"'),
+                                  backgroundColor: Colors.blue.shade800,
+                                ),
+                              );
+                            }
+                          },
+                        );
+                      }
                     },
                   ),
                 ],
@@ -602,17 +690,7 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> with SingleTi
 
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go('/');
-            }
-          },
-        ),
-        title: const Text('Reminders & Alerts 🔔'),
+        title: const Text('Reminders & Alerts', style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
           IconButton(
             icon: _isSyncing
@@ -625,42 +703,27 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> with SingleTi
             tooltip: 'Sync All Diaries',
             onPressed: _isSyncing ? null : _syncAllDiaries,
           ),
-          IconButton(
-            icon: const Icon(Icons.credit_card),
-            tooltip: 'Payments Hub',
-            onPressed: () => context.push('/payments'),
-          ),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          isScrollable: true,
-          labelColor: Colors.white,
-          indicatorColor: Colors.white,
-          tabs: const [
-            Tab(text: "Today & Upcoming"),
-            Tab(text: "Due Today ⭐"),
-            Tab(text: "Overdue 🚨"),
-            Tab(text: "Completed ✅"),
-          ],
-        ),
       ),
       body: remindersAsync.when(
         data: (allReminders) {
-          final deduplicated = _deduplicateReminders(allReminders);
-          // Filter by selected diary module if not 'All'
-          final filtered = _selectedModuleFilter == 'All'
-              ? deduplicated
-              : deduplicated.where((r) => r.module == _selectedModuleFilter).toList();
+          // Deduplicate reminders by relatedId or unique signature
+          final dedupedReminders = _deduplicateReminders(allReminders);
 
-          final todayReminders = filtered.where((r) => r.isToday(now)).toList();
-          final upcomingReminders = filtered.where((r) => r.isUpcoming(now)).toList();
-          final overdueReminders = filtered.where((r) => r.isOverdue(now)).toList();
+          // Apply module filter
+          final filtered = _selectedModuleFilter == 'All'
+              ? dedupedReminders
+              : dedupedReminders.where((r) => r.module == _selectedModuleFilter).toList();
+
+          // Slices
+          final todayReminders = filtered.where((r) => r.isToday(now) && !r.isCompleted).toList();
+          final upcomingReminders = filtered.where((r) => r.isUpcoming(now) && !r.isCompleted).toList();
+          final overdueReminders = filtered.where((r) => r.isOverdue(now) && !r.isCompleted).toList();
           final completedReminders = filtered.where((r) => r.isCompleted).toList();
 
           return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Top Metrics Bar
+              // Top Metrics Bar (Same 4 summary cards as before)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
                 child: Row(
@@ -700,54 +763,86 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> with SingleTi
                 ),
               ),
 
-              // Horizontal Diary Module Filters
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  children: _modules.map((m) {
-                    final id = m['id'] as String;
-                    final isSelected = _selectedModuleFilter == id;
-                    final count = id == 'All'
-                        ? allReminders.where((r) => !r.isCompleted).length
-                        : allReminders.where((r) => r.module == id && !r.isCompleted).length;
+              // Filter Chips Carousel
+              SizedBox(
+                height: 48,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  itemCount: _modules.length,
+                  itemBuilder: (context, index) {
+                    final mod = _modules[index];
+                    final isSelected = _selectedModuleFilter == mod['id'];
+                    final color = mod['color'] as Color? ?? Colors.blueGrey;
 
                     return Padding(
-                      padding: const EdgeInsets.only(right: 8.0),
+                      padding: const EdgeInsets.symmetric(horizontal: 4.0),
                       child: FilterChip(
-                        avatar: Icon(
-                          m['icon'] as IconData,
-                          size: 16,
-                          color: isSelected ? Colors.white : (m['color'] as Color? ?? Colors.grey.shade700),
-                        ),
-                        label: Text('$count ${m['label']}'),
                         selected: isSelected,
+                        showCheckmark: false,
+                        avatar: Icon(
+                          mod['icon'] as IconData,
+                          size: 14,
+                          color: isSelected ? Colors.white : color,
+                        ),
+                        label: Text(
+                          mod['label'] as String,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            color: isSelected ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                        selectedColor: color,
+                        backgroundColor: color.withValues(alpha: 0.08),
+                        side: BorderSide(
+                          color: isSelected ? color : color.withValues(alpha: 0.25),
+                        ),
                         onSelected: (selected) {
-                          setState(() => _selectedModuleFilter = id);
+                          setState(() {
+                            _selectedModuleFilter = mod['id'] as String;
+                          });
                         },
                       ),
                     );
-                  }).toList(),
+                  },
                 ),
               ),
 
               const Divider(height: 1),
 
-              // Tab View Content
+              // Tabs Row (Exact 4 tabs as before)
+              TabBar(
+                controller: _tabController,
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
+                labelColor: theme.colorScheme.primary,
+                unselectedLabelColor: Colors.grey.shade600,
+                indicatorColor: theme.colorScheme.primary,
+                indicatorWeight: 3,
+                tabs: const [
+                  Tab(text: 'Today & Upcoming'),
+                  Tab(text: 'Due Today ⭐'),
+                  Tab(text: 'Overdue 🚨'),
+                  Tab(text: 'Completed ✅'),
+                ],
+              ),
+
+              // Tab Views
               Expanded(
                 child: TabBarView(
                   controller: _tabController,
                   children: [
-                    // TAB 0: TODAY & UPCOMING (PRIMARY VIEW)
+                    // TAB 0: TODAY & UPCOMING COMBINED
                     RefreshIndicator(
                       onRefresh: _syncAllDiaries,
                       child: SingleChildScrollView(
-                        padding: const EdgeInsets.all(16.0),
                         physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 88.0),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // 1. OVERDUE SECTION (shown if any exist)
+                            // 1. OVERDUE ALERT SECTION (IF ANY)
                             if (overdueReminders.isNotEmpty) ...[
                               Container(
                                 padding: const EdgeInsets.all(12),
@@ -755,45 +850,51 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> with SingleTi
                                 decoration: BoxDecoration(
                                   color: Colors.red.shade50,
                                   borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: Colors.red.shade300),
+                                  border: Border.all(color: Colors.red.shade200),
                                 ),
                                 child: Row(
                                   children: [
-                                    Icon(Icons.warning_amber_rounded, color: Colors.red.shade900),
-                                    const SizedBox(width: 8),
+                                    const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
+                                    const SizedBox(width: 12),
                                     Expanded(
-                                      child: Text(
-                                        'Action Required: You have ${overdueReminders.length} overdue task(s)!',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.red.shade900,
-                                          fontSize: 13,
-                                        ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            '${overdueReminders.length} Overdue Reminder${overdueReminders.length > 1 ? 's' : ''}',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.red,
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'Action required to avoid late fees or disruptions.',
+                                            style: TextStyle(color: Colors.red.shade800, fontSize: 11),
+                                          ),
+                                        ],
                                       ),
+                                    ),
+                                    TextButton(
+                                      onPressed: () => _tabController.animateTo(2),
+                                      child: const Text('View All', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
                                     ),
                                   ],
                                 ),
                               ),
-                              ...overdueReminders.map((r) => _buildReminderCard(context, r, now)),
+                              ...overdueReminders.take(3).map((r) => _buildReminderCard(context, r, now)),
                               const SizedBox(height: 16),
                             ],
 
-                            // 2. TODAY'S REMINDERS SECTION
+                            // 2. DUE TODAY SECTION
                             Row(
                               children: [
-                                const Icon(Icons.star, color: Colors.amber, size: 20),
+                                const Icon(Icons.star, color: Colors.amber, size: 18),
                                 const SizedBox(width: 8),
                                 Text(
-                                  "Today's Reminders (${todayReminders.length})",
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.brown.shade900,
-                                  ),
-                                ),
-                                const Spacer(),
-                                Text(
-                                  DateFormat('EEEE, dd MMM').format(now),
-                                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                                  "Due Today (${todayReminders.length})",
+                                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                                 ),
                               ],
                             ),
@@ -802,7 +903,7 @@ class _RemindersScreenState extends ConsumerState<RemindersScreen> with SingleTi
                             if (todayReminders.isEmpty)
                               Card(
                                 elevation: 0,
-                                color: Colors.amber.shade50.withValues(alpha: 0.5),
+                                color: Colors.amber.shade50,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(10),
                                   side: BorderSide(color: Colors.amber.shade200),

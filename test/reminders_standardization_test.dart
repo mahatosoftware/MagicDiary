@@ -11,6 +11,9 @@ import 'package:magic_diary/features/finance/repositories/finance_repository.dar
 import 'package:magic_diary/features/my_day/widgets/reminder_action_tile.dart';
 import 'package:magic_diary/features/reminders/models/reminder.dart';
 import 'package:magic_diary/features/reminders/repositories/reminder_repository.dart';
+import 'package:magic_diary/features/reminders/services/reminder_action_resolver.dart';
+import 'package:magic_diary/features/reminders/widgets/completion_details_dialog.dart';
+import 'package:magic_diary/features/shared_diaries/models/shared_diary_models.dart';
 
 class FakeUserNotifier extends UserNotifier {
   FakeUserNotifier(super.ref, UserProfile initialUser) {
@@ -28,10 +31,37 @@ class FakeAuthRepo extends AuthRepository {
 
 class MockReminderRepository extends ReminderRepository {
   final List<String> completedIds = [];
+  final List<String> paidIds = [];
 
   @override
   Future<void> completeReminder(String userId, String reminderId, {DateTime? completedAt}) async {
     completedIds.add(reminderId);
+  }
+
+  @override
+  Future<void> markAsComplete({
+    required String userId,
+    required String reminderId,
+    ReminderCompletionDetails? completionDetails,
+    String? completedBy,
+    SharedDiaryAccess? shareAccess,
+    String? diaryOwnerId,
+    ReminderActionType actionType = ReminderActionType.markComplete,
+  }) async {
+    completedIds.add(reminderId);
+  }
+
+  @override
+  Future<void> markAsPaid({
+    required String userId,
+    required String reminderId,
+    required ReminderPaymentDetails paymentDetails,
+    String? completedBy,
+    SharedDiaryAccess? shareAccess,
+    String? diaryOwnerId,
+  }) async {
+    completedIds.add(reminderId);
+    paidIds.add(reminderId);
   }
 }
 
@@ -276,7 +306,7 @@ void main() {
   });
 
   group('ReminderActionTile Mark as Done & Route Safety Tests', () {
-    testWidgets('Tapping Mark as Done completes reminder instead of failing with Page Not Found', (tester) async {
+    testWidgets('Tapping Mark as Complete completes reminder instead of failing with Page Not Found', (tester) async {
       final mockRepo = MockReminderRepository();
       final mockUser = UserProfile(
         uid: 'user_123',
@@ -314,12 +344,21 @@ void main() {
         ),
       );
 
-      // Verify the button says "Mark as Done"
-      final markDoneFinder = find.widgetWithText(FilledButton, 'Mark as Done');
-      expect(markDoneFinder, findsOneWidget);
+      // Verify the button says "Mark as Complete"
+      final markCompleteFinder = find.widgetWithText(FilledButton, 'Mark as Complete');
+      expect(markCompleteFinder, findsOneWidget);
 
-      // Tap "Mark as Done"
-      await tester.tap(markDoneFinder);
+      // Tap "Mark as Complete" to open completion details dialog
+      await tester.tap(markCompleteFinder);
+      await tester.pumpAndSettle();
+
+      // Confirm in dialog
+      final dialogConfirmFinder = find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(FilledButton),
+      );
+      expect(dialogConfirmFinder, findsOneWidget);
+      await tester.tap(dialogConfirmFinder);
       await tester.pumpAndSettle();
 
       // Verify the reminder was completed via the repository!
@@ -414,8 +453,17 @@ void main() {
       final markPaidFinder = find.widgetWithText(FilledButton, 'Mark as Paid');
       expect(markPaidFinder, findsOneWidget);
 
-      // Tap Mark as Paid
+      // Tap Mark as Paid to open PaymentConfirmationDialog
       await tester.tap(markPaidFinder);
+      await tester.pumpAndSettle();
+
+      // Confirm in PaymentConfirmationDialog
+      final dialogConfirmFinder = find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(FilledButton),
+      );
+      expect(dialogConfirmFinder, findsOneWidget);
+      await tester.tap(dialogConfirmFinder);
       await tester.pumpAndSettle();
 
       // Verify the reminder was completed
@@ -472,8 +520,17 @@ void main() {
       // Verify "Pay ₹35000" secondary action is also present
       expect(find.text('Pay ₹35000'), findsOneWidget);
 
-      // Tap "Mark as Paid"
+      // Tap "Mark as Paid" to open PaymentConfirmationDialog
       await tester.tap(markPaidFinder);
+      await tester.pumpAndSettle();
+
+      // Confirm in PaymentConfirmationDialog
+      final dialogConfirmFinder = find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(FilledButton),
+      );
+      expect(dialogConfirmFinder, findsOneWidget);
+      await tester.tap(dialogConfirmFinder);
       await tester.pumpAndSettle();
 
       // Verify reminder is completed

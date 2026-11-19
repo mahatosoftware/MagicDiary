@@ -654,7 +654,7 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
                           ),
                           ...matchedBills.map((b) => ListTile(
                                 leading: const Icon(Icons.receipt_long_outlined, color: Colors.orange),
-                                title: Text('Bill (${b.billPeriod})'),
+                                title: Text(b.displayTitle()),
                                 subtitle: Text('Amount: ₹${b.amount}'),
                                 onTap: () {
                                   Navigator.pop(context);

@@ -117,7 +117,7 @@ class _RecordBillPaymentScreenState extends ConsumerState<RecordBillPaymentScree
                           children: [
                             Text(
                               widget.bill != null
-                                  ? 'Bill (${widget.bill!.billPeriod})'
+                                  ? widget.bill!.displayTitle()
                                   : 'Airtel Fiber Broadband',
                               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                               maxLines: 1,

@@ -320,9 +320,17 @@ class _BillsDashboardScreenState extends ConsumerState<BillsDashboardScreen> {
               );
             }
 
+            final accountsMap = {
+              for (final a in (accountsAsync.valueOrNull ?? <BillAccount>[])) a.id: a,
+            };
+
             return Column(
               children: bills.map((b) {
                 final isUnpaid = b.status == 'unpaid';
+                final acc = accountsMap[b.billAccountId];
+                final billTitle = b.displayTitle(accountName: acc?.name);
+                final categoryIcon = acc != null ? _getCategoryIcon(acc.category, acc.name) : null;
+
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -335,7 +343,7 @@ class _BillsDashboardScreenState extends ConsumerState<BillsDashboardScreen> {
                           radius: 20,
                           backgroundColor: isUnpaid ? Colors.red.shade100 : Colors.green.shade100,
                           child: Icon(
-                            isUnpaid ? Icons.receipt_long : Icons.check_circle,
+                            categoryIcon ?? (isUnpaid ? Icons.receipt_long : Icons.check_circle),
                             color: isUnpaid ? Colors.red.shade800 : Colors.green.shade800,
                             size: 22,
                           ),
@@ -347,7 +355,7 @@ class _BillsDashboardScreenState extends ConsumerState<BillsDashboardScreen> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                'Bill (${b.billPeriod})',
+                                billTitle,
                                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -359,7 +367,7 @@ class _BillsDashboardScreenState extends ConsumerState<BillsDashboardScreen> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              if (b.notes != null && b.notes!.isNotEmpty) ...[
+                              if (b.notes != null && b.notes!.isNotEmpty && !b.notes!.startsWith('Auto-generated bill for') && !b.notes!.startsWith('Auto-rolled over for')) ...[
                                 const SizedBox(height: 2),
                                 Text(
                                   b.notes!,

@@ -34,7 +34,7 @@ class CashForecastService {
           obligations.add(ForecastObligation(
             id: 'fc_bill_${b.id}',
             sourceModule: 'Bills',
-            title: 'Bill (${b.billPeriod})',
+            title: b.displayTitle(),
             dueDate: isOverdue ? now : b.dueDate,
             amount: b.amount,
             paidAmount: 0.0,

@@ -112,6 +112,27 @@ class DiaryAccessControlService {
         role == DiaryAccessRole.contributor;
   }
 
+  /// Can the user complete or pay reminders on this diary?
+  /// Owners, Admins, Editors, and Contributors can resolve/pay reminders.
+  /// Viewers are strictly read-only and cannot alter reminder completion/payment states.
+  static bool canCompleteOrPayReminder({
+    required String currentUserId,
+    required String diaryOwnerId,
+    SharedDiaryAccess? shareAccess,
+  }) {
+    if (currentUserId.isEmpty) return false;
+    if (currentUserId == diaryOwnerId) return true;
+    final role = evaluateRole(
+      currentUserId: currentUserId,
+      diaryOwnerId: diaryOwnerId,
+      shareAccess: shareAccess,
+    );
+    return role == DiaryAccessRole.owner ||
+        role == DiaryAccessRole.admin ||
+        role == DiaryAccessRole.editor ||
+        role == DiaryAccessRole.contributor;
+  }
+
   /// Can the user edit an existing record?
   static bool canEdit({
     required String currentUserId,

@@ -5,6 +5,9 @@ import '../../../core/providers/app_providers.dart';
 import '../../../core/utils/date_calculators.dart';
 import '../../../core/utils/formatters.dart';
 import '../../reminders/models/reminder.dart';
+import '../../reminders/services/reminder_action_resolver.dart';
+import '../../reminders/widgets/completion_details_dialog.dart';
+import '../../reminders/widgets/payment_confirmation_dialog.dart';
 
 class ReminderActionTile extends ConsumerWidget {
   final Reminder reminder;
@@ -40,57 +43,85 @@ class ReminderActionTile extends ConsumerWidget {
         return Icons.school;
       case 'warranty':
         return Icons.verified_user;
+      case 'finance':
+        return Icons.account_balance_wallet;
       case 'personal':
-        return Icons.edit_note;
+        return Icons.event;
       default:
         return Icons.task_alt;
     }
   }
 
-  Future<void> _handleComplete(BuildContext context, WidgetRef ref) async {
+  Future<void> _handleCompleteAction(BuildContext context, WidgetRef ref) async {
     final user = ref.read(userProfileProvider);
     if (user == null) return;
     final repo = ref.read(reminderRepositoryProvider);
+    final resolvedAction = ReminderActionResolver.resolve(reminder);
 
-    try {
-      await repo.completeReminder(user.uid, reminder.id);
+    if (resolvedAction == ReminderActionType.markPaid) {
+      // Open Payment Confirmation Dialog for Financial Reminders
+      await PaymentConfirmationDialog.show(
+        context,
+        reminder: reminder,
+        onConfirm: (details) async {
+          await repo.markAsPaid(
+            userId: user.uid,
+            reminderId: reminder.id,
+            paymentDetails: details,
+          );
 
-      // If linked to a finance transaction, also mark that transaction as paid
-      if (reminder.module.toLowerCase() == 'finance' || reminder.id.startsWith('reminder_tx_')) {
-        final txId = reminder.relatedId ??
-            (reminder.id.startsWith('reminder_tx_') ? reminder.id.substring('reminder_tx_'.length) : null);
-        if (txId != null && txId.isNotEmpty) {
-          try {
-            await ref.read(financeRepositoryProvider).markTransactionAsPaid(user.uid, txId);
-            ref.invalidate(financialTransactionsProvider);
-          } catch (_) {}
-        }
-      }
+          // If linked to finance transaction, sync it
+          final txId = reminder.effectiveLinkedRecordId;
+          if (txId.isNotEmpty &&
+              (reminder.module.toLowerCase() == 'finance' || reminder.id.startsWith('reminder_tx_'))) {
+            try {
+              await ref.read(financeRepositoryProvider).markTransactionAsPaid(
+                user.uid,
+                txId,
+                paidAt: details.paidAt,
+                paymentMethod: details.paymentMethod,
+              );
+              ref.invalidate(financialTransactionsProvider);
+            } catch (_) {}
+          }
 
-      final isPayment = reminder.actionType.toLowerCase().trim() == 'pay' ||
-          reminder.title.toLowerCase().contains('emi') ||
-          reminder.title.toLowerCase().contains('loan') ||
-          reminder.module.toLowerCase() == 'finance' ||
-          reminder.module.toLowerCase() == 'bills';
-
-      ref.invalidate(remindersProvider);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(isPayment
-                ? 'Marked as paid: "${reminder.title}"'
-                : 'Completed: "${reminder.title}"'),
-            duration: const Duration(seconds: 2),
-            backgroundColor: Colors.green.shade800,
-          ),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update task: $e')),
-        );
-      }
+          ref.invalidate(remindersProvider);
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Marked as paid: "${reminder.title}" (₹${details.amount.toStringAsFixed(0)})'),
+                duration: const Duration(seconds: 2),
+                backgroundColor: Colors.green.shade800,
+              ),
+            );
+          }
+        },
+      );
+    } else {
+      // Open Completion Details Dialog for Non-Financial Reminders
+      await CompletionDetailsDialog.show(
+        context,
+        reminder: reminder,
+        actionType: resolvedAction,
+        onConfirm: (details) async {
+          await repo.markAsComplete(
+            userId: user.uid,
+            reminderId: reminder.id,
+            completionDetails: details,
+            actionType: resolvedAction,
+          );
+          ref.invalidate(remindersProvider);
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('${resolvedAction.pastTenseLabel}: "${reminder.title}"'),
+                duration: const Duration(seconds: 2),
+                backgroundColor: resolvedAction.color,
+              ),
+            );
+          }
+        },
+      );
     }
   }
 
@@ -121,6 +152,7 @@ class ReminderActionTile extends ConsumerWidget {
     final now = DateTime.now();
     final isOverdue = reminder.isOverdue(now);
     final isCompleted = reminder.isCompleted;
+    final resolvedAction = ReminderActionResolver.resolve(reminder);
 
     return Card(
       elevation: 0,
@@ -200,8 +232,8 @@ class ReminderActionTile extends ConsumerWidget {
                     icon: const Icon(Icons.more_vert, size: 20),
                     tooltip: 'Options',
                     onSelected: (val) async {
-                      if (val == 'mark_paid') {
-                        await _handleComplete(context, ref);
+                      if (val == 'resolve_action') {
+                        await _handleCompleteAction(context, ref);
                       } else if (val == '1day') {
                         await _handleSnooze(context, ref, DeferOption.plus1Day);
                       } else if (val == '1week') {
@@ -224,13 +256,13 @@ class ReminderActionTile extends ConsumerWidget {
                       }
                     },
                     itemBuilder: (ctx) => [
-                      const PopupMenuItem(
-                        value: 'mark_paid',
+                      PopupMenuItem(
+                        value: 'resolve_action',
                         child: Row(
                           children: [
-                            Icon(Icons.check_circle_outline, color: Colors.green, size: 18),
-                            SizedBox(width: 8),
-                            Text('Mark as Paid / Done'),
+                            Icon(resolvedAction.icon, color: resolvedAction.color, size: 18),
+                            const SizedBox(width: 8),
+                            Text(resolvedAction.label),
                           ],
                         ),
                       ),
@@ -248,16 +280,7 @@ class ReminderActionTile extends ConsumerWidget {
 
             // Middle: Title and Description
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                IconButton(
-                  icon: Icon(
-                    isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
-                    color: isCompleted ? Colors.green : Colors.grey,
-                  ),
-                  onPressed: () => _handleComplete(context, ref),
-                  tooltip: isCompleted ? 'Completed' : 'Mark complete',
-                ),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -266,34 +289,46 @@ class ReminderActionTile extends ConsumerWidget {
                         reminder.title,
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          fontSize: 14,
+                          fontSize: 15,
                           decoration: isCompleted ? TextDecoration.lineThrough : null,
                           color: isCompleted ? Colors.grey : null,
                         ),
                       ),
                       if (reminder.description.isNotEmpty) ...[
-                        const SizedBox(height: 3),
+                        const SizedBox(height: 4),
                         Text(
                           reminder.description,
                           style: TextStyle(
                             fontSize: 12,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            decoration: isCompleted ? TextDecoration.lineThrough : null,
+                            color: isCompleted ? Colors.grey : Colors.grey.shade700,
                           ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],
-                      const SizedBox(height: 6),
-                      Text(
-                        'Due: ${AppFormatters.date(reminder.dueDate)}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: isOverdue ? Colors.red.shade700 : Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
                     ],
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 10),
+
+            // Date & Amount Meta Row
+            Row(
+              children: [
+                Icon(
+                  Icons.calendar_today,
+                  size: 14,
+                  color: isOverdue ? Colors.red : Colors.grey.shade600,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  AppFormatters.date(reminder.dueDate),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: isOverdue ? Colors.red.shade700 : Colors.grey.shade800,
                   ),
                 ),
                 if (reminder.amount != null && reminder.amount! > 0)
@@ -302,6 +337,30 @@ class ReminderActionTile extends ConsumerWidget {
                     child: Text(
                       AppFormatters.currency(reminder.amount!),
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                  ),
+                if (reminder.repeatSchedule != null &&
+                    reminder.repeatSchedule!.isNotEmpty &&
+                    reminder.repeatSchedule != 'one_time')
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8.0),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.repeat, size: 12, color: Colors.blue.shade700),
+                          const SizedBox(width: 2),
+                          Text(
+                            reminder.repeatSchedule!.replaceAll('_', ' '),
+                            style: TextStyle(fontSize: 10, color: Colors.blue.shade800, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
               ],
@@ -314,7 +373,7 @@ class ReminderActionTile extends ConsumerWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  _buildActionButton(context, ref),
+                  _buildActionButton(context, ref, resolvedAction),
                 ],
               ),
           ],
@@ -323,18 +382,12 @@ class ReminderActionTile extends ConsumerWidget {
     );
   }
 
-  Widget _buildActionButton(BuildContext context, WidgetRef ref) {
+  Widget _buildActionButton(BuildContext context, WidgetRef ref, ReminderActionType resolvedAction) {
     final route = (reminder.actionRoute != null && reminder.actionRoute!.isNotEmpty)
         ? reminder.actionRoute!
         : '/';
-    final actionType = reminder.actionType.toLowerCase().trim();
-    final isPayment = actionType == 'pay' ||
-        reminder.title.toLowerCase().contains('emi') ||
-        reminder.title.toLowerCase().contains('loan') ||
-        reminder.module.toLowerCase() == 'finance' ||
-        reminder.module.toLowerCase() == 'bills';
 
-    if (isPayment) {
+    if (resolvedAction == ReminderActionType.markPaid) {
       final hasExternalRoute = route != '/' && route.isNotEmpty;
       return Wrap(
         spacing: 8,
@@ -362,67 +415,41 @@ class ReminderActionTile extends ConsumerWidget {
             ),
             icon: const Icon(Icons.check_circle_outline, size: 16),
             label: const Text('Mark as Paid'),
-            onPressed: () => _handleComplete(context, ref),
+            onPressed: () => _handleCompleteAction(context, ref),
           ),
         ],
       );
     }
 
-    String label;
-    IconData icon;
-    Color buttonColor;
-    VoidCallback onPressed;
-
-    switch (actionType) {
-      case 'renew':
-        label = 'Renew Policy / Item';
-        icon = Icons.refresh;
-        buttonColor = Colors.blue.shade700;
-        onPressed = () => context.push(route);
-        break;
-      case 'schedule service':
-        label = 'Schedule Service';
-        icon = Icons.build_circle_outlined;
-        buttonColor = Colors.deepOrange;
-        onPressed = () => context.push(route);
-        break;
-      case 'upload receipt':
-        label = 'Upload Receipt';
-        icon = Icons.upload_file;
-        buttonColor = Colors.indigo;
-        onPressed = () => context.push(route);
-        break;
-      case 'review':
-        label = 'Review Details';
-        icon = Icons.visibility_outlined;
-        buttonColor = Colors.purple;
-        onPressed = () => context.push(route);
-        break;
-      case 'celebrate':
-        label = 'Open in Diary';
-        icon = Icons.celebration_rounded;
-        buttonColor = Colors.pink;
-        onPressed = () => context.push(route);
-        break;
-      case 'complete':
-      case 'done':
-      default:
-        label = 'Mark as Done';
-        icon = Icons.done;
-        buttonColor = Colors.teal;
-        onPressed = () => _handleComplete(context, ref);
-        break;
-    }
-
-    return FilledButton.icon(
-      style: FilledButton.styleFrom(
-        backgroundColor: buttonColor,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-      ),
-      icon: Icon(icon, size: 16),
-      label: Text(label),
-      onPressed: onPressed,
+    // Non-financial action button (Complete, Resolved, Acknowledged)
+    final hasExternalRoute = route != '/' && route.isNotEmpty;
+    return Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      alignment: WrapAlignment.end,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        if (hasExternalRoute)
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+            icon: const Icon(Icons.open_in_new, size: 14),
+            label: const Text('Open in Diary'),
+            onPressed: () => context.push(route),
+          ),
+        FilledButton.icon(
+          style: FilledButton.styleFrom(
+            backgroundColor: resolvedAction.color,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+          ),
+          icon: Icon(resolvedAction.icon, size: 16),
+          label: Text(resolvedAction.label),
+          onPressed: () => _handleCompleteAction(context, ref),
+        ),
+      ],
     );
   }
 }

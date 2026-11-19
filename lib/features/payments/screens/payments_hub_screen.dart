@@ -6,6 +6,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/status_badge.dart';
 import '../../../core/ads/admob_config.dart';
 import '../../../core/ads/widgets/native_ad_card_widget.dart';
+import '../../bills/models/bills_models.dart';
 
 class PaymentsHubScreen extends ConsumerWidget {
   const PaymentsHubScreen({super.key});
@@ -13,6 +14,7 @@ class PaymentsHubScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final billsAsync = ref.watch(billsProvider);
+    final billAccountsAsync = ref.watch(billAccountsProvider);
     final installmentsAsync = ref.watch(feeInstallmentsProvider);
     final txsAsync = ref.watch(financialTransactionsProvider);
 
@@ -78,9 +80,16 @@ class PaymentsHubScreen extends ConsumerWidget {
                     ),
                   );
                 }
+                final accountsMap = {
+                  for (final a in (billAccountsAsync.valueOrNull ?? <BillAccount>[])) a.id: a,
+                };
+
                 return Column(
                   children: bills.map((b) {
                     final isPaid = b.status == 'paid';
+                    final acc = accountsMap[b.billAccountId];
+                    final billTitle = b.displayTitle(accountName: acc?.name);
+
                     return Card(
                       child: ListTile(
                         leading: CircleAvatar(
@@ -90,7 +99,7 @@ class PaymentsHubScreen extends ConsumerWidget {
                             color: isPaid ? Colors.green : Colors.orange.shade800,
                           ),
                         ),
-                        title: Text('Bill (${b.billPeriod})', style: const TextStyle(fontWeight: FontWeight.bold)),
+                        title: Text(billTitle, style: const TextStyle(fontWeight: FontWeight.bold)),
                         subtitle: Text('Due Date: ${AppFormatters.date(b.dueDate)}'),
                         trailing: Column(
                           mainAxisAlignment: MainAxisAlignment.center,

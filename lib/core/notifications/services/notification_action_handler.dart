@@ -136,18 +136,40 @@ class NotificationActionHandler {
 
       // 6. Paid (Requires confirmation before marking financial record)
       case 'PAID':
+      case 'MARK_PAID':
         if (_actionPromptHandler != null) {
           _actionPromptHandler!('PAID', payload);
         } else if (_navigationHandler != null) {
-          final route = payload.actionRoute ?? '/payments';
+          final route = payload.actionRoute ?? '/reminders';
           _navigationHandler!(route, extra: payload.toMap());
         }
         break;
 
       // 7. Complete
       case 'COMPLETE':
+      case 'MARK_COMPLETE':
         if (_actionPromptHandler != null) {
           _actionPromptHandler!('COMPLETE', payload);
+        } else if (_navigationHandler != null) {
+          _navigationHandler!('/reminders', extra: payload.toMap());
+        }
+        break;
+
+      // 8. Resolve
+      case 'RESOLVE':
+      case 'MARK_RESOLVED':
+        if (_actionPromptHandler != null) {
+          _actionPromptHandler!('RESOLVE', payload);
+        } else if (_navigationHandler != null) {
+          _navigationHandler!('/reminders', extra: payload.toMap());
+        }
+        break;
+
+      // 9. Acknowledge
+      case 'ACKNOWLEDGE':
+      case 'MARK_ACKNOWLEDGED':
+        if (_actionPromptHandler != null) {
+          _actionPromptHandler!('ACKNOWLEDGE', payload);
         } else if (_navigationHandler != null) {
           _navigationHandler!('/reminders', extra: payload.toMap());
         }
