@@ -182,55 +182,9 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
               ),
             ),
 
-            // The 3 Primary Pillars
             const Padding(
               padding: EdgeInsets.only(left: 16, top: 8, bottom: 4),
-              child: Text('PRIMARY PLATFORM', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
-            ),
-            ListTile(
-              leading: const Icon(Icons.auto_stories_rounded, color: Colors.purple),
-              title: const Text('My Diaries'),
-              subtitle: const Text('45 predefined & custom personal diaries'),
-              selected: selectedIndex == 1,
-              onTap: () {
-                Navigator.pop(context);
-                context.go('/diaries');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.share_rounded, color: Colors.blue),
-              title: const Text('Shared Diaries'),
-              subtitle: const Text('Shared with me & shared by me'),
-              selected: selectedIndex == 2,
-              onTap: () {
-                Navigator.pop(context);
-                context.go('/shared-diaries');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.groups_rounded, color: Colors.deepPurple),
-              title: const Text('Magic Circles'),
-              subtitle: const Text('Family, Household, Travel & group collaboration'),
-              selected: selectedIndex == 3,
-              onTap: () {
-                Navigator.pop(context);
-                context.go('/circles');
-              },
-            ),
-            const Divider(),
-            const Padding(
-              padding: EdgeInsets.only(left: 16, top: 4, bottom: 4),
               child: Text('CORE SERVICES & HUBS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
-            ),
-            ListTile(
-              leading: const Icon(Icons.today_rounded, color: Colors.teal),
-              title: const Text('My Day'),
-              subtitle: const Text('Today\'s reminders, payments & activities'),
-              selected: selectedIndex == 0,
-              onTap: () {
-                Navigator.pop(context);
-                context.go('/');
-              },
             ),
             ListTile(
               leading: const Icon(Icons.calendar_month_rounded, color: Colors.indigo),
@@ -239,16 +193,6 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
               onTap: () {
                 Navigator.pop(context);
                 context.push('/calendar');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.alarm_rounded, color: Colors.red),
-              title: const Text('My Reminders'),
-              subtitle: const Text('Active alerts, deferral & schedule'),
-              selected: selectedIndex == 4,
-              onTap: () {
-                Navigator.pop(context);
-                context.go('/reminders');
               },
             ),
             ListTile(
@@ -288,102 +232,6 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
               },
             ),
 
-            const Divider(),
-
-            // Specialized Diary Modules
-            const Padding(
-              padding: EdgeInsets.only(left: 16, top: 4, bottom: 4),
-              child: Text('SPECIALIZED DIARIES', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
-            ),
-            ListTile(
-              leading: const Icon(Icons.menu_book_rounded, color: Colors.purple),
-              title: const Text('Personal Diary'),
-              onTap: () {
-                Navigator.pop(context);
-                context.push('/personal');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.directions_car_rounded, color: Colors.red),
-              title: const Text('Vehicle Diary'),
-              onTap: () {
-                Navigator.pop(context);
-                context.push('/vehicle');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.account_balance_wallet_rounded, color: Colors.green),
-              title: const Text('Financial Diary'),
-              onTap: () {
-                Navigator.pop(context);
-                context.push('/finance');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.home_work_rounded, color: Colors.teal),
-              title: const Text('Household Diary'),
-              onTap: () {
-                Navigator.pop(context);
-                context.push('/household');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.clean_hands_rounded, color: Colors.cyan),
-              title: const Text('Domestic Help & Services'),
-              onTap: () {
-                Navigator.pop(context);
-                context.push('/domestic-help');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.family_restroom_rounded, color: Colors.amber),
-              title: const Text('Family Workspace'),
-              onTap: () {
-                Navigator.pop(context);
-                context.push('/family-workspace');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.trending_up_rounded, color: Colors.blueAccent),
-              title: const Text('Cash Commitment Forecast'),
-              onTap: () {
-                Navigator.pop(context);
-                context.push('/cash-forecast');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.query_stats_rounded, color: Colors.deepPurpleAccent),
-              title: const Text('Outflow Forecast'),
-              subtitle: const Text('Next month, quarter & year'),
-              onTap: () {
-                Navigator.pop(context);
-                context.push('/outflow-forecast');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.school_rounded, color: Colors.deepOrange),
-              title: const Text('Education Diary'),
-              onTap: () {
-                Navigator.pop(context);
-                context.push('/school-fees');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.apartment_rounded, color: Colors.indigo),
-              title: const Text('Property Diary'),
-              onTap: () {
-                Navigator.pop(context);
-                context.push('/property');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.verified_rounded, color: Colors.blue),
-              title: const Text('Warranty Diary'),
-              onTap: () {
-                Navigator.pop(context);
-                context.push('/warranty');
-              },
-            ),
             const Divider(),
             ListTile(
               leading: const Icon(Icons.person_rounded, color: Colors.blueGrey),
