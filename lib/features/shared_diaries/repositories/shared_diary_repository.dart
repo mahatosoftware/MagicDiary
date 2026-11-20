@@ -129,16 +129,23 @@ class SharedDiaryRepository {
 
   /// Creates a one-time usable share invitation
   Future<OneTimeShareInvite> createOneTimeShareInvite(OneTimeShareInvite invite) async {
-    await _invitationsRef.doc(invite.id).set(invite.toMap());
-    return invite;
+    final tokenHash = OneTimeShareInvite.hashToken(invite.id);
+    final map = invite.toMap()..['tokenHash'] = tokenHash;
+    await _invitationsRef.doc(invite.id).set(map);
+    return invite.copyWith(tokenHash: tokenHash);
   }
 
-  /// Fetches an invitation by token
+  /// Fetches an invitation by token or tokenHash
   Future<OneTimeShareInvite?> getShareInvite(String token) async {
     try {
       final doc = await _invitationsRef.doc(token).get();
       if (doc.exists && doc.data() != null) {
         return OneTimeShareInvite.fromMap(doc.data()!, doc.id);
+      }
+      final hash = OneTimeShareInvite.hashToken(token);
+      final hashDoc = await _invitationsRef.doc(hash).get();
+      if (hashDoc.exists && hashDoc.data() != null) {
+        return OneTimeShareInvite.fromMap(hashDoc.data()!, hashDoc.id);
       }
     } catch (e) {
       debugPrint('Error getting share invite $token: $e');
@@ -171,6 +178,12 @@ class SharedDiaryRepository {
 
       if (invite.isExpired) {
         throw Exception('This invite link has expired.');
+      }
+
+      if (invite.boundEmail != null &&
+          invite.boundEmail!.isNotEmpty &&
+          invite.boundEmail!.trim().toLowerCase() != recipientUser.email.trim().toLowerCase()) {
+        throw Exception('This invite link is bound to another email address.');
       }
 
       final now = DateTime.now();
@@ -221,6 +234,22 @@ class SharedDiaryRepository {
 
       // Save primary share access
       transaction.set(_sharesRef.doc(primaryDocId), share.toMap(), SetOptions(merge: true));
+
+      // Synchronize sharedWithUids array on granted records for query-level protection
+      if (invite.sharingMode == SharingMode.selected && invite.grantedRecordIds.isNotEmpty) {
+        for (final recId in invite.grantedRecordIds) {
+          final recRef = _firestore
+              .collection('users')
+              .doc(invite.ownerUid)
+              .collection('diaries')
+              .doc(invite.diaryId)
+              .collection('records')
+              .doc(recId);
+          transaction.set(recRef, {
+            'sharedWithUids': FieldValue.arrayUnion([recipientUser.uid]),
+          }, SetOptions(merge: true));
+        }
+      }
 
       // Also set exact UID doc and lowercased UID doc for resilient O(1) rules matching
       final exactUidDocId = '${invite.ownerUid}_${invite.diaryId}_${recipientUser.uid.trim().replaceAll('/', '_')}';
@@ -340,6 +369,24 @@ class SharedDiaryRepository {
       updatedAt: DateTime.now(),
     );
     await updateShareAccess(updated);
+
+    // Sync sharedWithUids array on records for query-compatible Firestore security rules
+    if (current.sharedWithUid.isNotEmpty && !current.sharedWithUid.startsWith('pending_')) {
+      final batch = _firestore.batch();
+      for (final recId in recordIds) {
+        final recRef = _firestore
+            .collection('users')
+            .doc(current.ownerUid)
+            .collection('diaries')
+            .doc(current.diaryId)
+            .collection('records')
+            .doc(recId);
+        batch.set(recRef, {
+          'sharedWithUids': FieldValue.arrayUnion([current.sharedWithUid]),
+        }, SetOptions(merge: true));
+      }
+      await batch.commit();
+    }
   }
 
   /// Removes specific records from an existing share.
@@ -357,6 +404,24 @@ class SharedDiaryRepository {
       updatedAt: DateTime.now(),
     );
     await updateShareAccess(updated);
+
+    // Sync sharedWithUids removal on records
+    if (current.sharedWithUid.isNotEmpty && !current.sharedWithUid.startsWith('pending_')) {
+      final batch = _firestore.batch();
+      for (final recId in recordIds) {
+        final recRef = _firestore
+            .collection('users')
+            .doc(current.ownerUid)
+            .collection('diaries')
+            .doc(current.diaryId)
+            .collection('records')
+            .doc(recId);
+        batch.update(recRef, {
+          'sharedWithUids': FieldValue.arrayRemove([current.sharedWithUid]),
+        });
+      }
+      await batch.commit();
+    }
   }
 
   /// Updates the future-record sharing policy without affecting existing record access.

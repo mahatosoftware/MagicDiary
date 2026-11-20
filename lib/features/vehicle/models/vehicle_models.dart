@@ -16,6 +16,10 @@ class Vehicle {
   final int serviceIntervalMonths;
   final int lastServiceOdometer;
   final DateTime? drivingLicenseExpiry;
+  final int insuranceTenureMonths;
+  final int pucTenureMonths;
+  final DateTime? insuranceStartDate;
+  final DateTime? pucStartDate;
 
   Vehicle({
     required this.id,
@@ -35,7 +39,103 @@ class Vehicle {
     this.serviceIntervalMonths = 6,
     this.lastServiceOdometer = 0,
     this.drivingLicenseExpiry,
+    this.insuranceTenureMonths = 12,
+    this.pucTenureMonths = 12,
+    this.insuranceStartDate,
+    this.pucStartDate,
   });
+
+  static const List<int> insuranceTenureOptions = [6, 12, 36, 60];
+  static const List<int> pucTenureOptions = [6, 12];
+  static const List<int> standardServiceIntervalOptions = [6, 10, 12];
+
+  String get serviceIntervalLabel {
+    if (serviceIntervalMonths == 12) return '1 Year';
+    return '$serviceIntervalMonths Months';
+  }
+
+  String get serviceRepeatSchedule {
+    switch (serviceIntervalMonths) {
+      case 6:
+        return 'semi_annual';
+      case 12:
+        return 'annual';
+      default:
+        return 'every_${serviceIntervalMonths}_months';
+    }
+  }
+
+  String get insuranceTenureLabel {
+    switch (insuranceTenureMonths) {
+      case 6:
+        return '6 Months';
+      case 36:
+        return '3 Years';
+      case 60:
+        return '5 Years';
+      case 12:
+      default:
+        return '1 Year';
+    }
+  }
+
+  String get pucTenureLabel {
+    switch (pucTenureMonths) {
+      case 6:
+        return '6 Months';
+      case 12:
+      default:
+        return '1 Year';
+    }
+  }
+
+  String get insuranceRepeatSchedule {
+    switch (insuranceTenureMonths) {
+      case 6:
+        return 'semi_annual';
+      case 36:
+        return 'triennial';
+      case 60:
+        return 'quinquennial';
+      case 12:
+      default:
+        return 'annual';
+    }
+  }
+
+  String get pucRepeatSchedule {
+    switch (pucTenureMonths) {
+      case 6:
+        return 'semi_annual';
+      case 12:
+      default:
+        return 'annual';
+    }
+  }
+
+  static DateTime calculateExpiryDate(DateTime startDate, int tenureMonths) {
+    var newYear = startDate.year;
+    var newMonth = startDate.month + tenureMonths;
+    while (newMonth > 12) {
+      newYear++;
+      newMonth -= 12;
+    }
+    while (newMonth < 1) {
+      newYear--;
+      newMonth += 12;
+    }
+    // Calculate max days in that target month
+    final maxDays = DateTime(newYear, newMonth + 1, 0).day;
+    final clampedDay = startDate.day.clamp(1, maxDays);
+    return DateTime(
+      newYear,
+      newMonth,
+      clampedDay,
+      startDate.hour,
+      startDate.minute,
+      startDate.second,
+    );
+  }
 
   int get nextServiceOdometer => lastServiceOdometer + serviceIntervalKm;
   int get kmUntilNextService => nextServiceOdometer - currentOdometer;
@@ -59,6 +159,10 @@ class Vehicle {
         'serviceIntervalMonths': serviceIntervalMonths,
         'lastServiceOdometer': lastServiceOdometer,
         'drivingLicenseExpiry': drivingLicenseExpiry?.toIso8601String(),
+        'insuranceTenureMonths': insuranceTenureMonths,
+        'pucTenureMonths': pucTenureMonths,
+        'insuranceStartDate': insuranceStartDate?.toIso8601String(),
+        'pucStartDate': pucStartDate?.toIso8601String(),
       };
 
   factory Vehicle.fromJson(Map<String, dynamic> json) => Vehicle(
@@ -83,6 +187,14 @@ class Vehicle {
         drivingLicenseExpiry: json['drivingLicenseExpiry'] != null
             ? DateTime.parse(json['drivingLicenseExpiry'] as String)
             : null,
+        insuranceTenureMonths: (json['insuranceTenureMonths'] as num?)?.toInt() ?? 12,
+        pucTenureMonths: (json['pucTenureMonths'] as num?)?.toInt() ?? 12,
+        insuranceStartDate: json['insuranceStartDate'] != null
+            ? DateTime.parse(json['insuranceStartDate'] as String)
+            : null,
+        pucStartDate: json['pucStartDate'] != null
+            ? DateTime.parse(json['pucStartDate'] as String)
+            : null,
       );
 
   Vehicle copyWith({
@@ -103,6 +215,10 @@ class Vehicle {
     int? serviceIntervalMonths,
     int? lastServiceOdometer,
     DateTime? drivingLicenseExpiry,
+    int? insuranceTenureMonths,
+    int? pucTenureMonths,
+    DateTime? insuranceStartDate,
+    DateTime? pucStartDate,
   }) {
     return Vehicle(
       id: id ?? this.id,
@@ -122,6 +238,10 @@ class Vehicle {
       serviceIntervalMonths: serviceIntervalMonths ?? this.serviceIntervalMonths,
       lastServiceOdometer: lastServiceOdometer ?? this.lastServiceOdometer,
       drivingLicenseExpiry: drivingLicenseExpiry ?? this.drivingLicenseExpiry,
+      insuranceTenureMonths: insuranceTenureMonths ?? this.insuranceTenureMonths,
+      pucTenureMonths: pucTenureMonths ?? this.pucTenureMonths,
+      insuranceStartDate: insuranceStartDate ?? this.insuranceStartDate,
+      pucStartDate: pucStartDate ?? this.pucStartDate,
     );
   }
 }

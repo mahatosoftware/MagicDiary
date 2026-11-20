@@ -8,6 +8,8 @@ enum ScheduleFrequency {
   quarterly,
   semiAnnual,
   annual,
+  triennial,
+  quinquennial,
   oneTime;
 
   String toDbString() {
@@ -16,6 +18,10 @@ enum ScheduleFrequency {
         return 'bi_weekly';
       case ScheduleFrequency.semiAnnual:
         return 'semi_annual';
+      case ScheduleFrequency.triennial:
+        return 'triennial';
+      case ScheduleFrequency.quinquennial:
+        return 'quinquennial';
       case ScheduleFrequency.oneTime:
         return 'one_time';
       default:
@@ -39,11 +45,30 @@ enum ScheduleFrequency {
       case 'semi_annual':
       case 'semi_annually':
       case 'semiannual':
+      case 'half_yearly':
+      case 'halfyearly':
+      case '6_months':
+      case '6m':
         return ScheduleFrequency.semiAnnual;
       case 'annual':
       case 'annually':
       case 'yearly':
+      case '1_year':
+      case '1year':
+      case '12_months':
         return ScheduleFrequency.annual;
+      case 'triennial':
+      case 'every_3_years':
+      case '3_years':
+      case '3years':
+      case '36_months':
+        return ScheduleFrequency.triennial;
+      case 'quinquennial':
+      case 'every_5_years':
+      case '5_years':
+      case '5years':
+      case '60_months':
+        return ScheduleFrequency.quinquennial;
       case 'one_time':
       case 'onetime':
         return ScheduleFrequency.oneTime;
@@ -51,6 +76,59 @@ enum ScheduleFrequency {
       default:
         return ScheduleFrequency.monthly;
     }
+  }
+
+  /// Parses the exact interval in months from any standard frequency or custom format
+  /// like 'every_10_months', '10_months', '10m', '6_months', 'annual', etc.
+  static int parseIntervalMonths(String? val) {
+    if (val == null || val.isEmpty) return 1;
+    final lower = val.toLowerCase().replaceAll('-', '_').replaceAll(' ', '_').trim();
+    if (lower == 'semi_annual' ||
+        lower == 'semi_annually' ||
+        lower == 'semiannual' ||
+        lower == 'half_yearly' ||
+        lower == 'halfyearly' ||
+        lower == '6_months' ||
+        lower == '6m') {
+      return 6;
+    }
+    if (lower == 'annual' ||
+        lower == 'annually' ||
+        lower == 'yearly' ||
+        lower == '1_year' ||
+        lower == '1year' ||
+        lower == '12_months' ||
+        lower == '12m') {
+      return 12;
+    }
+    if (lower == 'triennial' ||
+        lower == 'every_3_years' ||
+        lower == '3_years' ||
+        lower == '3years' ||
+        lower == '36_months' ||
+        lower == '36m') {
+      return 36;
+    }
+    if (lower == 'quinquennial' ||
+        lower == 'every_5_years' ||
+        lower == '5_years' ||
+        lower == '5years' ||
+        lower == '60_months' ||
+        lower == '60m') {
+      return 60;
+    }
+    if (lower == 'quarterly' || lower == '3_months' || lower == '3m') {
+      return 3;
+    }
+    if (lower == 'monthly' || lower == '1_month' || lower == '1m') {
+      return 1;
+    }
+    final match = RegExp(r'(\d+)[_\s]*(?:month|m)').firstMatch(lower);
+    if (match != null) {
+      final parsed = int.tryParse(match.group(1)!);
+      if (parsed != null && parsed > 0) return parsed;
+    }
+    return 1;
   }
 }
 

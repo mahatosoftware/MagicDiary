@@ -9,12 +9,16 @@ class DiaryRecord {
   final String? subtitle;
   final DateTime recordDate;
   final double? amount;
+  final int? amountMinor;
   final String currency;
   final String status; // 'active', 'completed', 'archived', 'pending'
   final List<String> tags;
   final Map<String, dynamic> fields;
   final List<String> restrictedFields;
+  final bool hasRestrictedData;
+  final List<String> restrictedFieldKeys;
   final bool isPrivate;
+  final List<String> sharedWithUids;
   final List<String> attachmentIds;
   final String? reminderId;
   final List<int> remindBeforeDays; // e.g. [30, 15, 7, 1, 0] where 0 is 'on the day'
@@ -34,12 +38,16 @@ class DiaryRecord {
     this.subtitle,
     required this.recordDate,
     this.amount,
+    this.amountMinor,
     this.currency = 'INR',
     this.status = 'active',
     this.tags = const [],
     this.fields = const {},
     this.restrictedFields = const [],
+    this.hasRestrictedData = false,
+    this.restrictedFieldKeys = const [],
     this.isPrivate = false,
+    this.sharedWithUids = const [],
     this.attachmentIds = const [],
     this.reminderId,
     this.remindBeforeDays = const [],
@@ -53,7 +61,14 @@ class DiaryRecord {
 
   bool get hasReminder => remindBeforeDays.isNotEmpty;
 
-  bool isFieldRestricted(String fieldKey) => restrictedFields.contains(fieldKey);
+  bool isFieldRestricted(String fieldKey) =>
+      restrictedFields.contains(fieldKey) || restrictedFieldKeys.contains(fieldKey);
+
+  int? get resolvedAmountMinor =>
+      amountMinor ?? (amount != null ? (amount! * 100).round() : null);
+
+  double? get amountMajor =>
+      amountMinor != null ? amountMinor! / 100.0 : amount;
 
   DiaryRecord copyWith({
     String? id,
@@ -64,13 +79,17 @@ class DiaryRecord {
     String? subtitle,
     DateTime? recordDate,
     double? amount,
+    int? amountMinor,
     bool clearAmount = false,
     String? currency,
     String? status,
     List<String>? tags,
     Map<String, dynamic>? fields,
     List<String>? restrictedFields,
+    bool? hasRestrictedData,
+    List<String>? restrictedFieldKeys,
     bool? isPrivate,
+    List<String>? sharedWithUids,
     List<String>? attachmentIds,
     String? reminderId,
     List<int>? remindBeforeDays,
@@ -90,12 +109,16 @@ class DiaryRecord {
       subtitle: subtitle ?? this.subtitle,
       recordDate: recordDate ?? this.recordDate,
       amount: clearAmount ? null : (amount ?? this.amount),
+      amountMinor: clearAmount ? null : (amountMinor ?? this.amountMinor),
       currency: currency ?? this.currency,
       status: status ?? this.status,
       tags: tags ?? this.tags,
       fields: fields ?? this.fields,
       restrictedFields: restrictedFields ?? this.restrictedFields,
+      hasRestrictedData: hasRestrictedData ?? this.hasRestrictedData,
+      restrictedFieldKeys: restrictedFieldKeys ?? this.restrictedFieldKeys,
       isPrivate: isPrivate ?? this.isPrivate,
+      sharedWithUids: sharedWithUids ?? this.sharedWithUids,
       attachmentIds: attachmentIds ?? this.attachmentIds,
       reminderId: reminderId ?? this.reminderId,
       remindBeforeDays: remindBeforeDays ?? this.remindBeforeDays,
@@ -117,12 +140,17 @@ class DiaryRecord {
         'subtitle': subtitle,
         'recordDate': Timestamp.fromDate(recordDate),
         'amount': amount,
+        if (amountMinor != null || amount != null)
+          'amountMinor': resolvedAmountMinor,
         'currency': currency,
         'status': status,
         'tags': tags,
         'fields': fields,
         'restrictedFields': restrictedFields,
+        'hasRestrictedData': hasRestrictedData || restrictedFields.isNotEmpty,
+        'restrictedFieldKeys': restrictedFieldKeys.isNotEmpty ? restrictedFieldKeys : restrictedFields,
         'isPrivate': isPrivate,
+        'sharedWithUids': sharedWithUids,
         'attachmentIds': attachmentIds,
         'reminderId': reminderId,
         'hasReminder': hasReminder,
@@ -145,6 +173,10 @@ class DiaryRecord {
       return DateTime.now();
     }
 
+    final rawAmount = (map['amount'] as num?)?.toDouble();
+    final rawAmountMinor = (map['amountMinor'] as num?)?.toInt() ??
+        (rawAmount != null ? (rawAmount * 100).round() : null);
+
     return DiaryRecord(
       id: id,
       ownerId: map['ownerId'] as String? ?? '',
@@ -153,7 +185,8 @@ class DiaryRecord {
       title: map['title'] as String? ?? '',
       subtitle: map['subtitle'] as String?,
       recordDate: parseDate(map['recordDate']),
-      amount: (map['amount'] as num?)?.toDouble(),
+      amount: rawAmount ?? (rawAmountMinor != null ? rawAmountMinor / 100.0 : null),
+      amountMinor: rawAmountMinor,
       currency: map['currency'] as String? ?? 'INR',
       status: map['status'] as String? ?? 'active',
       tags: (map['tags'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? const [],
@@ -162,7 +195,16 @@ class DiaryRecord {
               ?.map((e) => e.toString())
               .toList() ??
           const [],
+      hasRestrictedData: map['hasRestrictedData'] as bool? ?? false,
+      restrictedFieldKeys: (map['restrictedFieldKeys'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const [],
       isPrivate: map['isPrivate'] as bool? ?? false,
+      sharedWithUids: (map['sharedWithUids'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const [],
       attachmentIds: (map['attachmentIds'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList() ??

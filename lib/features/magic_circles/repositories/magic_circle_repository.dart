@@ -17,12 +17,58 @@ class MagicCircleRepository {
   CollectionReference<Map<String, dynamic>> _circleExpensesRef(String circleId) =>
       _circlesRef.doc(circleId).collection('expenses');
 
+  CollectionReference<Map<String, dynamic>> _circleMembersRef(String circleId) =>
+      _circlesRef.doc(circleId).collection('members');
+
+  CollectionReference<Map<String, dynamic>> _circleInvitationsRef(String circleId) =>
+      _circlesRef.doc(circleId).collection('invitations');
+
   Future<void> createCircle(MagicCircle circle) async {
-    await _circlesRef.doc(circle.id).set(circle.toMap(), SetOptions(merge: true));
+    final batch = _firestore.batch();
+    batch.set(_circlesRef.doc(circle.id), circle.toMap(), SetOptions(merge: true));
+
+    // Persist members to dedicated /circles/{id}/members/{uid} subcollection
+    for (final member in circle.members) {
+      if (member.uid.isNotEmpty && !member.uid.startsWith('pending_')) {
+        batch.set(
+          _circleMembersRef(circle.id).doc(member.uid),
+          member.toMap(),
+          SetOptions(merge: true),
+        );
+      } else if (member.email.isNotEmpty) {
+        final inviteId = member.email.replaceAll('/', '_').replaceAll('.', '_');
+        batch.set(
+          _circleInvitationsRef(circle.id).doc(inviteId),
+          {
+            'id': inviteId,
+            'circleId': circle.id,
+            'email': member.email.trim().toLowerCase(),
+            'role': member.role.name,
+            'status': 'pending',
+            'invitedBy': circle.ownerId,
+            'createdAt': Timestamp.now(),
+          },
+          SetOptions(merge: true),
+        );
+      }
+    }
+    await batch.commit();
   }
 
   Future<void> updateCircle(MagicCircle circle) async {
-    await _circlesRef.doc(circle.id).update(circle.toMap());
+    final batch = _firestore.batch();
+    batch.update(_circlesRef.doc(circle.id), circle.toMap());
+
+    for (final member in circle.members) {
+      if (member.uid.isNotEmpty && !member.uid.startsWith('pending_')) {
+        batch.set(
+          _circleMembersRef(circle.id).doc(member.uid),
+          member.toMap(),
+          SetOptions(merge: true),
+        );
+      }
+    }
+    await batch.commit();
   }
 
   Future<void> deleteCircle(String circleId) async {
@@ -188,6 +234,21 @@ class MagicCircleRepository {
           'memberEmails': updatedEmails,
           'updatedAt': Timestamp.now(),
         });
+
+        // Mirror active member into dedicated /members/{uid} subcollection
+        final claimedMember = updatedMembers.firstWhere(
+          (m) => m.uid == uid,
+          orElse: () => MagicCircleMember(
+            uid: uid,
+            email: cleanEmail,
+            displayName: displayName ?? 'Member',
+            joinedAt: DateTime.now(),
+          ),
+        );
+        await _circleMembersRef(circleId).doc(uid).set(
+          claimedMember.toMap(),
+          SetOptions(merge: true),
+        );
       }
     } catch (_) {
       // Ignored if user lacks permission or offline

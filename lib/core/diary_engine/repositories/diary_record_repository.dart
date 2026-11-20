@@ -29,10 +29,21 @@ class DiaryRecordRepository {
         .doc('details');
   }
 
+  DocumentReference<Map<String, dynamic>> _recordSecurePayloadRef({
+    required String userId,
+    required String diaryId,
+    required String recordId,
+  }) {
+    return _userRecordsRef(userId, diaryId)
+        .doc(recordId)
+        .collection('private_data')
+        .doc('secure_payload');
+  }
+
   /// Saves a diary record.
   /// If [record.restrictedFields] is non-empty, sensitive fields are isolated into
-  /// a separate `/private_data/details` subcollection protected by independent
-  /// Firestore security rules (Option A), preventing unauthorized over-the-wire retrieval.
+  /// a separate `/private_data/secure_payload` subcollection protected by independent
+  /// Firestore security rules, preventing unauthorized over-the-wire retrieval.
   Future<void> saveRecord({
     required String userId,
     required DiaryRecord record,
@@ -53,33 +64,43 @@ class DiaryRecordRepository {
       if (isAmountRestricted && record.amount != null) {
         sensitiveData['amount'] = record.amount;
       }
+      if (isAmountRestricted && record.amountMinor != null) {
+        sensitiveData['amountMinor'] = record.amountMinor;
+      }
 
       final sanitizedRecord = record.copyWith(
         fields: publicFields,
         clearAmount: isAmountRestricted,
+        hasRestrictedData: true,
+        restrictedFieldKeys: record.restrictedFields,
       );
 
       final batch = _firestore.batch();
       batch.set(recordRef, sanitizedRecord.toMap(), SetOptions(merge: true));
+
+      final payload = {
+        'recordId': record.id,
+        'ownerId': userId,
+        'diaryId': record.sourceDiaryId,
+        'sensitiveFields': sensitiveData,
+        'restrictedFields': record.restrictedFields,
+        'updatedAt': Timestamp.now(),
+      };
+
+      // Write to both secure_payload and details for resilience and migration
+      final securePayloadRef = _recordSecurePayloadRef(
+        userId: userId,
+        diaryId: record.sourceDiaryId,
+        recordId: record.id,
+      );
+      batch.set(securePayloadRef, payload, SetOptions(merge: true));
 
       final privateRef = _recordPrivateDataRef(
         userId: userId,
         diaryId: record.sourceDiaryId,
         recordId: record.id,
       );
-
-      batch.set(
-        privateRef,
-        {
-          'recordId': record.id,
-          'ownerId': userId,
-          'diaryId': record.sourceDiaryId,
-          'sensitiveFields': sensitiveData,
-          'restrictedFields': record.restrictedFields,
-          'updatedAt': Timestamp.now(),
-        },
-        SetOptions(merge: true),
-      );
+      batch.set(privateRef, payload, SetOptions(merge: true));
 
       await batch.commit();
     } else {
@@ -99,16 +120,22 @@ class DiaryRecordRepository {
       diaryId: diaryId,
       recordId: recordId,
     );
+    final securePayloadRef = _recordSecurePayloadRef(
+      userId: userId,
+      diaryId: diaryId,
+      recordId: recordId,
+    );
 
     batch.delete(privateRef);
+    batch.delete(securePayloadRef);
     batch.delete(recordRef);
     await batch.commit();
   }
 
   /// Retrieves a record.
   /// If the record contains restricted fields, seamlessly attempts to load and merge
-  /// `/private_data/details`. If the caller is restricted, Firestore Security Rules
-  /// will deny access to the subcollection, leaving sensitive fields securely absent.
+  /// `/private_data/secure_payload` (or `/private_data/details`). If the caller is restricted,
+  /// Firestore Security Rules will deny access to the subcollection, leaving sensitive fields securely absent.
   Future<DiaryRecord?> getRecord({
     required String userId,
     required String diaryId,
@@ -118,13 +145,21 @@ class DiaryRecordRepository {
     if (!doc.exists || doc.data() == null) return null;
     var record = DiaryRecord.fromMap(doc.data()!, doc.id);
 
-    if (record.restrictedFields.isNotEmpty) {
+    if (record.restrictedFields.isNotEmpty || record.hasRestrictedData) {
       try {
-        final privateDoc = await _recordPrivateDataRef(
+        var privateDoc = await _recordSecurePayloadRef(
           userId: userId,
           diaryId: diaryId,
           recordId: recordId,
         ).get();
+
+        if (!privateDoc.exists || privateDoc.data() == null) {
+          privateDoc = await _recordPrivateDataRef(
+            userId: userId,
+            diaryId: diaryId,
+            recordId: recordId,
+          ).get();
+        }
 
         if (privateDoc.exists && privateDoc.data() != null) {
           final data = privateDoc.data()!;
@@ -138,9 +173,14 @@ class DiaryRecordRepository {
               ? (sensitiveFields['amount'] as num?)?.toDouble()
               : record.amount;
 
+          final restoredAmountMinor = sensitiveFields.containsKey('amountMinor')
+              ? (sensitiveFields['amountMinor'] as num?)?.toInt()
+              : record.amountMinor;
+
           record = record.copyWith(
             fields: mergedFields,
             amount: restoredAmount,
+            amountMinor: restoredAmountMinor,
           );
         }
       } catch (_) {

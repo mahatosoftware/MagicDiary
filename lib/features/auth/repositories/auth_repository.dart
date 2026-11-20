@@ -210,9 +210,7 @@ class AuthRepository {
       if (displayName != null && displayName.trim().isNotEmpty) {
         data['displayName'] = displayName.trim();
       }
-      if (email != null && email.trim().isNotEmpty) {
-        data['email'] = email.trim().toLowerCase();
-      }
+      // Zero-PII: email is strictly omitted from public /usernames collection to prevent email harvesting
 
       // Store single canonical uppercase document ID in /usernames
       await _firestore.collection('usernames').doc(clean).set(data, SetOptions(merge: true));

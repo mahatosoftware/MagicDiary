@@ -1,8 +1,12 @@
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'shared_diary_models.dart';
 
 class OneTimeShareInvite {
   final String id; // Token / doc ID
+  final String? tokenHash; // SHA-256 of token
+  final String? boundEmail; // Optional recipient email binding
   final String diaryId;
   final String diaryName;
   final String ownerUid;
@@ -26,6 +30,8 @@ class OneTimeShareInvite {
 
   const OneTimeShareInvite({
     required this.id,
+    this.tokenHash,
+    this.boundEmail,
     required this.diaryId,
     required this.diaryName,
     required this.ownerUid,
@@ -33,7 +39,7 @@ class OneTimeShareInvite {
     required this.permission,
     this.sharingMode = SharingMode.entire,
     this.grantedRecordIds = const [],
-    this.allowAttachments = true,
+    this.allowAttachments = false,
     this.allowComments = true,
     this.allowExport = false,
     this.restrictedFields = const [],
@@ -48,6 +54,11 @@ class OneTimeShareInvite {
     this.updatedAt,
   });
 
+  /// Computes SHA-256 hash of a raw token for secure database lookup
+  static String hashToken(String token) {
+    return sha256.convert(utf8.encode(token)).toString();
+  }
+
   bool get isExpired => expiresAt != null && DateTime.now().isAfter(expiresAt!);
   bool get canBeClaimed => !isClaimed && !isExpired;
 
@@ -57,6 +68,9 @@ class OneTimeShareInvite {
   Map<String, dynamic> toMap() {
     return {
       'id': id,
+      if (tokenHash != null || id.isNotEmpty)
+        'tokenHash': tokenHash ?? hashToken(id),
+      if (boundEmail != null) 'boundEmail': boundEmail,
       'diaryId': diaryId,
       'diaryName': diaryName,
       'ownerUid': ownerUid,
@@ -107,6 +121,8 @@ class OneTimeShareInvite {
 
     return OneTimeShareInvite(
       id: id,
+      tokenHash: map['tokenHash'] as String?,
+      boundEmail: map['boundEmail'] as String?,
       diaryId: map['diaryId'] as String? ?? '',
       diaryName: map['diaryName'] as String? ?? '',
       ownerUid: map['ownerUid'] as String? ?? '',
@@ -114,7 +130,7 @@ class OneTimeShareInvite {
       permission: parsePermission(map['permission']),
       sharingMode: parseMode(map['sharingMode']),
       grantedRecordIds: (map['grantedRecordIds'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? const [],
-      allowAttachments: map['allowAttachments'] as bool? ?? true,
+      allowAttachments: map['allowAttachments'] as bool? ?? false,
       allowComments: map['allowComments'] as bool? ?? true,
       allowExport: map['allowExport'] as bool? ?? false,
       restrictedFields: (map['restrictedFields'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? const [],
@@ -132,6 +148,8 @@ class OneTimeShareInvite {
 
   OneTimeShareInvite copyWith({
     String? id,
+    String? tokenHash,
+    String? boundEmail,
     String? diaryId,
     String? diaryName,
     String? ownerUid,
@@ -155,6 +173,8 @@ class OneTimeShareInvite {
   }) {
     return OneTimeShareInvite(
       id: id ?? this.id,
+      tokenHash: tokenHash ?? this.tokenHash,
+      boundEmail: boundEmail ?? this.boundEmail,
       diaryId: diaryId ?? this.diaryId,
       diaryName: diaryName ?? this.diaryName,
       ownerUid: ownerUid ?? this.ownerUid,

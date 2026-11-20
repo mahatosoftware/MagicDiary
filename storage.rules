@@ -46,6 +46,7 @@ service firebase.storage {
       return isAuthenticated() && (
         firestore.get(/databases/(default)/documents/circles/$(circleId)).data.ownerId == request.auth.uid
         || request.auth.uid in firestore.get(/databases/(default)/documents/circles/$(circleId)).data.memberUids
+        || firestore.exists(/databases/(default)/documents/circles/$(circleId)/members/$(request.auth.uid))
       );
     }
 

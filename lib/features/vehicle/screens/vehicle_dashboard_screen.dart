@@ -251,6 +251,8 @@ class VehicleDashboardScreen extends ConsumerWidget {
                       await repo.addServiceRecord(user.uid, recordToSave);
                     }
                     ref.invalidate(vehicleServicesProvider);
+                    ref.invalidate(vehiclesProvider);
+                    ref.invalidate(remindersProvider);
                     ref.invalidate(financialTransactionsProvider);
 
                     if (ctx.mounted) {
@@ -280,10 +282,9 @@ class VehicleDashboardScreen extends ConsumerWidget {
     if (user == null) return;
 
     final now = DateTime.now();
-    // Default new expiry to 1 year after current expiry, or 1 year from now if already expired
-    DateTime newExpiry = vehicle.insuranceExpiry.isAfter(now)
-        ? vehicle.insuranceExpiry.add(const Duration(days: 365))
-        : now.add(const Duration(days: 365));
+    final base = vehicle.insuranceExpiry.isAfter(now) ? vehicle.insuranceExpiry : now;
+    int selectedTenureMonths = vehicle.insuranceTenureMonths;
+    DateTime newExpiry = Vehicle.calculateExpiryDate(base, selectedTenureMonths);
 
     final premiumController = TextEditingController();
     final insurerController = TextEditingController();
@@ -367,28 +368,59 @@ class VehicleDashboardScreen extends ConsumerWidget {
                       const SizedBox(height: 12),
 
                       // Quick Expiry Extension Chips
-                      Row(
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
                         children: [
                           ActionChip(
-                            label: const Text('+1 Year'),
+                            label: const Text('+6 Months'),
+                            avatar: selectedTenureMonths == 6 ? const Icon(Icons.check, size: 16) : null,
                             onPressed: () {
                               setState(() {
-                                final base = vehicle.insuranceExpiry.isAfter(DateTime.now())
+                                selectedTenureMonths = 6;
+                                final b = vehicle.insuranceExpiry.isAfter(DateTime.now())
                                     ? vehicle.insuranceExpiry
                                     : DateTime.now();
-                                newExpiry = base.add(const Duration(days: 365));
+                                newExpiry = Vehicle.calculateExpiryDate(b, 6);
                               });
                             },
                           ),
-                          const SizedBox(width: 8),
                           ActionChip(
-                            label: const Text('+2 Years'),
+                            label: const Text('+1 Year'),
+                            avatar: selectedTenureMonths == 12 ? const Icon(Icons.check, size: 16) : null,
                             onPressed: () {
                               setState(() {
-                                final base = vehicle.insuranceExpiry.isAfter(DateTime.now())
+                                selectedTenureMonths = 12;
+                                final b = vehicle.insuranceExpiry.isAfter(DateTime.now())
                                     ? vehicle.insuranceExpiry
                                     : DateTime.now();
-                                newExpiry = base.add(const Duration(days: 730));
+                                newExpiry = Vehicle.calculateExpiryDate(b, 12);
+                              });
+                            },
+                          ),
+                          ActionChip(
+                            label: const Text('+3 Years (4W)'),
+                            avatar: selectedTenureMonths == 36 ? const Icon(Icons.check, size: 16) : null,
+                            onPressed: () {
+                              setState(() {
+                                selectedTenureMonths = 36;
+                                final b = vehicle.insuranceExpiry.isAfter(DateTime.now())
+                                    ? vehicle.insuranceExpiry
+                                    : DateTime.now();
+                                newExpiry = Vehicle.calculateExpiryDate(b, 36);
+                              });
+                            },
+                          ),
+                          ActionChip(
+                            label: const Text('+5 Years (2W)'),
+                            avatar: selectedTenureMonths == 60 ? const Icon(Icons.check, size: 16) : null,
+                            onPressed: () {
+                              setState(() {
+                                selectedTenureMonths = 60;
+                                final b = vehicle.insuranceExpiry.isAfter(DateTime.now())
+                                    ? vehicle.insuranceExpiry
+                                    : DateTime.now();
+                                newExpiry = Vehicle.calculateExpiryDate(b, 60);
                               });
                             },
                           ),
@@ -458,6 +490,7 @@ class VehicleDashboardScreen extends ConsumerWidget {
                       premiumAmount: premium,
                       insurer: insurerController.text.trim(),
                       policyNumber: policyNoController.text.trim(),
+                      newTenureMonths: selectedTenureMonths,
                     );
 
                     ref.invalidate(vehiclesProvider);
@@ -490,10 +523,9 @@ class VehicleDashboardScreen extends ConsumerWidget {
     if (user == null) return;
 
     final now = DateTime.now();
-    // Default PUCC is typically 6 months or 1 year in India
-    DateTime newExpiry = vehicle.pucExpiry.isAfter(now)
-        ? vehicle.pucExpiry.add(const Duration(days: 180))
-        : now.add(const Duration(days: 180));
+    final base = vehicle.pucExpiry.isAfter(now) ? vehicle.pucExpiry : now;
+    int selectedTenureMonths = vehicle.pucTenureMonths;
+    DateTime newExpiry = Vehicle.calculateExpiryDate(base, selectedTenureMonths);
 
     final feeController = TextEditingController();
     final centerController = TextEditingController();
@@ -581,24 +613,28 @@ class VehicleDashboardScreen extends ConsumerWidget {
                         children: [
                           ActionChip(
                             label: const Text('+6 Months'),
+                            avatar: selectedTenureMonths == 6 ? const Icon(Icons.check, size: 16) : null,
                             onPressed: () {
                               setState(() {
-                                final base = vehicle.pucExpiry.isAfter(DateTime.now())
+                                selectedTenureMonths = 6;
+                                final b = vehicle.pucExpiry.isAfter(DateTime.now())
                                     ? vehicle.pucExpiry
                                     : DateTime.now();
-                                newExpiry = base.add(const Duration(days: 180));
+                                newExpiry = Vehicle.calculateExpiryDate(b, 6);
                               });
                             },
                           ),
                           const SizedBox(width: 8),
                           ActionChip(
-                            label: const Text('+1 Year (BS-VI)'),
+                            label: const Text('+1 Year (BS-IV / VI)'),
+                            avatar: selectedTenureMonths == 12 ? const Icon(Icons.check, size: 16) : null,
                             onPressed: () {
                               setState(() {
-                                final base = vehicle.pucExpiry.isAfter(DateTime.now())
+                                selectedTenureMonths = 12;
+                                final b = vehicle.pucExpiry.isAfter(DateTime.now())
                                     ? vehicle.pucExpiry
                                     : DateTime.now();
-                                newExpiry = base.add(const Duration(days: 365));
+                                newExpiry = Vehicle.calculateExpiryDate(b, 12);
                               });
                             },
                           ),
@@ -669,6 +705,7 @@ class VehicleDashboardScreen extends ConsumerWidget {
                       testFee: fee,
                       testCenter: centerController.text.trim(),
                       certificateNumber: certNoController.text.trim(),
+                      newTenureMonths: selectedTenureMonths,
                     );
 
                     ref.invalidate(vehiclesProvider);

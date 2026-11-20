@@ -183,11 +183,23 @@ class ReminderSyncService {
               ? (d['insuranceExpiry'] as Timestamp).toDate()
               : DateTime.tryParse(d['insuranceExpiry'].toString()) ?? now;
           final docId = 'reminder_veh_${doc.id}_insurance';
+          final tenureMonths = (d['insuranceTenureMonths'] as num?)?.toInt() ?? 12;
+          final tenureLabel = tenureMonths == 6
+              ? '6 Months'
+              : (tenureMonths == 36
+                  ? '3 Years'
+                  : (tenureMonths == 60 ? '5 Years' : '1 Year'));
+          final repeatSchedule = tenureMonths == 6
+              ? 'semi_annual'
+              : (tenureMonths == 36
+                  ? 'triennial'
+                  : (tenureMonths == 60 ? 'quinquennial' : 'annual'));
+
           remindersToSync.add(Reminder(
             id: docId,
             userId: userId,
-            title: 'Vehicle Insurance: $name',
-            description: 'Insurance policy for $name ($regNo) expires on ${dateFormat.format(insExpiry)}. Renew to maintain coverage.',
+            title: 'Vehicle Insurance ($tenureLabel): $name',
+            description: 'Insurance policy ($tenureLabel) for $name ($regNo) expires on ${dateFormat.format(insExpiry)}. Renew to maintain coverage.',
             module: 'Vehicle',
             status: 'pending',
             dueDate: insExpiry,
@@ -195,6 +207,7 @@ class ReminderSyncService {
             actionRoute: '/vehicle',
             actionType: 'Renew',
             priority: 'high',
+            repeatSchedule: repeatSchedule,
             createdAt: _resolveCreatedAt(existingData[docId], now),
           ));
         }
@@ -205,11 +218,15 @@ class ReminderSyncService {
               ? (d['pucExpiry'] as Timestamp).toDate()
               : DateTime.tryParse(d['pucExpiry'].toString()) ?? now;
           final docId = 'reminder_veh_${doc.id}_pucc';
+          final tenureMonths = (d['pucTenureMonths'] as num?)?.toInt() ?? 12;
+          final tenureLabel = tenureMonths == 6 ? '6 Months' : '1 Year';
+          final repeatSchedule = tenureMonths == 6 ? 'semi_annual' : 'annual';
+
           remindersToSync.add(Reminder(
             id: docId,
             userId: userId,
-            title: 'PUC Certificate: $name',
-            description: 'Pollution Under Control (PUC) certificate for $name ($regNo) expires on ${dateFormat.format(pucExpiry)}.',
+            title: 'PUC Certificate ($tenureLabel): $name',
+            description: 'Pollution Under Control (PUC) certificate ($tenureLabel) for $name ($regNo) expires on ${dateFormat.format(pucExpiry)}. Configured for $tenureLabel renewals.',
             module: 'Vehicle',
             status: 'pending',
             dueDate: pucExpiry,
@@ -217,6 +234,7 @@ class ReminderSyncService {
             actionRoute: '/vehicle',
             actionType: 'Renew',
             priority: 'medium',
+            repeatSchedule: repeatSchedule,
             createdAt: _resolveCreatedAt(existingData[docId], now),
           ));
         }
@@ -228,11 +246,18 @@ class ReminderSyncService {
               : DateTime.tryParse(d['nextServiceDate'].toString());
           if (serviceDate != null) {
             final docId = 'reminder_veh_${doc.id}_service';
+            final intervalMonths = (d['serviceIntervalMonths'] as num?)?.toInt() ?? 6;
+            final intervalKm = (d['serviceIntervalKm'] as num?)?.toInt() ?? 10000;
+            final intervalLabel = intervalMonths == 12 ? '1 Year' : '$intervalMonths Months';
+            final repeatSchedule = intervalMonths == 6
+                ? 'semi_annual'
+                : (intervalMonths == 12 ? 'annual' : 'every_${intervalMonths}_months');
+
             remindersToSync.add(Reminder(
               id: docId,
               userId: userId,
-              title: 'Routine Service: $name',
-              description: 'Scheduled periodic maintenance for $name ($regNo) on ${dateFormat.format(serviceDate)}.',
+              title: 'Routine Service ($intervalLabel): $name',
+              description: 'Scheduled periodic maintenance ($intervalLabel / $intervalKm km) for $name ($regNo) on ${dateFormat.format(serviceDate)}.',
               module: 'Vehicle',
               status: 'pending',
               dueDate: serviceDate,
@@ -240,6 +265,7 @@ class ReminderSyncService {
               actionRoute: '/vehicle',
               actionType: 'Schedule Service',
               priority: 'medium',
+              repeatSchedule: repeatSchedule,
               createdAt: _resolveCreatedAt(existingData[docId], now),
             ));
           }

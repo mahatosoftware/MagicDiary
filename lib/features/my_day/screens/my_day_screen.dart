@@ -6,8 +6,6 @@ import '../../../core/utils/formatters.dart';
 import '../../reminders/models/reminder.dart';
 import '../widgets/daily_dock.dart';
 import '../widgets/quick_add_sheet.dart';
-import '../widgets/setup_checklist_card.dart';
-import '../widgets/magic_insights_carousel.dart';
 import '../widgets/reminder_action_tile.dart';
 import '../widgets/calendar_agenda_view.dart';
 
@@ -41,11 +39,6 @@ class _MyDayScreenState extends ConsumerState<MyDayScreen> {
     final user = ref.watch(userProfileProvider);
     final remindersAsync = ref.watch(remindersProvider);
     final allReminders = remindersAsync.value ?? const <Reminder>[];
-    final bills = ref.watch(billsProvider).value ?? const [];
-    final journals = ref.watch(journalEntriesProvider).value ?? const [];
-    final vehicles = ref.watch(vehiclesProvider).value ?? const [];
-    final products = ref.watch(productsProvider).value ?? const [];
-    final documents = ref.watch(documentsProvider).value ?? const [];
     final searchQuery = ref.watch(searchQueryProvider);
     final searchResults = ref.watch(globalSearchResultsProvider);
 
@@ -332,24 +325,9 @@ class _MyDayScreenState extends ConsumerState<MyDayScreen> {
                 // 3. Fast-Action Daily Dock
                 const DailyDock(),
 
-                const SizedBox(height: 14),
-
-                // 4. New User Setup Checklist (collapsible)
-                SetupChecklistCard(
-                  hasBills: bills.isNotEmpty,
-                  hasDiaries: journals.isNotEmpty,
-                  hasAssets: vehicles.isNotEmpty || products.isNotEmpty,
-                  hasDocuments: documents.isNotEmpty,
-                ),
-
-                const SizedBox(height: 14),
-
-                // 5. Magic Assistant Proactive Insights Carousel
-                const MagicInsightsCarousel(),
-
                 const SizedBox(height: 16),
 
-                // 6. Calendar View (if active)
+                // 4. Calendar View (if active)
                 remindersAsync.when(
                   data: (remindersList) {
                     return Column(

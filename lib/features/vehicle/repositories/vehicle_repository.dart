@@ -200,10 +200,16 @@ class VehicleRepository {
     double? premiumAmount,
     String? insurer,
     String? policyNumber,
+    int? newTenureMonths,
+    DateTime? newStartDate,
   }) async {
     if (userId.isEmpty) return;
 
-    final updatedVehicle = vehicle.copyWith(insuranceExpiry: newExpiryDate);
+    final updatedVehicle = vehicle.copyWith(
+      insuranceExpiry: newExpiryDate,
+      insuranceTenureMonths: newTenureMonths ?? vehicle.insuranceTenureMonths,
+      insuranceStartDate: newStartDate ?? vehicle.insuranceStartDate,
+    );
     await updateVehicle(userId, updatedVehicle);
 
     // If an insurance premium was paid, record a canonical financial transaction
@@ -241,10 +247,16 @@ class VehicleRepository {
     double? testFee,
     String? testCenter,
     String? certificateNumber,
+    int? newTenureMonths,
+    DateTime? newStartDate,
   }) async {
     if (userId.isEmpty) return;
 
-    final updatedVehicle = vehicle.copyWith(pucExpiry: newExpiryDate);
+    final updatedVehicle = vehicle.copyWith(
+      pucExpiry: newExpiryDate,
+      pucTenureMonths: newTenureMonths ?? vehicle.pucTenureMonths,
+      pucStartDate: newStartDate ?? vehicle.pucStartDate,
+    );
     await updateVehicle(userId, updatedVehicle);
 
     // If test fee was paid, record canonical financial transaction
@@ -285,9 +297,9 @@ class VehicleRepository {
         Reminder(
           id: 'reminder_veh_${vehicle.id}_insurance',
           userId: userId,
-          title: 'Vehicle Insurance: ${vehicle.name}',
+          title: 'Vehicle Insurance (${vehicle.insuranceTenureLabel}): ${vehicle.name}',
           description:
-              'Insurance policy for ${vehicle.name} (${vehicle.registrationNumber}) expires on ${dateFormat.format(vehicle.insuranceExpiry)}. Renew to avoid penalty or loss of cover.',
+              'Insurance policy (${vehicle.insuranceTenureLabel}) for ${vehicle.name} (${vehicle.registrationNumber}) expires on ${dateFormat.format(vehicle.insuranceExpiry)}. Renew to avoid penalty or loss of cover.',
           module: 'Vehicle',
           status: 'pending',
           dueDate: vehicle.insuranceExpiry,
@@ -295,6 +307,7 @@ class VehicleRepository {
           actionRoute: '/vehicle',
           actionType: 'Renew',
           priority: 'high',
+          repeatSchedule: vehicle.insuranceRepeatSchedule,
           createdAt: DateTime.now(),
         ),
       );
@@ -305,9 +318,9 @@ class VehicleRepository {
         Reminder(
           id: 'reminder_veh_${vehicle.id}_pucc',
           userId: userId,
-          title: 'PUC Certificate: ${vehicle.name}',
+          title: 'PUC Certificate (${vehicle.pucTenureLabel}): ${vehicle.name}',
           description:
-              'Pollution Under Control (PUC) certificate for ${vehicle.name} (${vehicle.registrationNumber}) expires on ${dateFormat.format(vehicle.pucExpiry)}.',
+              'Pollution Under Control (PUC) certificate (${vehicle.pucTenureLabel}) for ${vehicle.name} (${vehicle.registrationNumber}) expires on ${dateFormat.format(vehicle.pucExpiry)}. Configured for ${vehicle.pucTenureLabel} renewals.',
           module: 'Vehicle',
           status: 'pending',
           dueDate: vehicle.pucExpiry,
@@ -315,6 +328,7 @@ class VehicleRepository {
           actionRoute: '/vehicle',
           actionType: 'Renew',
           priority: 'medium',
+          repeatSchedule: vehicle.pucRepeatSchedule,
           createdAt: DateTime.now(),
         ),
       );
@@ -327,9 +341,9 @@ class VehicleRepository {
           Reminder(
             id: svcDocId,
             userId: userId,
-            title: 'Service Due: ${vehicle.name}',
+            title: 'Routine Service (${vehicle.serviceIntervalLabel}): ${vehicle.name}',
             description:
-                'Scheduled periodic maintenance for ${vehicle.name} (${vehicle.registrationNumber}) on ${dateFormat.format(vehicle.nextServiceDate!)}.',
+                'Scheduled periodic maintenance (${vehicle.serviceIntervalLabel} / ${vehicle.serviceIntervalKm} km) for ${vehicle.name} (${vehicle.registrationNumber}) on ${dateFormat.format(vehicle.nextServiceDate!)}. Configured interval: every ${vehicle.serviceIntervalLabel}.',
             module: 'Vehicle',
             status: 'pending',
             dueDate: vehicle.nextServiceDate!,
@@ -337,6 +351,7 @@ class VehicleRepository {
             actionRoute: '/vehicle',
             actionType: 'Schedule Service',
             priority: 'medium',
+            repeatSchedule: vehicle.serviceRepeatSchedule,
             createdAt: DateTime.now(),
           ),
         );
@@ -346,11 +361,15 @@ class VehicleRepository {
     } catch (_) {}
   }
 
-  Future<void> updateServiceRecord(String userId, ServiceRecord service) async {
-    await addServiceRecord(userId, service);
+  Future<void> updateServiceRecord(String userId, ServiceRecord service, {DateTime? nextServiceDate}) async {
+    await addServiceRecord(userId, service, nextServiceDate: nextServiceDate);
   }
 
-  Future<void> addServiceRecord(String userId, ServiceRecord service) async {
+  Future<void> addServiceRecord(
+    String userId,
+    ServiceRecord service, {
+    DateTime? nextServiceDate,
+  }) async {
     if (userId.isEmpty) return;
     await firestore
         .collection('users')
@@ -378,6 +397,36 @@ class VehicleRepository {
           notes: service.workPerformed,
         ),
       );
+    } catch (_) {}
+
+    // Synchronize vehicle's lastServiceOdometer, currentOdometer, and nextServiceDate
+    try {
+      final vehicleDoc = await firestore
+          .collection('users')
+          .doc(userId)
+          .collection('vehicles')
+          .doc(service.vehicleId)
+          .get();
+
+      if (vehicleDoc.exists && vehicleDoc.data() != null) {
+        final vehicle = Vehicle.fromJson(vehicleDoc.data()!);
+        final newLastServiceOdo = service.odometerReading > 0
+            ? service.odometerReading
+            : vehicle.lastServiceOdometer;
+        final newCurrentOdo = service.odometerReading > vehicle.currentOdometer
+            ? service.odometerReading
+            : vehicle.currentOdometer;
+        final calculatedNextDate = nextServiceDate ??
+            Vehicle.calculateExpiryDate(service.serviceDate, vehicle.serviceIntervalMonths);
+
+        final updatedVehicle = vehicle.copyWith(
+          lastServiceOdometer: newLastServiceOdo,
+          currentOdometer: newCurrentOdo,
+          nextServiceDate: calculatedNextDate,
+        );
+
+        await updateVehicle(userId, updatedVehicle);
+      }
     } catch (_) {}
   }
 }

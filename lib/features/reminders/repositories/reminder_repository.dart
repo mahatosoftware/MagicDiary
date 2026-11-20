@@ -1,6 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uuid/uuid.dart';
-import '../../../core/financial/models/recurring_schedule.dart';
 import '../../../core/notifications/services/notification_manager.dart';
 import '../../../core/notifications/services/notification_recurrence_engine.dart';
 import '../../../core/security/diary_access_control_service.dart';
@@ -126,10 +125,9 @@ class ReminderRepository {
 
     if (isRecurring) {
       // 4. Recurring reminder: Close ONLY this occurrence, advance parent schedule to next occurrence
-      final freq = ScheduleFrequency.fromString(existing.repeatSchedule);
-      final nextDueDate = NotificationRecurrenceEngine.calculateNextOccurrence(
+      final nextDueDate = NotificationRecurrenceEngine.calculateNextOccurrenceFromSchedule(
         fromDate: existing.dueDate,
-        frequency: freq,
+        repeatSchedule: existing.repeatSchedule,
       );
       final nextOccId = 'occ_${nextDueDate.year}_${nextDueDate.month.toString().padLeft(2, '0')}_${nextDueDate.day.toString().padLeft(2, '0')}';
 
@@ -148,6 +146,20 @@ class ReminderRepository {
           'completedBy': effectiveCompletedBy,
         },
       });
+
+      // Advance vehicle expiry or service schedule in sync if this is a vehicle reminder
+      if (existing.module == 'Vehicle' && existing.relatedId != null && existing.relatedId!.isNotEmpty) {
+        try {
+          final vehRef = firestore.collection('users').doc(targetUserId).collection('vehicles').doc(existing.relatedId);
+          if (reminderId.endsWith('_insurance')) {
+            batch.update(vehRef, {'insuranceExpiry': nextDueDate.toIso8601String()});
+          } else if (reminderId.endsWith('_pucc')) {
+            batch.update(vehRef, {'pucExpiry': nextDueDate.toIso8601String()});
+          } else if (reminderId.endsWith('_service')) {
+            batch.update(vehRef, {'nextServiceDate': nextDueDate.toIso8601String()});
+          }
+        } catch (_) {}
+      }
     } else {
       // 5. One-time reminder: Mark reminder document as paid
       batch.update(docRef, {
@@ -256,10 +268,9 @@ class ReminderRepository {
 
     if (isRecurring) {
       // 4. Recurring: advance to next occurrence
-      final freq = ScheduleFrequency.fromString(existing.repeatSchedule);
-      final nextDueDate = NotificationRecurrenceEngine.calculateNextOccurrence(
+      final nextDueDate = NotificationRecurrenceEngine.calculateNextOccurrenceFromSchedule(
         fromDate: existing.dueDate,
-        frequency: freq,
+        repeatSchedule: existing.repeatSchedule,
       );
       final nextOccId = 'occ_${nextDueDate.year}_${nextDueDate.month.toString().padLeft(2, '0')}_${nextDueDate.day.toString().padLeft(2, '0')}';
 
@@ -277,6 +288,20 @@ class ReminderRepository {
           if (completionDetails?.notes != null) 'notes': completionDetails!.notes,
         },
       });
+
+      // Advance vehicle expiry or service schedule in sync if this is a vehicle reminder
+      if (existing.module == 'Vehicle' && existing.relatedId != null && existing.relatedId!.isNotEmpty) {
+        try {
+          final vehRef = firestore.collection('users').doc(targetUserId).collection('vehicles').doc(existing.relatedId);
+          if (reminderId.endsWith('_insurance')) {
+            batch.update(vehRef, {'insuranceExpiry': nextDueDate.toIso8601String()});
+          } else if (reminderId.endsWith('_pucc')) {
+            batch.update(vehRef, {'pucExpiry': nextDueDate.toIso8601String()});
+          } else if (reminderId.endsWith('_service')) {
+            batch.update(vehRef, {'nextServiceDate': nextDueDate.toIso8601String()});
+          }
+        } catch (_) {}
+      }
     } else {
       // 5. One-time reminder
       batch.update(docRef, {

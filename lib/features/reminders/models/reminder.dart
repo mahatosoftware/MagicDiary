@@ -82,6 +82,7 @@ class Reminder {
   final String? linkedRecordId;
   final String? linkedDiaryId;
   final double? amount;
+  final int? amountMinor;
   final String? currencyCode;
   final String? actionRoute;
   final String actionType; // 'mark_paid', 'mark_complete', 'mark_resolved', 'mark_acknowledged', 'custom' or legacy ('Pay', 'Complete', etc.)
@@ -98,6 +99,7 @@ class Reminder {
   final double? actualCost;
   final List<int>? remindBeforeDays;
   final String? repeatSchedule;
+  final String? idempotencyKey;
   final DateTime createdAt;
 
   Reminder({
@@ -112,6 +114,7 @@ class Reminder {
     this.linkedRecordId,
     this.linkedDiaryId,
     this.amount,
+    this.amountMinor,
     this.currencyCode = 'INR',
     this.actionRoute,
     this.actionType = 'Complete',
@@ -128,8 +131,15 @@ class Reminder {
     this.actualCost,
     this.remindBeforeDays,
     this.repeatSchedule,
+    this.idempotencyKey,
     required this.createdAt,
   });
+
+  int? get resolvedAmountMinor =>
+      amountMinor ?? (amount != null ? (amount! * 100).round() : null);
+
+  double? get amountMajor =>
+      amountMinor != null ? amountMinor! / 100.0 : amount;
 
   bool get isCompleted => status == 'completed' || status == 'paid';
   bool get isPaid => status == 'paid';
@@ -177,7 +187,10 @@ class Reminder {
       relatedId: map['relatedId'] as String?,
       linkedRecordId: map['linkedRecordId'] as String? ?? map['relatedId'] as String?,
       linkedDiaryId: map['linkedDiaryId'] as String? ?? map['module'] as String?,
-      amount: (map['amount'] as num?)?.toDouble(),
+      amount: (map['amount'] as num?)?.toDouble() ??
+          ((map['amountMinor'] as num?) != null ? (map['amountMinor'] as num).toDouble() / 100.0 : null),
+      amountMinor: (map['amountMinor'] as num?)?.toInt() ??
+          ((map['amount'] as num?) != null ? ((map['amount'] as num).toDouble() * 100).round() : null),
       currencyCode: map['currencyCode'] as String? ?? 'INR',
       actionRoute: map['actionRoute'] as String?,
       actionType: map['actionType'] as String? ?? 'Complete',
@@ -200,6 +213,7 @@ class Reminder {
           ?.map((e) => (e as num).toInt())
           .toList(),
       repeatSchedule: map['repeatSchedule'] as String?,
+      idempotencyKey: map['idempotencyKey'] as String?,
       createdAt: map['createdAt'] is Timestamp
           ? (map['createdAt'] as Timestamp).toDate()
           : DateTime.tryParse(map['createdAt'].toString()) ?? DateTime.now(),
@@ -219,6 +233,8 @@ class Reminder {
       if (linkedRecordId != null) 'linkedRecordId': linkedRecordId,
       if (linkedDiaryId != null) 'linkedDiaryId': linkedDiaryId,
       if (amount != null) 'amount': amount,
+      if (amountMinor != null || amount != null)
+        'amountMinor': resolvedAmountMinor,
       if (currencyCode != null) 'currencyCode': currencyCode,
       if (actionRoute != null) 'actionRoute': actionRoute,
       'actionType': actionType,
@@ -233,6 +249,7 @@ class Reminder {
       if (actualCost != null) 'actualCost': actualCost,
       if (remindBeforeDays != null) 'remindBeforeDays': remindBeforeDays,
       if (repeatSchedule != null) 'repeatSchedule': repeatSchedule,
+      if (idempotencyKey != null) 'idempotencyKey': idempotencyKey,
       'snoozedUntil': snoozedUntil != null ? Timestamp.fromDate(snoozedUntil!) : null,
       'completedAt': completedAt != null ? Timestamp.fromDate(completedAt!) : null,
       'createdAt': Timestamp.fromDate(createdAt),
@@ -251,6 +268,7 @@ class Reminder {
     String? linkedRecordId,
     String? linkedDiaryId,
     double? amount,
+    int? amountMinor,
     String? currencyCode,
     String? actionRoute,
     String? actionType,
@@ -267,6 +285,7 @@ class Reminder {
     double? actualCost,
     List<int>? remindBeforeDays,
     String? repeatSchedule,
+    String? idempotencyKey,
     DateTime? createdAt,
   }) {
     return Reminder(
@@ -281,6 +300,7 @@ class Reminder {
       linkedRecordId: linkedRecordId ?? this.linkedRecordId,
       linkedDiaryId: linkedDiaryId ?? this.linkedDiaryId,
       amount: amount ?? this.amount,
+      amountMinor: amountMinor ?? this.amountMinor,
       currencyCode: currencyCode ?? this.currencyCode,
       actionRoute: actionRoute ?? this.actionRoute,
       actionType: actionType ?? this.actionType,
@@ -297,6 +317,7 @@ class Reminder {
       actualCost: actualCost ?? this.actualCost,
       remindBeforeDays: remindBeforeDays ?? this.remindBeforeDays,
       repeatSchedule: repeatSchedule ?? this.repeatSchedule,
+      idempotencyKey: idempotencyKey ?? this.idempotencyKey,
       createdAt: createdAt ?? this.createdAt,
     );
   }

@@ -86,9 +86,43 @@ class NotificationRecurrenceEngine {
         day = day.clamp(1, maxDays);
         return DateTime(newYear, month, day, fromDate.hour, fromDate.minute, fromDate.second);
 
+      case ScheduleFrequency.triennial:
+        return calculateNextMonthlyOccurrence(fromDate, targetDay, monthsToAdd: 36 * customInterval);
+
+      case ScheduleFrequency.quinquennial:
+        return calculateNextMonthlyOccurrence(fromDate, targetDay, monthsToAdd: 60 * customInterval);
+
       case ScheduleFrequency.oneTime:
         return fromDate;
     }
+  }
+
+  /// Calculates the next occurrence directly from a repeatSchedule string, supporting
+  /// both standard enum frequencies and custom interval formats (e.g. 'every_10_months').
+  static DateTime calculateNextOccurrenceFromSchedule({
+    required DateTime fromDate,
+    required String? repeatSchedule,
+    int? dueDayOfMonth,
+  }) {
+    if (repeatSchedule == null || repeatSchedule.isEmpty) return fromDate;
+    final freq = ScheduleFrequency.fromString(repeatSchedule);
+    final targetDay = dueDayOfMonth ?? fromDate.day;
+
+    final intervalMonths = ScheduleFrequency.parseIntervalMonths(repeatSchedule);
+    if (intervalMonths > 1 &&
+        freq != ScheduleFrequency.semiAnnual &&
+        freq != ScheduleFrequency.annual &&
+        freq != ScheduleFrequency.triennial &&
+        freq != ScheduleFrequency.quinquennial &&
+        freq != ScheduleFrequency.quarterly) {
+      return calculateNextMonthlyOccurrence(fromDate, targetDay, monthsToAdd: intervalMonths);
+    }
+
+    return calculateNextOccurrence(
+      fromDate: fromDate,
+      frequency: freq,
+      dueDayOfMonth: targetDay,
+    );
   }
 
   /// Generates a list of all occurrences from `startDate` up to `horizonEndDate` or `maxOccurrences`.

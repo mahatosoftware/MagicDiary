@@ -422,7 +422,14 @@ service cloud.firestore {
         && isTimestampOrDateString(data.pucExpiry)
         && isValidOptionalNumber(data, 'loanEmiAmount')
         && isValidOptionalDate(data, 'nextServiceDate')
-        && isValidOptionalString(data, 'fastagId', 50);
+        && isValidOptionalString(data, 'fastagId', 50)
+        && isValidOptionalNumber(data, 'insuranceTenureMonths')
+        && isValidOptionalNumber(data, 'pucTenureMonths')
+        && isValidOptionalDate(data, 'insuranceStartDate')
+        && isValidOptionalDate(data, 'pucStartDate')
+        && isValidOptionalNumber(data, 'serviceIntervalKm')
+        && isValidOptionalNumber(data, 'serviceIntervalMonths')
+        && isValidOptionalNumber(data, 'lastServiceOdometer');
     }
 
     function isValidVehicleService(data) {
@@ -1074,11 +1081,15 @@ service cloud.firestore {
         && isValidOptionalString(data, 'circleId', 100)
         && isValidOptionalString(data, 'subtitle', 250)
         && isValidOptionalNumber(data, 'amount')
+        && isValidOptionalNumber(data, 'amountMinor')
         && isValidOptionalString(data, 'currency', 10)
         && (!('status' in data) || data.status == null || (data.status is string && data.status in ['active', 'completed', 'archived', 'pending']))
         && isValidOptionalList(data, 'tags', 30)
         && isValidOptionalMap(data, 'fields')
         && isValidOptionalList(data, 'restrictedFields', 50)
+        && isValidOptionalBool(data, 'hasRestrictedData')
+        && isValidOptionalList(data, 'restrictedFieldKeys', 50)
+        && isValidOptionalList(data, 'sharedWithUids', 500)
         && isValidOptionalBool(data, 'isPrivate')
         && isValidOptionalList(data, 'attachmentIds', 50)
         && isValidOptionalString(data, 'reminderId', 100)
@@ -1296,8 +1307,10 @@ service cloud.firestore {
 
     function isValidShareInvitation(data) {
       return hasRequiredFields(data, ['id', 'diaryId', 'diaryName', 'ownerUid', 'ownerName', 'permission', 'sharingMode', 'isOneTime', 'isClaimed', 'createdAt'])
-        && data.keys().hasOnly(['id', 'diaryId', 'diaryName', 'ownerUid', 'ownerName', 'permission', 'sharingMode', 'grantedRecordIds', 'allowAttachments', 'allowComments', 'allowExport', 'restrictedFields', 'isOneTime', 'isClaimed', 'claimedByUid', 'claimedByEmail', 'claimedByName', 'claimedAt', 'expiresAt', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'tokenHash', 'boundEmail', 'diaryId', 'diaryName', 'ownerUid', 'ownerName', 'permission', 'sharingMode', 'grantedRecordIds', 'allowAttachments', 'allowComments', 'allowExport', 'restrictedFields', 'isOneTime', 'isClaimed', 'claimedByUid', 'claimedByEmail', 'claimedByName', 'claimedAt', 'expiresAt', 'createdAt', 'updatedAt'])
         && data.id is string && data.id.size() >= 1 && data.id.size() <= 100
+        && isValidOptionalString(data, 'tokenHash', 128)
+        && (!('boundEmail' in data) || data.boundEmail == null || (data.boundEmail is string && data.boundEmail.size() <= 255 && isValidEmail(data.boundEmail)))
         && data.diaryId is string && data.diaryId.size() >= 1 && data.diaryId.size() <= 100
         && data.diaryName is string && data.diaryName.size() >= 1 && data.diaryName.size() <= 120
         && data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 100
@@ -1866,8 +1879,12 @@ service cloud.firestore {
         allow write: if isOwner(userId);
 
         match /records/{recordId} {
-          allow get: if isOwner(userId) || canReadSharedRecord(userId, diaryId, recordId, resource.data.createdAt);
-          allow list: if isOwner(userId) || hasSharedDiaryAccess(userId, diaryId);
+          allow get: if isOwner(userId)
+                     || (isAuthenticated() && resource.data.sharedWithUids is list && request.auth.uid in resource.data.sharedWithUids)
+                     || canReadSharedRecord(userId, diaryId, recordId, resource.data.createdAt);
+          allow list: if isOwner(userId)
+                      || (isAuthenticated() && resource.data.sharedWithUids is list && request.auth.uid in resource.data.sharedWithUids)
+                      || hasSharedDiaryAccess(userId, diaryId);
           allow create: if (isOwner(userId) || hasSharedDiaryWriteAccess(userId, diaryId))
                         && isValidDiaryRecord(request.resource.data, userId, diaryId);
           allow update: if (isOwner(userId) || hasSharedDiaryWriteAccess(userId, diaryId))
@@ -2032,6 +2049,31 @@ service cloud.firestore {
                       && isValidCircleExpense(request.resource.data, circleId)
                       && areImmutableFieldsUnchanged(['id', 'circleId']);
         allow delete: if isAuthenticated() && isCircleOwnerOrMember(circleId, request.auth.uid);
+      }
+
+      // Circle Members Subcollection (Decoupled Membership)
+      match /members/{memberUid} {
+        allow read: if isAuthenticated() && (
+          request.auth.uid == memberUid
+          || isCircleOwnerOrMember(circleId, request.auth.uid)
+        );
+        allow write: if isAuthenticated() && (
+          isCircleOwnerOrAdmin(circleId, request.auth.uid)
+          || (request.auth.uid == memberUid && request.resource.data.uid == memberUid)
+        );
+      }
+
+      // Circle Invitations Subcollection
+      match /invitations/{inviteId} {
+        allow read: if isAuthenticated() && (
+          isCircleOwnerOrAdmin(circleId, request.auth.uid)
+          || (request.auth.token.email != null && resource.data.email.lower() == request.auth.token.email.lower())
+        );
+        allow create: if isAuthenticated() && isCircleOwnerOrAdmin(circleId, request.auth.uid);
+        allow update, delete: if isAuthenticated() && (
+          isCircleOwnerOrAdmin(circleId, request.auth.uid)
+          || (request.auth.token.email != null && resource.data.email.lower() == request.auth.token.email.lower())
+        );
       }
     }
 
