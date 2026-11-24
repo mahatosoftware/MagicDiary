@@ -160,6 +160,19 @@ final router = GoRouter(
             token: state.pathParameters['token']!,
           ),
         ),
+        GoRoute(
+          path: '/join/:token',
+          builder: (context, state) => ClaimCircleInviteScreen(
+            token: state.pathParameters['token']!,
+          ),
+        ),
+        GoRoute(
+          path: '/circles/join',
+          builder: (context, state) {
+            final token = state.uri.queryParameters['code'] ?? '';
+            return ClaimCircleInviteScreen(token: token);
+          },
+        ),
         // Universal Calendar
         GoRoute(
           path: '/calendar',

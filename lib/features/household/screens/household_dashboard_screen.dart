@@ -52,6 +52,7 @@ class _HouseholdDashboardScreenState extends ConsumerState<HouseholdDashboardScr
       'Cook',
       'Driver',
       'Society Maintenance Fee',
+      'Water Purifier Filter / Maintenance',
       'Cable / DTH TV',
       'Waste Management',
       'Milk & Daily Delivery',

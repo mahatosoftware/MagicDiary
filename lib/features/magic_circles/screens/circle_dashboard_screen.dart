@@ -6,13 +6,12 @@ import 'package:uuid/uuid.dart';
 import '../models/magic_circle_models.dart';
 import '../models/circle_candidate_member.dart';
 import '../widgets/add_circle_member_sheet.dart';
-import '../widgets/circle_invite_ready_dialog.dart';
+import '../widgets/circle_share_invite_dialog.dart';
 import 'magic_circles_screen.dart';
 import '../../../core/diary_registry/diary_registry.dart';
 import '../../../core/diary_registry/diary_definition.dart';
 import '../../../core/diary_registry/diary_category.dart';
 import '../../../core/providers/app_providers.dart';
-import '../../../core/security/circle_permission_service.dart';
 import '../../shared_diaries/repositories/frequent_contacts_repository.dart';
 import '../../shared_diaries/widgets/sharing_wizard_sheet.dart';
 
@@ -92,6 +91,56 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen>
     return Scaffold(
       appBar: AppBar(
         title: Text(circle.name),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.qr_code_rounded),
+            tooltip: 'Circle QR & Share',
+            onPressed: () {
+              CircleShareInviteDialog.show(
+                context,
+                circle: circle,
+                isAdmin: currentMember?.role.isAdmin ?? false,
+              );
+            },
+          ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert_rounded),
+            onSelected: (val) {
+              if (val == 'share') {
+                CircleShareInviteDialog.show(
+                  context,
+                  circle: circle,
+                  isAdmin: currentMember?.role.isAdmin ?? false,
+                );
+              } else if (val == 'leave') {
+                _handleLeaveCircle(context, circle, user?.uid ?? '');
+              }
+            },
+            itemBuilder: (ctx) => [
+              const PopupMenuItem(
+                value: 'share',
+                child: Row(
+                  children: [
+                    Icon(Icons.share_rounded, size: 20),
+                    SizedBox(width: 10),
+                    Text('Share & QR Code'),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem(
+                value: 'leave',
+                child: Row(
+                  children: [
+                    Icon(Icons.exit_to_app_rounded, color: Colors.red, size: 20),
+                    SizedBox(width: 10),
+                    Text('Leave Circle', style: TextStyle(color: Colors.red)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           isScrollable: true,
@@ -469,58 +518,360 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen>
   // -------------------------------------------------------------
   Widget _buildMembersTab(
       MagicCircle circle, MagicCircleMember? currentMember) {
+    final isAdmin = currentMember?.role.isAdmin ?? false;
+    final currentUserId = ref.read(userProfileProvider)?.uid ?? '';
+
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showInviteMemberModal(context, circle),
-        icon: const Icon(Icons.person_add_rounded),
-        label: const Text('Invite Member'),
-      ),
-      body: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
-        itemCount: circle.members.length,
-        itemBuilder: (context, index) {
-          final member = circle.members[index];
-          return Card(
-            margin: const EdgeInsets.only(bottom: 10),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            child: ListTile(
-              leading: CircleAvatar(
-                backgroundColor: Theme.of(context).primaryColor,
-                child: Text(
-                  member.displayName.isNotEmpty
-                      ? member.displayName[0].toUpperCase()
-                      : 'M',
-                  style: const TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.bold),
-                ),
-              ),
-              title: Text(member.displayName,
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: Text(member.email,
-                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
-              trailing: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: member.role == CircleRole.owner
-                      ? Colors.purple.shade50
-                      : Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  member.role.label,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: member.role == CircleRole.owner
-                        ? Colors.purple.shade700
-                        : Colors.blue.shade700,
-                  ),
-                ),
-              ),
-            ),
+        onPressed: () {
+          CircleShareInviteDialog.show(
+            context,
+            circle: circle,
+            isAdmin: isAdmin,
           );
         },
+        icon: const Icon(Icons.person_add_rounded),
+        label: const Text('Invite & Share QR'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
+        children: [
+          // 1. Pending Join Requests Section (Visible to Admins)
+          if (isAdmin && circle.pendingMemberIds.isNotEmpty) ...[
+            Container(
+              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: Colors.amber.shade50,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.amber.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.pending_actions_rounded, color: Colors.amber.shade900),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Pending Requests (${circle.pendingMemberIds.length})',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: Colors.amber.shade900,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'These users requested to join via your general circle code and require approval.',
+                    style: TextStyle(fontSize: 12, color: Colors.amber.shade900),
+                  ),
+                  const SizedBox(height: 12),
+                  ...circle.pendingMemberIds.map((applicantUid) {
+                    return Card(
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(color: Colors.amber.shade200),
+                      ),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: Colors.amber.shade100,
+                          child: Icon(Icons.person_outline, color: Colors.amber.shade900),
+                        ),
+                        title: Text(
+                          'Applicant: ${applicantUid.length > 8 ? applicantUid.substring(0, 8) : applicantUid}...',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        subtitle: const Text('Requested via general code', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.check_circle_rounded, color: Colors.green),
+                              tooltip: 'Approve',
+                              onPressed: () async {
+                                final repo = ref.read(magicCircleRepositoryProvider);
+                                await repo.approveMember(circle.id, applicantUid);
+                                if (!mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Member approved!')),
+                                );
+                              },
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.cancel_rounded, color: Colors.red),
+                              tooltip: 'Reject',
+                              onPressed: () async {
+                                final repo = ref.read(magicCircleRepositoryProvider);
+                                await repo.rejectMember(circle.id, applicantUid);
+                                if (!mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Request rejected')),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ],
+
+          // 2. Circle Code & Quick Info Card
+          Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(color: Colors.grey.shade200),
+            ),
+            margin: const EdgeInsets.only(bottom: 16),
+            child: ListTile(
+              leading: const Icon(Icons.vpn_key_rounded, color: Colors.deepPurple),
+              title: Text('Group Code: ${circle.code.isNotEmpty ? circle.code : "N/A"}'),
+              subtitle: const Text('Tap to view QR & Share invite link', style: TextStyle(fontSize: 12)),
+              trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.grey),
+              onTap: () {
+                CircleShareInviteDialog.show(
+                  context,
+                  circle: circle,
+                  isAdmin: isAdmin,
+                );
+              },
+            ),
+          ),
+
+          // 3. Active Members List Header
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Members (${circle.members.length})',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              TextButton.icon(
+                onPressed: () => _showInviteMemberModal(context, circle),
+                icon: const Icon(Icons.mail_outline, size: 16),
+                label: const Text('Invite by Email', style: TextStyle(fontSize: 12)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          // 4. Member Cards with Admin Actions
+          ...circle.members.map((member) {
+            final isSelf = member.uid == currentUserId;
+            final isOwner = member.role == CircleRole.owner || circle.ownerId == member.uid;
+            final isMemberAdmin = member.role == CircleRole.admin || isOwner;
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: 10),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Theme.of(context).primaryColor,
+                  child: Text(
+                    member.displayName.isNotEmpty
+                        ? member.displayName[0].toUpperCase()
+                        : 'M',
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                title: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        member.displayName,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (isSelf)
+                      Container(
+                        margin: const EdgeInsets.only(left: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text('You', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                      ),
+                  ],
+                ),
+                subtitle: Text(member.email, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isOwner
+                            ? Colors.purple.shade50
+                            : (isMemberAdmin ? Colors.blue.shade50 : Colors.grey.shade100),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        member.role.label,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: isOwner
+                              ? Colors.purple.shade700
+                              : (isMemberAdmin ? Colors.blue.shade700 : Colors.grey.shade700),
+                        ),
+                      ),
+                    ),
+                    if (isAdmin && !isSelf && !isOwner) ...[
+                      PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_vert, size: 20),
+                        onSelected: (action) async {
+                          final repo = ref.read(magicCircleRepositoryProvider);
+                          if (action == 'promote') {
+                            await repo.promoteToAdmin(circle.id, member.uid);
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Promoted ${member.displayName} to Admin')),
+                            );
+                          } else if (action == 'demote') {
+                            await repo.demoteFromAdmin(circle.id, member.uid);
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Demoted ${member.displayName} to Contributor')),
+                            );
+                          } else if (action == 'remove') {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                title: const Text('Remove Member?'),
+                                content: Text('Remove ${member.displayName} from ${circle.name}?'),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                                  FilledButton(
+                                    style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                                    onPressed: () => Navigator.pop(ctx, true),
+                                    child: const Text('Remove'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (confirm == true) {
+                              await repo.removeMember(circle.id, member.uid);
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Removed ${member.displayName} from circle')),
+                              );
+                            }
+                          }
+                        },
+                        itemBuilder: (ctx) => [
+                          if (!isMemberAdmin)
+                            const PopupMenuItem(
+                              value: 'promote',
+                              child: Text('Promote to Admin'),
+                            )
+                          else
+                            const PopupMenuItem(
+                              value: 'demote',
+                              child: Text('Demote from Admin'),
+                            ),
+                          const PopupMenuItem(
+                            value: 'remove',
+                            child: Text('Remove Member', style: TextStyle(color: Colors.red)),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  void _handleLeaveCircle(
+    BuildContext context,
+    MagicCircle circle,
+    String currentUserId,
+  ) {
+    if (currentUserId.isEmpty) return;
+
+    final isUserAdmin = circle.isCircleAdmin(currentUserId);
+    final otherAdmins = circle.adminIds.where((id) => id != currentUserId).toList();
+
+    // 1. Successor check: If user is the ONLY admin and other members exist
+    if (isUserAdmin && otherAdmins.isEmpty && circle.members.length > 1) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.orange),
+              SizedBox(width: 8),
+              Text('Admin Transfer Required'),
+            ],
+          ),
+          content: const Text(
+            'You are the sole administrator of this circle. You must promote another member to Admin before leaving.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    // 2. Confirmation dialog
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Leave Circle?'),
+        content: Text(
+          circle.members.length <= 1
+              ? 'You are the last member. Leaving will schedule this circle for deletion.'
+              : 'Are you sure you want to leave "${circle.name}"?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                final repo = ref.read(magicCircleRepositoryProvider);
+                await repo.removeMember(circle.id, currentUserId);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Left circle successfully.')),
+                  );
+                  context.go('/circles');
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Failed to leave circle: $e')),
+                  );
+                }
+              }
+            },
+            child: const Text('Leave Circle'),
+          ),
+        ],
       ),
     );
   }
@@ -881,7 +1232,7 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen>
               ),
               onTap: () {
                 Navigator.pop(ctx);
-                _shareCircleInviteLink(context, circle);
+                CircleShareInviteDialog.show(context, circle: circle);
               },
             ),
             const SizedBox(height: 12),
@@ -944,33 +1295,6 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen>
           content: Text('Added ${candidate.displayName} to ${circle.name}!'),
           backgroundColor: Colors.green.shade700,
         ),
-      );
-    }
-  }
-
-  Future<void> _shareCircleInviteLink(BuildContext context, MagicCircle circle) async {
-    final currentUser = ref.read(userProfileProvider);
-    if (currentUser == null) return;
-
-    final token = const Uuid().v4();
-    try {
-      final permService = CirclePermissionService();
-      await permService.createInvitation(
-        circleId: circle.id,
-        circleName: circle.name,
-        inviterUid: currentUser.uid,
-        inviterName: currentUser.displayName,
-        inviteeEmail: 'link@magicdiary.internal',
-        role: 'contributor',
-      );
-    } catch (_) {}
-
-    if (context.mounted) {
-      await CircleInviteReadyDialog.show(
-        context,
-        circleId: circle.id,
-        circleName: circle.name,
-        token: token,
       );
     }
   }

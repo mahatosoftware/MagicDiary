@@ -1077,7 +1077,7 @@ class ReminderSyncService {
       return module.toLowerCase() == 'vehicle' ? 'vehicle_insurance' : 'insurance_premium';
     }
     if (t.contains('puc')) return 'vehicle_puc';
-    if (t.contains('service') || t.contains('maintenance')) {
+    if (t.contains('service') || t.contains('maintenance') || t.contains('filter') || t.contains('purifier')) {
       return module.toLowerCase() == 'vehicle' ? 'vehicle_servicing' : 'appliance_servicing';
     }
     if (t.contains('warranty')) return 'product_warranty';

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../models/magic_circle_models.dart';
 import '../repositories/magic_circle_repository.dart';
+import '../widgets/circle_qr_scanner_dialog.dart';
 import '../../../core/providers/app_providers.dart';
 
 final magicCircleRepositoryProvider = Provider<MagicCircleRepository>((ref) => MagicCircleRepository());
@@ -28,6 +29,102 @@ class MagicCirclesScreen extends ConsumerStatefulWidget {
 class _MagicCirclesScreenState extends ConsumerState<MagicCirclesScreen> {
   CircleCategory? _selectedCategory;
 
+  Future<void> _handleJoinCircle() async {
+    final code = await CircleQrScannerDialog.show(context);
+    if (code == null || code.trim().isEmpty || !mounted) return;
+
+    final user = ref.read(userProfileProvider);
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please log in first to join a circle.')),
+      );
+      return;
+    }
+
+    final repo = ref.read(magicCircleRepositoryProvider);
+    try {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      );
+
+      final circle = await repo.getCircleByCode(code);
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+
+      if (circle == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Circle not found. Please verify the code.')),
+          );
+        }
+        return;
+      }
+
+      // Check if already a member
+      if (circle.isMember(user.uid, user.email)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('You are already a member of ${circle.name}.')),
+          );
+          context.push('/circles/${circle.id}', extra: circle);
+        }
+        return;
+      }
+
+      // Case A: One-time invite code -> Direct Instant Admission
+      final isOneTime = circle.oneTimeCodes.contains(code.toUpperCase());
+      if (isOneTime) {
+        await repo.joinWithOneTimeCode(
+          circle.id,
+          user.uid,
+          code,
+          email: user.email,
+          displayName: user.displayName,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Joined ${circle.name} successfully via VIP invite!')),
+          );
+          context.push('/circles/${circle.id}');
+        }
+        return;
+      }
+
+      // Case B: Already pending approval
+      if (circle.pendingMemberIds.contains(user.uid)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Your join request is already pending admin review.')),
+          );
+        }
+        return;
+      }
+
+      // Case C: General permanent code -> Route to pending queue
+      await repo.requestJoin(circle.id, user.uid);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Join request sent to "${circle.name}"! An admin will review it.'),
+            backgroundColor: Colors.deepPurple,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to join circle: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final circlesAsync = ref.watch(userCirclesStreamProvider);
@@ -36,6 +133,11 @@ class _MagicCirclesScreenState extends ConsumerState<MagicCirclesScreen> {
       appBar: AppBar(
         title: const Text('Magic Circles ⭕'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.qr_code_scanner_rounded),
+            tooltip: 'Join Circle (Scan / Code)',
+            onPressed: _handleJoinCircle,
+          ),
           IconButton(
             icon: const Icon(Icons.add_circle_outline_rounded),
             tooltip: 'Create Circle',
@@ -156,10 +258,21 @@ class _MagicCirclesScreenState extends ConsumerState<MagicCirclesScreen> {
                             style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
                           ),
                           const SizedBox(height: 20),
-                          ElevatedButton.icon(
-                            onPressed: () => context.push('/circles/create'),
-                            icon: const Icon(Icons.add),
-                            label: const Text('Create Your First Circle'),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              OutlinedButton.icon(
+                                onPressed: _handleJoinCircle,
+                                icon: const Icon(Icons.qr_code_scanner_rounded),
+                                label: const Text('Join Circle'),
+                              ),
+                              const SizedBox(width: 12),
+                              ElevatedButton.icon(
+                                onPressed: () => context.push('/circles/create'),
+                                icon: const Icon(Icons.add),
+                                label: const Text('Create Circle'),
+                              ),
+                            ],
                           ),
                         ],
                       ),

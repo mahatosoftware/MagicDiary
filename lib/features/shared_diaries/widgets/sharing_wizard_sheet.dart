@@ -794,7 +794,7 @@ class _SharingWizardSheetState extends ConsumerState<SharingWizardSheet> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Deep link format: magicdiary://share/invite/<token>',
+                  'Deep link format: https://magicdiary.mahato.in/join/<token>',
                   style: TextStyle(
                       fontSize: 11,
                       color: Colors.grey.shade700,

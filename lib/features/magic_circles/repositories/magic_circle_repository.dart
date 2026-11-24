@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/magic_circle_models.dart';
 
@@ -23,29 +24,51 @@ class MagicCircleRepository {
   CollectionReference<Map<String, dynamic>> _circleInvitationsRef(String circleId) =>
       _circlesRef.doc(circleId).collection('invitations');
 
-  Future<void> createCircle(MagicCircle circle) async {
+  /// Collision-resistant code generator avoiding ambiguous chars (0, O, 1, I, L)
+  Future<String> _generateUniqueCode() async {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    final rnd = Random.secure();
+    String code;
+    bool exists = true;
+    do {
+      code = String.fromCharCodes(Iterable.generate(
+        7, (_) => chars.codeUnitAt(rnd.nextInt(chars.length)),
+      ));
+      final query = await _circlesRef.where('code', isEqualTo: code).limit(1).get();
+      exists = query.docs.isNotEmpty;
+    } while (exists);
+    return code;
+  }
+
+  Future<MagicCircle> createCircle(MagicCircle circle) async {
+    var finalCircle = circle;
+    if (finalCircle.code.trim().isEmpty) {
+      final code = await _generateUniqueCode();
+      finalCircle = finalCircle.copyWith(code: code);
+    }
+
     final batch = _firestore.batch();
-    batch.set(_circlesRef.doc(circle.id), circle.toMap(), SetOptions(merge: true));
+    batch.set(_circlesRef.doc(finalCircle.id), finalCircle.toMap(), SetOptions(merge: true));
 
     // Persist members to dedicated /circles/{id}/members/{uid} subcollection
-    for (final member in circle.members) {
+    for (final member in finalCircle.members) {
       if (member.uid.isNotEmpty && !member.uid.startsWith('pending_')) {
         batch.set(
-          _circleMembersRef(circle.id).doc(member.uid),
+          _circleMembersRef(finalCircle.id).doc(member.uid),
           member.toMap(),
           SetOptions(merge: true),
         );
       } else if (member.email.isNotEmpty) {
         final inviteId = member.email.replaceAll('/', '_').replaceAll('.', '_');
         batch.set(
-          _circleInvitationsRef(circle.id).doc(inviteId),
+          _circleInvitationsRef(finalCircle.id).doc(inviteId),
           {
             'id': inviteId,
-            'circleId': circle.id,
+            'circleId': finalCircle.id,
             'email': member.email.trim().toLowerCase(),
             'role': member.role.name,
             'status': 'pending',
-            'invitedBy': circle.ownerId,
+            'invitedBy': finalCircle.ownerId,
             'createdAt': Timestamp.now(),
           },
           SetOptions(merge: true),
@@ -53,6 +76,290 @@ class MagicCircleRepository {
       }
     }
     await batch.commit();
+    return finalCircle;
+  }
+
+  /// Look up circle by permanent alphanumeric code OR disposable one-time code
+  Future<MagicCircle?> getCircleByCode(String rawCode) async {
+    final clean = rawCode.trim().toUpperCase();
+    if (clean.isEmpty) return null;
+
+    // 1. Try finding by permanent code
+    final permQuery = await _circlesRef.where('code', isEqualTo: clean).limit(1).get();
+    if (permQuery.docs.isNotEmpty) {
+      final doc = permQuery.docs.first;
+      return MagicCircle.fromMap(doc.data(), doc.id);
+    }
+
+    // 2. Try finding by oneTimeCodes array
+    final oneTimeQuery = await _circlesRef.where('oneTimeCodes', arrayContains: clean).limit(1).get();
+    if (oneTimeQuery.docs.isNotEmpty) {
+      final doc = oneTimeQuery.docs.first;
+      return MagicCircle.fromMap(doc.data(), doc.id);
+    }
+
+    return null;
+  }
+
+  /// Appends user to pendingMemberIds queue for review
+  Future<void> requestJoin(String circleId, String userId) async {
+    await _circlesRef.doc(circleId).update({
+      'pendingMemberIds': FieldValue.arrayUnion([userId]),
+      'updatedAt': Timestamp.now(),
+    });
+  }
+
+  /// Generates a single-use disposable invite code
+  Future<String> generateOneTimeCode(String circleId) async {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    final rnd = Random.secure();
+    final randomSuffix = String.fromCharCodes(Iterable.generate(
+      6, (_) => chars.codeUnitAt(rnd.nextInt(chars.length)),
+    ));
+    final code = 'IN-$randomSuffix';
+
+    await _circlesRef.doc(circleId).update({
+      'oneTimeCodes': FieldValue.arrayUnion([code]),
+      'updatedAt': Timestamp.now(),
+    });
+    return code;
+  }
+
+  /// Deletes or revokes a one-time disposable invite code
+  Future<void> deleteOneTimeCode(String circleId, String code) async {
+    await _circlesRef.doc(circleId).update({
+      'oneTimeCodes': FieldValue.arrayRemove([code.trim().toUpperCase()]),
+      'updatedAt': Timestamp.now(),
+    });
+  }
+
+  /// Transactional Join with One-Time Code (Atomic redemption & burn)
+  Future<void> joinWithOneTimeCode(
+    String circleId,
+    String userId,
+    String rawCode, {
+    required String email,
+    required String displayName,
+  }) async {
+    final cleanCode = rawCode.trim().toUpperCase();
+    await _firestore.runTransaction((transaction) async {
+      final docRef = _circlesRef.doc(circleId);
+      final snapshot = await transaction.get(docRef);
+
+      if (!snapshot.exists || snapshot.data() == null) {
+        throw Exception('Circle not found');
+      }
+
+      final data = snapshot.data()!;
+      final oneTimeCodes = List<String>.from(data['oneTimeCodes'] ?? []);
+
+      if (!oneTimeCodes.contains(cleanCode)) {
+        throw Exception('This one-time invite code has already been used or expired.');
+      }
+
+      // Check if already member
+      final memberUids = List<String>.from(data['memberUids'] ?? []);
+      if (memberUids.contains(userId)) {
+        return; // Already joined
+      }
+
+      // Atomically burn the one-time code
+      oneTimeCodes.remove(cleanCode);
+
+      final circle = MagicCircle.fromMap(data, snapshot.id);
+      final newMember = MagicCircleMember(
+        uid: userId,
+        email: email.trim().toLowerCase(),
+        displayName: displayName.isNotEmpty ? displayName : 'Member',
+        role: CircleRole.contributor,
+        joinedAt: DateTime.now(),
+        status: 'active',
+      );
+
+      final updatedMembers = [...circle.members.where((m) => m.uid != userId), newMember];
+      final pendingMemberIds = List<String>.from(data['pendingMemberIds'] ?? [])..remove(userId);
+      memberUids.add(userId);
+
+      final emails = List<String>.from(data['memberEmails'] ?? []);
+      if (email.isNotEmpty && !emails.contains(email.trim().toLowerCase())) {
+        emails.add(email.trim().toLowerCase());
+      }
+
+      transaction.update(docRef, {
+        'oneTimeCodes': oneTimeCodes,
+        'memberUids': memberUids,
+        'memberEmails': emails,
+        'members': updatedMembers.map((m) => m.toMap()).toList(),
+        'pendingMemberIds': pendingMemberIds,
+        'updatedAt': Timestamp.now(),
+      });
+
+      final memberDocRef = _circleMembersRef(circleId).doc(userId);
+      transaction.set(memberDocRef, newMember.toMap(), SetOptions(merge: true));
+    });
+  }
+
+  /// Admin approval moving user from pendingMemberIds to active member
+  Future<void> approveMember(
+    String circleId,
+    String applicantUid, {
+    String? displayName,
+    String? email,
+    CircleRole role = CircleRole.contributor,
+  }) async {
+    await _firestore.runTransaction((transaction) async {
+      final docRef = _circlesRef.doc(circleId);
+      final snapshot = await transaction.get(docRef);
+      if (!snapshot.exists || snapshot.data() == null) {
+        throw Exception('Circle not found');
+      }
+
+      final data = snapshot.data()!;
+      final circle = MagicCircle.fromMap(data, snapshot.id);
+
+      final pendingMemberIds = List<String>.from(data['pendingMemberIds'] ?? [])..remove(applicantUid);
+      final memberUids = List<String>.from(data['memberUids'] ?? []);
+      if (!memberUids.contains(applicantUid)) {
+        memberUids.add(applicantUid);
+      }
+
+      final newMember = MagicCircleMember(
+        uid: applicantUid,
+        email: email?.trim().toLowerCase() ?? '',
+        displayName: (displayName != null && displayName.isNotEmpty) ? displayName : 'Member',
+        role: role,
+        joinedAt: DateTime.now(),
+        status: 'active',
+      );
+
+      final updatedMembers = [...circle.members.where((m) => m.uid != applicantUid), newMember];
+
+      transaction.update(docRef, {
+        'pendingMemberIds': pendingMemberIds,
+        'memberUids': memberUids,
+        'members': updatedMembers.map((m) => m.toMap()).toList(),
+        'updatedAt': Timestamp.now(),
+      });
+
+      final memberDocRef = _circleMembersRef(circleId).doc(applicantUid);
+      transaction.set(memberDocRef, newMember.toMap(), SetOptions(merge: true));
+    });
+  }
+
+  /// Admin rejection removing user from pendingMemberIds
+  Future<void> rejectMember(String circleId, String applicantUid) async {
+    await _circlesRef.doc(circleId).update({
+      'pendingMemberIds': FieldValue.arrayRemove([applicantUid]),
+      'updatedAt': Timestamp.now(),
+    });
+  }
+
+  /// Promotes a member to Admin
+  Future<void> promoteToAdmin(String circleId, String memberUid) async {
+    await _firestore.runTransaction((transaction) async {
+      final docRef = _circlesRef.doc(circleId);
+      final snapshot = await transaction.get(docRef);
+      if (!snapshot.exists || snapshot.data() == null) return;
+      final data = snapshot.data()!;
+      final circle = MagicCircle.fromMap(data, snapshot.id);
+
+      final updatedMembers = circle.members.map((m) {
+        if (m.uid == memberUid) {
+          return m.copyWith(role: CircleRole.admin);
+        }
+        return m;
+      }).toList();
+
+      final adminIds = List<String>.from(data['adminIds'] ?? []);
+      if (!adminIds.contains(memberUid)) {
+        adminIds.add(memberUid);
+      }
+
+      transaction.update(docRef, {
+        'members': updatedMembers.map((m) => m.toMap()).toList(),
+        'adminIds': adminIds,
+        'updatedAt': Timestamp.now(),
+      });
+
+      final memberDocRef = _circleMembersRef(circleId).doc(memberUid);
+      transaction.update(memberDocRef, {'role': CircleRole.admin.name});
+    });
+  }
+
+  /// Demotes an Admin to Contributor
+  Future<void> demoteFromAdmin(String circleId, String memberUid) async {
+    await _firestore.runTransaction((transaction) async {
+      final docRef = _circlesRef.doc(circleId);
+      final snapshot = await transaction.get(docRef);
+      if (!snapshot.exists || snapshot.data() == null) return;
+      final data = snapshot.data()!;
+      final circle = MagicCircle.fromMap(data, snapshot.id);
+
+      if (circle.ownerId == memberUid) {
+        throw Exception('Cannot demote the Circle Owner.');
+      }
+
+      final updatedMembers = circle.members.map((m) {
+        if (m.uid == memberUid) {
+          return m.copyWith(role: CircleRole.contributor);
+        }
+        return m;
+      }).toList();
+
+      final adminIds = List<String>.from(data['adminIds'] ?? [])..remove(memberUid);
+
+      transaction.update(docRef, {
+        'members': updatedMembers.map((m) => m.toMap()).toList(),
+        'adminIds': adminIds,
+        'updatedAt': Timestamp.now(),
+      });
+
+      final memberDocRef = _circleMembersRef(circleId).doc(memberUid);
+      transaction.update(memberDocRef, {'role': CircleRole.contributor.name});
+    });
+  }
+
+  /// Remove Member / Safe Leaving (Transaction with Successor Rule & empty-circle check)
+  Future<void> removeMember(String circleId, String memberUid) async {
+    await _firestore.runTransaction((transaction) async {
+      final docRef = _circlesRef.doc(circleId);
+      final snapshot = await transaction.get(docRef);
+      if (!snapshot.exists || snapshot.data() == null) {
+        throw Exception('Circle not found');
+      }
+
+      final data = snapshot.data()!;
+      final circle = MagicCircle.fromMap(data, snapshot.id);
+
+      final memberUids = List<String>.from(data['memberUids'] ?? []);
+      final adminIds = List<String>.from(data['adminIds'] ?? []);
+
+      // Successor Rule:
+      // If the departing user is the sole admin AND other members remain, block removal
+      final isSoleAdmin = (adminIds.length == 1 && adminIds.contains(memberUid)) ||
+          (circle.ownerId == memberUid && adminIds.where((id) => id != memberUid).isEmpty);
+      if (isSoleAdmin && memberUids.length > 1) {
+        throw Exception(
+          'Admin Transfer Required: You are the sole administrator of this circle. You must promote another member to Admin before leaving.',
+        );
+      }
+
+      memberUids.remove(memberUid);
+      adminIds.remove(memberUid);
+      final updatedMembers = circle.members.where((m) => m.uid != memberUid).toList();
+      final isPendingDelete = memberUids.isEmpty;
+
+      transaction.update(docRef, {
+        'memberUids': memberUids,
+        'adminIds': adminIds,
+        'members': updatedMembers.map((m) => m.toMap()).toList(),
+        'isPendingDelete': isPendingDelete,
+        'updatedAt': Timestamp.now(),
+      });
+
+      final memberDocRef = _circleMembersRef(circleId).doc(memberUid);
+      transaction.delete(memberDocRef);
+    });
   }
 
   Future<void> updateCircle(MagicCircle circle) async {

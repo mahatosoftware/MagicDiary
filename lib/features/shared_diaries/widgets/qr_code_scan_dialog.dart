@@ -85,6 +85,14 @@ class QrScanResult {
       }
     }
 
+    // 2c. Check for unified domain join link (e.g. https://magicdiary.mahato.in/join/CODE)
+    if (text.contains('/join/')) {
+      final token = text.split('/join/').last.split('?').first.replaceAll('/', '').trim();
+      if (token.isNotEmpty) {
+        return QrScanResult(type: QrScanType.circleInviteToken, value: token);
+      }
+    }
+
     // 3. Check for UUID invite token (e.g. 8-4-4-4-12 hex chars)
     final uuidRegex = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$');
     if (uuidRegex.hasMatch(text)) {

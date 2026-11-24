@@ -62,8 +62,8 @@ class OneTimeShareInvite {
   bool get isExpired => expiresAt != null && DateTime.now().isAfter(expiresAt!);
   bool get canBeClaimed => !isClaimed && !isExpired;
 
-  String get deepLink => 'magicdiary://share/invite/$id';
-  String get webLink => 'https://magicdiary.app/share/invite/$id';
+  String get deepLink => 'https://magicdiary.mahato.in/join/$id';
+  String get webLink => 'https://magicdiary.mahato.in/join/$id';
 
   Map<String, dynamic> toMap() {
     return {

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -38,44 +39,73 @@ class _ClaimCircleInviteScreenState extends ConsumerState<ClaimCircleInviteScree
       _errorMessage = null;
     });
 
+    // Check authentication state
+    final authUser = FirebaseAuth.instance.currentUser;
+    if (authUser == null) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Please sign in to Magic Diary to view and join this Circle.';
+        });
+      }
+      return;
+    }
+
     try {
       final firestore = FirebaseFirestore.instance;
-      // 1. Try finding by document ID in circle_invitations
-      var doc = await firestore.collection('circle_invitations').doc(widget.token).get();
+      final repo = ref.read(magicCircleRepositoryProvider);
 
-      if (!doc.exists) {
-        // 2. Try querying where token == widget.token
-        final query = await firestore
-            .collection('circle_invitations')
-            .where('token', isEqualTo: widget.token)
-            .limit(1)
-            .get();
-        if (query.docs.isNotEmpty) {
-          doc = query.docs.first;
+      // 1. Primary lookup: Permanent Circle Code or One-Time VIP Code
+      final byCode = await repo.getCircleByCode(widget.token);
+      if (byCode != null) {
+        if (mounted) {
+          setState(() {
+            _circle = byCode;
+            _isLoading = false;
+          });
         }
+        return;
       }
 
-      if (doc.exists && doc.data() != null) {
-        final inv = CircleInvitation.fromMap(doc.data()!, doc.id);
-        _invitation = inv;
-
-        // Load the circle
-        final circleDoc = await firestore.collection('circles').doc(inv.circleId).get();
-        if (circleDoc.exists && circleDoc.data() != null) {
-          _circle = MagicCircle.fromMap(circleDoc.data()!, circleDoc.id);
-        }
-      } else {
-        // 3. Fallback: maybe token is direct circleId
+      // 2. Direct Circle ID lookup
+      try {
         final circleDoc = await firestore.collection('circles').doc(widget.token).get();
         if (circleDoc.exists && circleDoc.data() != null) {
-          _circle = MagicCircle.fromMap(circleDoc.data()!, circleDoc.id);
-        } else {
-          _errorMessage = 'Invitation not found or has expired.';
+          if (mounted) {
+            setState(() {
+              _circle = MagicCircle.fromMap(circleDoc.data()!, circleDoc.id);
+              _isLoading = false;
+            });
+          }
+          return;
         }
-      }
+      } catch (_) {}
+
+      // 3. Document ID lookup in circle_invitations
+      try {
+        final invDoc = await firestore.collection('circle_invitations').doc(widget.token).get();
+        if (invDoc.exists && invDoc.data() != null) {
+          final inv = CircleInvitation.fromMap(invDoc.data()!, invDoc.id);
+          _invitation = inv;
+
+          final cDoc = await firestore.collection('circles').doc(inv.circleId).get();
+          if (cDoc.exists && cDoc.data() != null) {
+            if (mounted) {
+              setState(() {
+                _circle = MagicCircle.fromMap(cDoc.data()!, cDoc.id);
+                _isLoading = false;
+              });
+            }
+            return;
+          }
+        }
+      } catch (_) {}
 
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Invitation not found or code has expired.';
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -113,6 +143,46 @@ class _ClaimCircleInviteScreenState extends ConsumerState<ClaimCircleInviteScree
     setState(() => _isClaiming = true);
 
     try {
+      final repo = ref.read(magicCircleRepositoryProvider);
+      final cleanToken = widget.token.trim().toUpperCase();
+
+      // Case A: One-time VIP invite code -> Atomic redemption & burn
+      if (_circle!.oneTimeCodes.contains(cleanToken)) {
+        await repo.joinWithOneTimeCode(
+          _circle!.id,
+          user.uid,
+          cleanToken,
+          email: user.email,
+          displayName: user.displayName,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Joined ${_circle!.name} successfully via VIP invite!'),
+              backgroundColor: Colors.green.shade700,
+            ),
+          );
+          context.go('/circles/${_circle!.id}');
+        }
+        return;
+      }
+
+      // Case B: General circle code without individual invitation -> Route to pending approval
+      if (_invitation == null && _circle!.code == cleanToken) {
+        await repo.requestJoin(_circle!.id, user.uid);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Join request sent to "${_circle!.name}"! An admin will review it.'),
+              backgroundColor: Colors.deepPurple,
+            ),
+          );
+          context.go('/circles');
+        }
+        return;
+      }
+
+      // Case C: Explicit invitation record -> Direct acceptance
       final roleStr = _invitation?.role ?? 'contributor';
       final role = CircleRole.values.firstWhere(
         (r) => r.name.toLowerCase() == roleStr.toLowerCase(),
@@ -141,7 +211,6 @@ class _ClaimCircleInviteScreenState extends ConsumerState<ClaimCircleInviteScree
         updatedAt: DateTime.now(),
       );
 
-      final repo = ref.read(magicCircleRepositoryProvider);
       await repo.updateCircle(updatedCircle);
 
       // Update invitation status if present
@@ -203,10 +272,17 @@ class _ClaimCircleInviteScreenState extends ConsumerState<ClaimCircleInviteScree
                   style: const TextStyle(fontSize: 16),
                 ),
                 const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: () => context.go('/circles'),
-                  child: const Text('Go to My Circles'),
-                ),
+                if (FirebaseAuth.instance.currentUser == null)
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.login_rounded),
+                    label: const Text('Sign In to Join'),
+                    onPressed: () => context.go('/login'),
+                  )
+                else
+                  ElevatedButton(
+                    onPressed: () => context.go('/circles'),
+                    child: const Text('Go to My Circles'),
+                  ),
               ],
             ),
           ),

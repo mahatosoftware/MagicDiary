@@ -40,6 +40,24 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="magicdiary"/>
             </intent-filter>
+            <!-- Android App Links (HTTPS) for One-Time & Circle Deep Links -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https"
+                      android:host="magicdiary.mahato.in"
+                      android:pathPrefix="/join"/>
+                <data android:scheme="https"
+                      android:host="magicdiary.mahato.in"
+                      android:pathPrefix="/circles/join"/>
+                <data android:scheme="https"
+                      android:host="magicdiary-firebase-prod.web.app"
+                      android:pathPrefix="/join"/>
+                <data android:scheme="https"
+                      android:host="magicdiary-firebase-prod.web.app"
+                      android:pathPrefix="/circles/join"/>
+            </intent-filter>
         </activity>
 
         <!-- Home Screen AppWidget Provider -->

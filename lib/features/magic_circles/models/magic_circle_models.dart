@@ -135,6 +135,11 @@ class MagicCircle {
   final DateTime createdAt;
   final DateTime updatedAt;
   final int schemaVersion;
+  final String code; // 6-8 char uppercase alphanumeric permanent code
+  final List<String> adminIds;
+  final List<String> pendingMemberIds;
+  final List<String> oneTimeCodes;
+  final bool isPendingDelete;
 
   MagicCircle({
     required this.id,
@@ -150,6 +155,11 @@ class MagicCircle {
     required this.createdAt,
     required this.updatedAt,
     this.schemaVersion = 1,
+    this.code = '',
+    List<String>? adminIds,
+    this.pendingMemberIds = const [],
+    this.oneTimeCodes = const [],
+    this.isPendingDelete = false,
   })  : memberUids = memberUids ??
             {
               ownerId,
@@ -162,7 +172,15 @@ class MagicCircle {
                 .map((m) => m.email.trim().toLowerCase())
                 .where((e) => e.isNotEmpty)
                 .toSet()
-                .toList();
+                .toList(),
+        adminIds = adminIds ??
+            {
+              ownerId,
+              ...members
+                  .where((m) => m.role == CircleRole.owner || m.role == CircleRole.admin)
+                  .map((m) => m.uid)
+                  .where((uid) => uid.isNotEmpty && !uid.startsWith('pending_')),
+            }.toList();
 
   bool isMember(String uid, [String? email]) {
     if (members.any((m) => m.uid == uid) || memberUids.contains(uid)) return true;
@@ -173,6 +191,9 @@ class MagicCircle {
     }
     return false;
   }
+
+  bool isCircleAdmin(String uid) => ownerId == uid || adminIds.contains(uid);
+
   MagicCircleMember? getMember(String uid) {
     try {
       return members.firstWhere((m) => m.uid == uid);
@@ -195,6 +216,11 @@ class MagicCircle {
     DateTime? createdAt,
     DateTime? updatedAt,
     int? schemaVersion,
+    String? code,
+    List<String>? adminIds,
+    List<String>? pendingMemberIds,
+    List<String>? oneTimeCodes,
+    bool? isPendingDelete,
   }) {
     return MagicCircle(
       id: id ?? this.id,
@@ -210,6 +236,11 @@ class MagicCircle {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       schemaVersion: schemaVersion ?? this.schemaVersion,
+      code: code ?? this.code,
+      adminIds: adminIds ?? this.adminIds,
+      pendingMemberIds: pendingMemberIds ?? this.pendingMemberIds,
+      oneTimeCodes: oneTimeCodes ?? this.oneTimeCodes,
+      isPendingDelete: isPendingDelete ?? this.isPendingDelete,
     );
   }
 
@@ -227,6 +258,11 @@ class MagicCircle {
         'createdAt': Timestamp.fromDate(createdAt),
         'updatedAt': Timestamp.fromDate(updatedAt),
         'schemaVersion': schemaVersion,
+        'code': code.toUpperCase(),
+        'adminIds': adminIds,
+        'pendingMemberIds': pendingMemberIds,
+        'oneTimeCodes': oneTimeCodes,
+        'isPendingDelete': isPendingDelete,
       };
 
   factory MagicCircle.fromMap(Map<String, dynamic> map, String id) {
@@ -265,6 +301,27 @@ class MagicCircle {
             .toSet()
             .toList();
 
+    final parsedAdminIds = (map['adminIds'] as List<dynamic>?)
+            ?.map((e) => e.toString())
+            .toList() ??
+        {
+          ownerId,
+          ...parsedMembers
+              .where((m) => m.role == CircleRole.owner || m.role == CircleRole.admin)
+              .map((m) => m.uid)
+              .where((uid) => uid.isNotEmpty && !uid.startsWith('pending_')),
+        }.toList();
+
+    final parsedPendingMemberIds = (map['pendingMemberIds'] as List<dynamic>?)
+            ?.map((e) => e.toString())
+            .toList() ??
+        const [];
+
+    final parsedOneTimeCodes = (map['oneTimeCodes'] as List<dynamic>?)
+            ?.map((e) => e.toString())
+            .toList() ??
+        const [];
+
     return MagicCircle(
       id: id,
       name: map['name'] as String? ?? 'Magic Circle',
@@ -285,6 +342,11 @@ class MagicCircle {
       createdAt: parseDate(map['createdAt']),
       updatedAt: parseDate(map['updatedAt']),
       schemaVersion: (map['schemaVersion'] as num?)?.toInt() ?? 1,
+      code: (map['code'] as String? ?? '').toUpperCase(),
+      adminIds: parsedAdminIds,
+      pendingMemberIds: parsedPendingMemberIds,
+      oneTimeCodes: parsedOneTimeCodes,
+      isPendingDelete: map['isPendingDelete'] as bool? ?? false,
     );
   }
 }

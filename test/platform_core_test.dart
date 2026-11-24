@@ -69,6 +69,15 @@ void main() {
       expect(billPayment?.defaultSharingClassification, equals(DefaultSharingClassification.sharedByNature));
       expect(personalFinance?.defaultSharingClassification, equals(DefaultSharingClassification.selectiveSharing));
     });
+
+    test('Home Maintenance Diary contains Water Purifier filter replacement option and keywords', () {
+      final homeMaintenance = DiaryRegistry.getDiaryById('home_maintenance');
+      expect(homeMaintenance, isNotNull);
+      final serviceTypeField = homeMaintenance!.suggestedFields.firstWhere((f) => f.key == 'service_type');
+      expect(serviceTypeField.dropdownOptions, contains('Water Purifier / Filter Replacement'));
+      expect(homeMaintenance.keywords, contains('water purifier'));
+      expect(homeMaintenance.keywords, contains('filter replacement'));
+    });
   });
 
   group('Phase 1: Universal Diary Engine & Custom Fields Tests', () {

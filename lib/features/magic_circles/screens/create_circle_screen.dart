@@ -5,9 +5,8 @@ import 'package:uuid/uuid.dart';
 import '../models/magic_circle_models.dart';
 import '../models/circle_candidate_member.dart';
 import '../widgets/add_circle_member_sheet.dart';
-import '../widgets/circle_invite_ready_dialog.dart';
+import '../widgets/circle_share_invite_dialog.dart';
 import 'magic_circles_screen.dart';
-import '../../../core/security/circle_permission_service.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../shared_diaries/models/frequent_contact.dart';
 import '../../shared_diaries/repositories/frequent_contacts_repository.dart';
@@ -562,7 +561,7 @@ class _CreateCircleScreenState extends ConsumerState<CreateCircleScreen> {
       );
 
       final repo = ref.read(magicCircleRepositoryProvider);
-      await repo.createCircle(circle);
+      final createdCircle = await repo.createCircle(circle);
 
       // Record contact usage for future suggestions
       for (final candidate in _candidateMembers) {
@@ -578,26 +577,10 @@ class _CreateCircleScreenState extends ConsumerState<CreateCircleScreen> {
 
       if (mounted) {
         if (_generateInviteLink) {
-          final inviteToken = const Uuid().v4();
-          // Optionally register invitation in Firestore
-          try {
-            final permService = CirclePermissionService();
-            await permService.createInvitation(
-              circleId: circle.id,
-              circleName: circle.name,
-              inviterUid: user.uid,
-              inviterName: user.displayName,
-              inviteeEmail: 'link@magicdiary.internal',
-              role: 'contributor',
-            );
-          } catch (_) {}
-
           if (mounted) {
-            await CircleInviteReadyDialog.show(
+            await CircleShareInviteDialog.show(
               context,
-              circleId: circle.id,
-              circleName: circle.name,
-              token: inviteToken,
+              circle: createdCircle,
             );
           }
         }

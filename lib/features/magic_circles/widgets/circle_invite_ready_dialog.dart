@@ -17,7 +17,7 @@ class CircleInviteReadyDialog extends StatelessWidget {
   });
 
   String get deepLink =>
-      deepLinkOverride ?? 'magicdiary://circle/invite/$token';
+      deepLinkOverride ?? 'https://magicdiary.mahato.in/join/$token';
 
   String get shareMessage =>
       'Join my Magic Circle "$circleName" on Magic Diary! Tap the link or scan the QR code to collaborate:\n$deepLink';

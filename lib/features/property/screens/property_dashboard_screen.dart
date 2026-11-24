@@ -334,6 +334,7 @@ class PropertyDashboardScreen extends ConsumerWidget {
       'Roofing & Waterproofing',
       'Pest Control',
       'HVAC / AC Service',
+      'Water Purifier / Filter Replacement',
       'Appliance Repair',
       'Other',
     ];
@@ -1082,6 +1083,8 @@ class PropertyDashboardScreen extends ConsumerWidget {
         return Icons.bug_report;
       case 'HVAC / AC Service':
         return Icons.ac_unit;
+      case 'Water Purifier / Filter Replacement':
+        return Icons.water_drop;
       default:
         return Icons.handyman;
     }
