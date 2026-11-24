@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/app_providers.dart';
 import '../notifications/providers/notification_providers.dart';
+import '../../features/magic_circles/services/circle_notification_service.dart';
+import '../../features/magic_circles/models/magic_circle_models.dart';
 
 class AppScaffold extends ConsumerStatefulWidget {
   final Widget child;
@@ -53,6 +55,19 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
     final selectedIndex = _calculateSelectedIndex(context);
     final user = ref.watch(userProfileProvider);
     final notificationCount = ref.watch(notificationBadgeCountProvider);
+    final pendingCircleRequestsCount = ref.watch(pendingCircleJoinRequestsCountProvider);
+
+    // Actively listen to real-time circle updates across the entire app
+    // to trigger instant local notifications and Notification Centre entries for admins.
+    ref.listen<AsyncValue<List<MagicCircle>>>(userCirclesStreamProvider, (prev, next) {
+      final circles = next.asData?.value;
+      if (circles != null && user != null) {
+        CircleNotificationService().handleCircleUpdates(
+          currentUserId: user.uid,
+          circles: circles,
+        );
+      }
+    });
 
     return PopScope(
       canPop: false,
@@ -336,28 +351,32 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
                           padding: EdgeInsets.symmetric(vertical: 8.0),
                           child: Icon(Icons.bookmark_outline_rounded, size: 32, color: Colors.blueAccent),
                         ),
-                        destinations: const [
-                          NavigationRailDestination(
+                        destinations: [
+                          const NavigationRailDestination(
                             icon: Icon(Icons.today_outlined),
                             selectedIcon: Icon(Icons.today_rounded),
                             label: Text('My Day'),
                           ),
-                          NavigationRailDestination(
+                          const NavigationRailDestination(
                             icon: Icon(Icons.auto_stories_outlined),
                             selectedIcon: Icon(Icons.auto_stories_rounded),
                             label: Text('My Diaries'),
                           ),
-                          NavigationRailDestination(
+                          const NavigationRailDestination(
                             icon: Icon(Icons.share_outlined),
                             selectedIcon: Icon(Icons.share_rounded),
                             label: Text('Shared'),
                           ),
                           NavigationRailDestination(
-                            icon: Icon(Icons.groups_outlined),
-                            selectedIcon: Icon(Icons.groups_rounded),
-                            label: Text('Circles'),
+                            icon: pendingCircleRequestsCount > 0
+                                ? Badge.count(count: pendingCircleRequestsCount, child: const Icon(Icons.groups_outlined))
+                                : const Icon(Icons.groups_outlined),
+                            selectedIcon: pendingCircleRequestsCount > 0
+                                ? Badge.count(count: pendingCircleRequestsCount, child: const Icon(Icons.groups_rounded))
+                                : const Icon(Icons.groups_rounded),
+                            label: const Text('Circles'),
                           ),
-                          NavigationRailDestination(
+                          const NavigationRailDestination(
                             icon: Icon(Icons.alarm_outlined),
                             selectedIcon: Icon(Icons.alarm_rounded),
                             label: Text('Reminders'),
@@ -387,28 +406,32 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
               type: BottomNavigationBarType.fixed,
               selectedItemColor: Theme.of(context).primaryColor,
               unselectedItemColor: Colors.grey,
-              items: const [
-                BottomNavigationBarItem(
+              items: [
+                const BottomNavigationBarItem(
                   icon: Icon(Icons.today_outlined),
                   activeIcon: Icon(Icons.today_rounded),
                   label: 'My Day',
                 ),
-                BottomNavigationBarItem(
+                const BottomNavigationBarItem(
                   icon: Icon(Icons.auto_stories_outlined),
                   activeIcon: Icon(Icons.auto_stories_rounded),
                   label: 'My Diaries',
                 ),
-                BottomNavigationBarItem(
+                const BottomNavigationBarItem(
                   icon: Icon(Icons.share_outlined),
                   activeIcon: Icon(Icons.share_rounded),
                   label: 'Shared',
                 ),
                 BottomNavigationBarItem(
-                  icon: Icon(Icons.groups_outlined),
-                  activeIcon: Icon(Icons.groups_rounded),
+                  icon: pendingCircleRequestsCount > 0
+                      ? Badge.count(count: pendingCircleRequestsCount, child: const Icon(Icons.groups_outlined))
+                      : const Icon(Icons.groups_outlined),
+                  activeIcon: pendingCircleRequestsCount > 0
+                      ? Badge.count(count: pendingCircleRequestsCount, child: const Icon(Icons.groups_rounded))
+                      : const Icon(Icons.groups_rounded),
                   label: 'Circles',
                 ),
-                BottomNavigationBarItem(
+                const BottomNavigationBarItem(
                   icon: Icon(Icons.alarm_outlined),
                   activeIcon: Icon(Icons.alarm_rounded),
                   label: 'Reminders',

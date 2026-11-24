@@ -7,6 +7,9 @@ import '../models/diary_record.dart';
 import 'generic_diary_list_screen.dart';
 import '../../providers/app_providers.dart';
 import '../../utils/date_calculators.dart';
+import '../../security/diary_access_control_service.dart';
+import '../../../features/shared_diaries/screens/shared_diaries_screen.dart';
+import '../../../features/shared_diaries/models/shared_diary_models.dart';
 
 class GenericRecordDetailScreen extends ConsumerWidget {
   final String diaryId;
@@ -14,6 +17,7 @@ class GenericRecordDetailScreen extends ConsumerWidget {
   final DiaryRecord? initialRecord;
   final String? ownerId;
   final String? ownerName;
+  final String? circleId;
 
   const GenericRecordDetailScreen({
     super.key,
@@ -22,6 +26,7 @@ class GenericRecordDetailScreen extends ConsumerWidget {
     this.initialRecord,
     this.ownerId,
     this.ownerName,
+    this.circleId,
   });
 
   @override
@@ -34,7 +39,7 @@ class GenericRecordDetailScreen extends ConsumerWidget {
     final isOwner = user?.uid != null && user!.uid == effectiveUserId;
     final isOthers = !isOwner;
     final recordsAsync = ref.watch(diaryUserRecordsStreamProvider((diaryId: diaryId, userId: effectiveUserId)));
-    final record = recordsAsync.value?.firstWhere(
+    final rawRecord = recordsAsync.value?.firstWhere(
           (r) => r.id == recordId,
           orElse: () => initialRecord ?? DiaryRecord(
             id: recordId,
@@ -50,23 +55,51 @@ class GenericRecordDetailScreen extends ConsumerWidget {
         ) ??
         initialRecord;
 
-    if (record == null) {
+    if (rawRecord == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
+    final sharedWithMe = ref.watch(sharedWithMeStreamProvider).value ?? const [];
+    final sharedByMe = ref.watch(sharedByMeStreamProvider).value ?? const [];
+
+    final isCircleContext = (circleId != null && circleId!.isNotEmpty) ||
+        (rawRecord.circleId != null && rawRecord.circleId!.isNotEmpty) ||
+        (ownerName != null && (ownerName!.contains('(') || ownerName!.toLowerCase().contains('circle'))) ||
+        sharedWithMe.any((s) => s.diaryId == diaryId && s.circleId != null) ||
+        sharedByMe.any((s) => s.diaryId == diaryId && s.circleId != null);
+
+    final shouldApplyPrivacy = isOthers || isCircleContext;
+
+    final shareAccess = isOthers
+        ? sharedWithMe.cast<SharedDiaryAccess?>().firstWhere(
+            (s) => s != null && s.diaryId == diaryId && s.ownerUid == effectiveUserId && s.isActive,
+            orElse: () => null,
+          )
+        : null;
+
+    final record = shouldApplyPrivacy
+        ? DiaryAccessControlService.filterRecordFieldsForUser(
+            record: rawRecord,
+            shareAccess: shareAccess,
+            isShared: true,
+          )
+        : rawRecord;
+
     final isAnnivOrBday = DateCalculators.isBirthdayOrAnniversaryRecord(record, diaryId: diaryId);
+    final canEdit = (!isOthers && !isCircleContext) || (shareAccess != null && shareAccess.permission.canEdit);
 
     return Scaffold(
       appBar: AppBar(
         title: Text(record.title),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.edit_rounded),
-            tooltip: 'Edit Record',
-            onPressed: () {
-              context.push('/diary-records/$diaryId/edit', extra: record);
-            },
-          ),
+          if (canEdit)
+            IconButton(
+              icon: const Icon(Icons.edit_rounded),
+              tooltip: 'Edit Record',
+              onPressed: () {
+                context.push('/diary-records/$diaryId/edit', extra: record);
+              },
+            ),
           if (!isOthers)
             IconButton(
               icon: const Icon(Icons.delete_outline_rounded),
@@ -151,12 +184,12 @@ class GenericRecordDetailScreen extends ConsumerWidget {
                       Icon(Icons.calendar_today, size: 14, color: Colors.grey.shade500),
                       const SizedBox(width: 6),
                       Text(
-                        (isOthers && isAnnivOrBday)
+                        (shouldApplyPrivacy && isAnnivOrBday)
                             ? DateFormat('EEEE, d MMMM').format(record.recordDate)
                             : DateFormat('EEEE, d MMMM yyyy').format(record.recordDate),
                         style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
                       ),
-                      if (isOthers && isAnnivOrBday) ...[
+                      if (shouldApplyPrivacy && isAnnivOrBday) ...[
                         const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -272,12 +305,20 @@ class GenericRecordDetailScreen extends ConsumerWidget {
               child: Column(
                 children: record.fields.entries.map((entry) {
                   final isRestricted = record.isFieldRestricted(entry.key);
-                  final isBdayAnnivField = DateCalculators.isBirthdayOrAnniversaryField(entry.key, diaryId: diaryId);
+                  final isBdayAnnivField = DateCalculators.isBirthdayOrAnniversaryField(
+                    entry.key,
+                    diaryId: diaryId,
+                    fields: record.fields,
+                  );
+                  final isDateField = entry.key.toLowerCase().contains('date') ||
+                      entry.key.toLowerCase().contains('time') ||
+                      DateTime.tryParse(entry.value.toString()) != null;
+                  final shouldMaskYear = shouldApplyPrivacy && (isBdayAnnivField || (isAnnivOrBday && isDateField));
 
                   String displayValue;
                   if (isRestricted) {
                     displayValue = '•••••••• (Restricted)';
-                  } else if (isOthers && isBdayAnnivField) {
+                  } else if (shouldMaskYear) {
                     displayValue = DateCalculators.formatDateAndMonth(entry.value);
                   } else if (entry.value is String && DateTime.tryParse(entry.value) != null) {
                     final dt = DateTime.tryParse(entry.value)!;
@@ -293,7 +334,7 @@ class GenericRecordDetailScreen extends ConsumerWidget {
                           _formatFieldKey(entry.key),
                           style: const TextStyle(fontSize: 12, color: Colors.grey),
                         ),
-                        if (isOthers && isBdayAnnivField) ...[
+                        if (shouldMaskYear) ...[
                           const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),

@@ -12,6 +12,7 @@ class NotificationChannelManager {
   static const String channelSnoozeDefer = 'snooze_defer';
   static const String channelOverdue = 'overdue_alerts';
   static const String channelGeneral = 'general_reminders';
+  static const String channelCircleAlerts = 'circle_alerts';
 
   final List<AndroidNotificationChannel> androidChannels = [
     const AndroidNotificationChannel(
@@ -59,6 +60,14 @@ class NotificationChannelManager {
       'General Diary Reminders',
       description: 'Personal, household, and domestic diary reminders',
       importance: Importance.defaultImportance,
+      playSound: true,
+      enableVibration: true,
+    ),
+    const AndroidNotificationChannel(
+      channelCircleAlerts,
+      'Circle Collaborations & Approvals',
+      description: 'Alerts for member join requests, circle approvals, and shared activities',
+      importance: Importance.high,
       playSound: true,
       enableVibration: true,
     ),

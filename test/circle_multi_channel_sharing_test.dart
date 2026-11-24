@@ -133,9 +133,9 @@ void main() {
         token: token,
       );
 
-      expect(dialog.deepLink, equals('magicdiary://circle/invite/token-secure-abc-987'));
+      expect(dialog.deepLink, equals('https://magicdiary.mahato.in/join/token-secure-abc-987'));
       expect(dialog.shareMessage, contains('Goa Trip 2026'));
-      expect(dialog.shareMessage, contains('magicdiary://circle/invite/token-secure-abc-987'));
+      expect(dialog.shareMessage, contains('https://magicdiary.mahato.in/join/token-secure-abc-987'));
     });
 
     // -------------------------------------------------------------
@@ -301,7 +301,7 @@ void main() {
 
       expect(find.text('Circle Invite Link Ready!'), findsOneWidget);
       expect(find.textContaining('Test Family'), findsWidgets);
-      expect(find.text('magicdiary://circle/invite/test-token-12345'), findsOneWidget);
+      expect(find.text('https://magicdiary.mahato.in/join/test-token-12345'), findsOneWidget);
       expect(find.text('WhatsApp'), findsOneWidget);
       expect(find.text('SMS / Other'), findsOneWidget);
       expect(find.text('Done'), findsOneWidget);

@@ -224,8 +224,8 @@ void main() {
         createdAt: DateTime(2026, 11, 15),
       );
 
-      expect(invite.deepLink, equals('magicdiary://share/invite/token_abc123'));
-      expect(invite.webLink, equals('https://magicdiary.app/share/invite/token_abc123'));
+      expect(invite.deepLink, equals('https://magicdiary.mahato.in/join/token_abc123'));
+      expect(invite.webLink, equals('https://magicdiary.mahato.in/join/token_abc123'));
       expect(invite.isOneTime, isTrue);
       expect(invite.isClaimed, isFalse);
       expect(invite.isExpired, isFalse);
@@ -511,7 +511,7 @@ void main() {
       expect(find.textContaining('Bills & Utilities'), findsOneWidget);
 
       // Verify Deep link URL is displayed
-      expect(find.text('magicdiary://share/invite/dialog_token_xyz'), findsOneWidget);
+      expect(find.text('https://magicdiary.mahato.in/join/dialog_token_xyz'), findsOneWidget);
 
       // Verify Action buttons
       expect(find.text('Copy Link'), findsOneWidget);

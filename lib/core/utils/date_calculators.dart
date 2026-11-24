@@ -108,40 +108,87 @@ class DateCalculators {
   }
 
   /// Checks if a field key or diary represents a birthday or anniversary.
-  static bool isBirthdayOrAnniversaryField(String key, {String? diaryId}) {
+  static bool isBirthdayOrAnniversaryField(
+    String key, {
+    String? diaryId,
+    Map<String, dynamic>? fields,
+  }) {
     final k = key.toLowerCase().trim();
     if (k.contains('birth') ||
         k.contains('dob') ||
+        k.contains('bday') ||
+        k.contains("b'day") ||
         k.contains('anniversary') ||
         k.contains('anniv')) {
       return true;
     }
-    if (diaryId == 'family' && (k == 'date_of_birth' || k == 'anniversary')) {
+    final dId = diaryId?.toLowerCase().trim();
+    if (dId != null && (dId.contains('birth') || dId.contains('bday'))) {
+      if (k.contains('date') || k.contains('day') || k.contains('time')) {
+        return true;
+      }
+    }
+    if (dId == 'family' && (k.contains('date') || k.contains('dob') || k.contains('anniv') || k.contains('birth'))) {
       return true;
     }
-    if (diaryId == 'marriage' &&
+    if (dId == 'marriage' &&
         (k == 'date' || k == 'wedding_date' || k == 'anniversary')) {
       return true;
+    }
+    if (fields != null) {
+      final eventType = (fields['event_type'] ?? fields['type'] ?? fields['category'] ?? fields['occasion'])
+          ?.toString()
+          .toLowerCase()
+          .trim();
+      if (eventType != null &&
+          (eventType.contains('birth') ||
+           eventType.contains('bday') ||
+           eventType.contains("b'day") ||
+           eventType.contains('anniversary'))) {
+        if (k.contains('date') || k.contains('day') || k.contains('time')) {
+          return true;
+        }
+      }
     }
     return false;
   }
 
   /// Checks if a diary record represents an anniversary or birthday.
   static bool isBirthdayOrAnniversaryRecord(DiaryRecord record, {String? diaryId}) {
-    final dId = (diaryId ?? record.sourceDiaryId).toLowerCase();
-    if (dId == 'marriage') return true;
+    final dId = (diaryId ?? record.sourceDiaryId).toLowerCase().trim();
+    if (dId == 'marriage' || dId.contains('birth') || dId.contains('bday')) return true;
     final lowerTitle = record.title.toLowerCase();
     final lowerSub = (record.subtitle ?? '').toLowerCase();
     if (lowerTitle.contains('birthday') ||
+        lowerTitle.contains('birth') ||
+        lowerTitle.contains('bday') ||
+        lowerTitle.contains("b'day") ||
         lowerTitle.contains('anniversary') ||
         lowerTitle.contains('wedding')) {
       return true;
     }
-    if (lowerSub.contains('birthday') || lowerSub.contains('anniversary')) {
+    if (lowerSub.contains('birthday') ||
+        lowerSub.contains('birth') ||
+        lowerSub.contains('bday') ||
+        lowerSub.contains("b'day") ||
+        lowerSub.contains('anniversary')) {
       return true;
     }
-    for (final key in record.fields.keys) {
-      if (isBirthdayOrAnniversaryField(key, diaryId: dId)) {
+    for (final entry in record.fields.entries) {
+      final keyLower = entry.key.toLowerCase();
+      final valStr = entry.value?.toString().toLowerCase().trim() ?? '';
+      if (keyLower.contains('type') ||
+          keyLower.contains('category') ||
+          keyLower.contains('event') ||
+          keyLower.contains('occasion')) {
+        if (valStr.contains('birth') ||
+            valStr.contains('bday') ||
+            valStr.contains("b'day") ||
+            valStr.contains('anniversary')) {
+          return true;
+        }
+      }
+      if (isBirthdayOrAnniversaryField(entry.key, diaryId: dId, fields: record.fields)) {
         return true;
       }
     }
@@ -149,18 +196,70 @@ class DateCalculators {
   }
 
   /// Formats a date value (DateTime or String) to show ONLY date and month (e.g. "24 October").
+  /// Guarantees that any 4-digit year is stripped for shared viewers.
   static String formatDateAndMonth(dynamic dateValue, {String pattern = 'd MMMM'}) {
     if (dateValue == null) return '';
     DateTime? dt;
     if (dateValue is DateTime) {
       dt = dateValue;
+    } else if (dateValue != null && dateValue.runtimeType.toString().contains('Timestamp')) {
+      try {
+        dt = (dateValue as dynamic).toDate();
+      } catch (_) {}
     } else if (dateValue is String) {
       dt = DateTime.tryParse(dateValue);
+      if (dt == null) {
+        final formats = [
+          'd MMM yyyy',
+          'd MMMM yyyy',
+          'yyyy-MM-dd',
+          'dd/MM/yyyy',
+          'MM/dd/yyyy',
+          'dd-MM-yyyy',
+          'MM-dd-yyyy',
+          'd MMM, yyyy',
+          'd MMMM, yyyy',
+          'MMM d, yyyy',
+          'MMMM d, yyyy',
+        ];
+        for (final fmt in formats) {
+          try {
+            dt = DateFormat(fmt).parseLoose(dateValue);
+            break;
+          } catch (_) {}
+        }
+      }
     }
     if (dt != null) {
       return DateFormat(pattern).format(dt);
     }
-    return dateValue.toString();
+    // Fallback: If parsing fails, scrub any 4-digit year (19xx or 20xx) from the string.
+    return dateValue
+        .toString()
+        .replaceAll(RegExp(r'\b(19|20)\d{2}\b'), '')
+        .replaceAll(RegExp(r'\s{2,}'), ' ')
+        .trim();
+  }
+
+  /// Sanitizes text/subtitle for shared viewers, removing birth years and milestone ages.
+  /// E.g. "30th Birthday (Born 1996)" -> "Birthday"
+  /// "10th Anniversary (Est. 2016)" -> "Anniversary"
+  /// "Born 1996" -> ""
+  static String sanitizeMilestoneOrYearText(String text) {
+    if (text.isEmpty) return text;
+    var result = text;
+    // Remove (Born 19xx/20xx) or (Est. 19xx/20xx)
+    result = result.replaceAll(RegExp(r'\s*\((?:Born|Est\.?)\s*(?:19|20)\d{2}\)', caseSensitive: false), '');
+    // Remove standalone "Born 19xx/20xx" or "Est. 19xx/20xx"
+    result = result.replaceAll(RegExp(r'\b(?:Born|Est\.?)\s*(?:19|20)\d{2}\b', caseSensitive: false), '');
+    // Simplify "30th Birthday" to "Birthday", "10th Anniversary" to "Anniversary"
+    result = result.replaceAll(RegExp(r'\b\d+(?:st|nd|rd|th)\s+Birthday\b', caseSensitive: false), 'Birthday');
+    result = result.replaceAll(RegExp(r'\b\d+(?:st|nd|rd|th)\s+Anniversary\b', caseSensitive: false), 'Anniversary');
+    // Remove any remaining standalone 4-digit years
+    result = result.replaceAll(RegExp(r'\b(19|20)\d{2}\b'), '');
+    // Clean up extra spaces or dangling punctuation
+    result = result.replaceAll(RegExp(r'\s{2,}'), ' ').replaceAll(RegExp(r'[\s,]+$'), '').trim();
+    return result;
   }
 
   /// Formats a date based on viewer relationship:

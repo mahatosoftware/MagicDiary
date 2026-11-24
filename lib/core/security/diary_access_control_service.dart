@@ -241,7 +241,7 @@ class DiaryAccessControlService {
   }
 
   /// Redacts sensitive fields if the share specifies restricted fields,
-  /// and sanitizes anniversary and birthday fields so that other users
+  /// and sanitizes anniversary and birthday fields and subtitle so that other users
   /// (individual shares or circles) can only see the date and month.
   static DiaryRecord filterRecordFieldsForUser({
     required DiaryRecord record,
@@ -254,18 +254,46 @@ class DiaryAccessControlService {
 
     final isAmountRestricted = restrictedSet.contains('amount');
 
+    final isBdayOrAnnivRecord = DateCalculators.isBirthdayOrAnniversaryRecord(
+      record,
+      diaryId: record.sourceDiaryId,
+    );
+
+    String? sanitizedSubtitle = record.subtitle;
+    bool shouldClearSubtitle = false;
+
     // Birthday & Anniversary Privacy Rule:
     // When shared with others (individual share or circle), others must only
-    // see the date and month for anniversaries and birthdays.
+    // see the date and month for anniversaries and birthdays, never the year.
     if (isShared || shareAccess != null) {
+      if (isBdayOrAnnivRecord && sanitizedSubtitle != null) {
+        sanitizedSubtitle = DateCalculators.sanitizeMilestoneOrYearText(sanitizedSubtitle);
+        if (sanitizedSubtitle.isEmpty) {
+          sanitizedSubtitle = null;
+          shouldClearSubtitle = true;
+        }
+      }
+
       for (final entry in sanitizedFields.entries.toList()) {
-        if (DateCalculators.isBirthdayOrAnniversaryField(entry.key, diaryId: record.sourceDiaryId)) {
+        final isFieldBday = DateCalculators.isBirthdayOrAnniversaryField(
+          entry.key,
+          diaryId: record.sourceDiaryId,
+          fields: sanitizedFields,
+        );
+        // If the record itself is a birthday/anniversary record, sanitize any date or time field!
+        if (isFieldBday ||
+            (isBdayOrAnnivRecord &&
+                (entry.key.toLowerCase().contains('date') ||
+                 entry.key.toLowerCase().contains('time') ||
+                 DateTime.tryParse(entry.value.toString()) != null))) {
           sanitizedFields[entry.key] = DateCalculators.formatDateAndMonth(entry.value);
         }
       }
     }
 
     return record.copyWith(
+      subtitle: sanitizedSubtitle,
+      clearSubtitle: shouldClearSubtitle,
       fields: sanitizedFields,
       clearAmount: isAmountRestricted,
       attachmentIds: (shareAccess?.allowAttachments ?? true) ? record.attachmentIds : const [],

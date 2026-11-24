@@ -2,22 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../models/magic_circle_models.dart';
-import '../repositories/magic_circle_repository.dart';
+import '../services/circle_notification_service.dart';
 import '../widgets/circle_qr_scanner_dialog.dart';
 import '../../../core/providers/app_providers.dart';
+import '../../shared_diaries/screens/shared_diaries_screen.dart';
 
-final magicCircleRepositoryProvider = Provider<MagicCircleRepository>((ref) => MagicCircleRepository());
-
-final userCirclesStreamProvider = StreamProvider<List<MagicCircle>>((ref) {
-  final user = ref.watch(userProfileProvider);
-  if (user == null) return const Stream.empty();
-  final repo = ref.read(magicCircleRepositoryProvider);
-  return repo.watchUserCircles(
-    uid: user.uid,
-    email: user.email,
-    displayName: user.displayName,
-  );
-});
+export '../services/circle_notification_service.dart' show userCirclesStreamProvider, pendingCircleJoinRequestsCountProvider, magicCircleRepositoryProvider;
 
 class MagicCirclesScreen extends ConsumerStatefulWidget {
   const MagicCirclesScreen({super.key});
@@ -127,7 +117,10 @@ class _MagicCirclesScreenState extends ConsumerState<MagicCirclesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final currentUser = ref.watch(userProfileProvider);
     final circlesAsync = ref.watch(userCirclesStreamProvider);
+    final sharedWithMe = ref.watch(sharedWithMeStreamProvider).value ?? const [];
+    final sharedByMe = ref.watch(sharedByMeStreamProvider).value ?? const [];
 
     return Scaffold(
       appBar: AppBar(
@@ -287,6 +280,15 @@ class _MagicCirclesScreenState extends ConsumerState<MagicCirclesScreen> {
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
                       final circle = list[index];
+                      final circleDiaryIds = {
+                        ...circle.sharedDiaryIds,
+                        ...sharedWithMe
+                            .where((s) => s.circleId == circle.id)
+                            .map((s) => s.diaryId),
+                        ...sharedByMe
+                            .where((s) => s.circleId == circle.id)
+                            .map((s) => s.diaryId),
+                      };
                       return Card(
                         elevation: 1.5,
                         margin: const EdgeInsets.only(bottom: 12),
@@ -317,9 +319,44 @@ class _MagicCirclesScreenState extends ConsumerState<MagicCirclesScreen> {
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Text(
-                                            circle.name,
-                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  circle.name,
+                                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+                                                ),
+                                              ),
+                                              if (currentUser != null &&
+                                                  (circle.ownerId == currentUser.uid ||
+                                                      circle.adminIds.contains(currentUser.uid) ||
+                                                      circle.members.any((m) => m.uid == currentUser.uid && (m.role == CircleRole.owner || m.role == CircleRole.admin))) &&
+                                                  circle.pendingMemberIds.isNotEmpty)
+                                                Container(
+                                                  margin: const EdgeInsets.only(left: 6),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.amber.shade100,
+                                                    borderRadius: BorderRadius.circular(12),
+                                                    border: Border.all(color: Colors.amber.shade400),
+                                                  ),
+                                                  child: Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      Icon(Icons.pending_actions_rounded, size: 12, color: Colors.amber.shade900),
+                                                      const SizedBox(width: 4),
+                                                      Text(
+                                                        '${circle.pendingMemberIds.length} Pending Approval',
+                                                        style: TextStyle(
+                                                          fontSize: 10.5,
+                                                          fontWeight: FontWeight.bold,
+                                                          color: Colors.amber.shade900,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                            ],
                                           ),
                                           const SizedBox(height: 2),
                                           Text(
@@ -364,7 +401,7 @@ class _MagicCirclesScreenState extends ConsumerState<MagicCirclesScreen> {
                                     Icon(Icons.auto_stories_outlined, size: 14, color: Colors.grey.shade600),
                                     const SizedBox(width: 4),
                                     Text(
-                                      '${circle.sharedDiaryIds.length} Shared Diaries',
+                                      '${circleDiaryIds.length} Shared Diaries',
                                       style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
                                     ),
                                     const Spacer(),

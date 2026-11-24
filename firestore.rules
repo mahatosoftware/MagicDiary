@@ -2131,7 +2131,18 @@ service cloud.firestore {
     // Shared Diary Access (Granular Diary Sharing & Permissions)
     // ===============================================================
     match /shared_diary_access/{shareId} {
-      allow read: if isAuthenticated() && (
+      allow get: if isAuthenticated() && (
+        resource == null
+        || shareId.matches('^' + request.auth.uid + '_.*')
+        || (resource != null && (
+          resource.data.ownerUid == request.auth.uid
+          || resource.data.sharedWithUid == request.auth.uid
+          || (resource.data.sharedWithUid is string && resource.data.sharedWithUid.lower() == request.auth.uid.lower())
+          || (request.auth.token.email != null && resource.data.sharedWithEmail == request.auth.token.email)
+          || (request.auth.token.email != null && resource.data.sharedWithEmail == request.auth.token.email.lower())
+        ))
+      );
+      allow list: if isAuthenticated() && (
         resource.data.ownerUid == request.auth.uid
         || resource.data.sharedWithUid == request.auth.uid
         || (resource.data.sharedWithUid is string && resource.data.sharedWithUid.lower() == request.auth.uid.lower())
@@ -2144,7 +2155,7 @@ service cloud.firestore {
       allow update: if isAuthenticated() && (
         // Owner updating permissions/settings
         (
-          resource.data.ownerUid == request.auth.uid
+          (shareId.matches('^' + request.auth.uid + '_.*') || (resource != null && resource.data.ownerUid == request.auth.uid))
           && isValidSharedDiaryAccess(request.resource.data)
           && areImmutableFieldsUnchanged(['ownerUid', 'diaryId'])
         )
@@ -2164,11 +2175,14 @@ service cloud.firestore {
         )
       );
       allow delete: if isAuthenticated() && (
-        resource.data.ownerUid == request.auth.uid
-        || resource.data.sharedWithUid == request.auth.uid
-        || (resource.data.sharedWithUid is string && resource.data.sharedWithUid.lower() == request.auth.uid.lower())
-        || (request.auth.token.email != null && resource.data.sharedWithEmail == request.auth.token.email)
-        || (request.auth.token.email != null && resource.data.sharedWithEmail == request.auth.token.email.lower())
+        shareId.matches('^' + request.auth.uid + '_.*')
+        || (resource != null && (
+          resource.data.ownerUid == request.auth.uid
+          || resource.data.sharedWithUid == request.auth.uid
+          || (resource.data.sharedWithUid is string && resource.data.sharedWithUid.lower() == request.auth.uid.lower())
+          || (request.auth.token.email != null && resource.data.sharedWithEmail == request.auth.token.email)
+          || (request.auth.token.email != null && resource.data.sharedWithEmail == request.auth.token.email.lower())
+        ))
       );
     }
 

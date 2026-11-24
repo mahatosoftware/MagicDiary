@@ -410,6 +410,88 @@ void main() {
       expect(sanitizedMarriage.fields['date'], equals('10 December'));
       expect(sanitizedMarriage.fields['date'].toString().contains('2015'), isFalse);
     });
+
+    test('Event diary record with event_type: Birthday strictly masks year and subtitle for shared viewer', () {
+      final birthdayEventRecord = DiaryRecord(
+        id: 'rec_event_bday_1',
+        ownerId: ownerId,
+        sourceDiaryId: 'event',
+        title: 'Alex',
+        subtitle: '30th Birthday (Born 1995)',
+        recordDate: DateTime(1995, 4, 12),
+        fields: {
+          'event_type': 'Birthday',
+          'event_date': '1995-04-12T00:00:00.000',
+          'category': 'Personal',
+        },
+        createdBy: ownerId,
+        updatedBy: ownerId,
+        createdAt: DateTime(2026, 1, 1),
+        updatedAt: DateTime(2026, 1, 1),
+      );
+
+      // 1. Owner view retains full birth year and milestone subtitle
+      final ownerFiltered = DiaryAccessControlService.filterRecordsForUser(
+        allRecords: [birthdayEventRecord],
+        currentUserId: ownerId,
+        diaryOwnerId: ownerId,
+      );
+      expect(ownerFiltered.first.fields['event_date'], equals('1995-04-12T00:00:00.000'));
+      expect(ownerFiltered.first.subtitle, equals('30th Birthday (Born 1995)'));
+
+      // 2. Shared viewer view masks year to date & month only, and cleans subtitle
+      final sharedFiltered = DiaryAccessControlService.filterRecordsForUser(
+        allRecords: [birthdayEventRecord],
+        currentUserId: collaboratorId,
+        diaryOwnerId: ownerId,
+        isCircleShare: true,
+      );
+      final sanitized = sharedFiltered.first;
+
+      // Must NOT contain 1995 or 30th
+      expect(sanitized.fields['event_date'].toString().contains('1995'), isFalse);
+      expect(sanitized.fields['event_date'], equals('12 April'));
+      expect(sanitized.subtitle?.contains('1995') ?? false, isFalse);
+      expect(sanitized.subtitle?.contains('30th') ?? false, isFalse);
+      expect(sanitized.subtitle, equals('Birthday'));
+    });
+
+    test('sanitizeMilestoneOrYearText strips birth years, est years, and ordinal milestone labels', () {
+      expect(DateCalculators.sanitizeMilestoneOrYearText('30th Birthday (Born 1996)'), equals('Birthday'));
+      expect(DateCalculators.sanitizeMilestoneOrYearText('10th Anniversary (Est. 2016)'), equals('Anniversary'));
+      expect(DateCalculators.sanitizeMilestoneOrYearText('Born 1996'), equals(''));
+      expect(DateCalculators.sanitizeMilestoneOrYearText('Annual • 24 October'), equals('Annual • 24 October'));
+    });
+
+    test('Family Diary date_of_birth masks year in share circle for any member', () {
+      final famRecord = DiaryRecord(
+        id: 'rec_fam_bday',
+        ownerId: ownerId,
+        sourceDiaryId: 'family',
+        title: 'Child Profile',
+        subtitle: 'Daughter',
+        recordDate: DateTime(2018, 9, 15),
+        fields: {
+          'member_name': 'Emma Doe',
+          'relation': 'Child',
+          'date_of_birth': '2018-09-15T00:00:00.000',
+        },
+        createdBy: ownerId,
+        updatedBy: ownerId,
+        createdAt: DateTime(2026, 1, 1),
+        updatedAt: DateTime(2026, 1, 1),
+      );
+
+      final circleFiltered = DiaryAccessControlService.filterRecordsForUser(
+        allRecords: [famRecord],
+        currentUserId: collaboratorId,
+        diaryOwnerId: ownerId,
+        isCircleShare: true,
+      );
+
+      expect(circleFiltered.first.fields['date_of_birth'], equals('15 September'));
+      expect(circleFiltered.first.fields['date_of_birth'].toString().contains('2018'), isFalse);
+    });
   });
 
   group('Categorized Event Type Registry Tests', () {

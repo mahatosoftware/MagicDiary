@@ -37,7 +37,7 @@ class DataBackupService {
     // 2. Backup Manifest
     final manifest = {
       'appName': 'Magic Diary',
-      'appVersion': '1.0.12+12',
+      'appVersion': '1.0.13+13',
       'exportedAt': now.toIso8601String(),
       'userId': package.userId,
       'username': profile?.username.isNotEmpty == true ? '@${profile!.username}' : null,

@@ -298,7 +298,13 @@ class SharedDiaryRepository {
     Future<void> writeShareDoc(String docId) async {
       try {
         final docRef = _sharesRef.doc(docId);
-        final existingDoc = await docRef.get();
+        DocumentSnapshot<Map<String, dynamic>>? existingDoc;
+        try {
+          existingDoc = await docRef.get();
+        } catch (e) {
+          // Document does not exist yet or pre-read skipped; proceed to set
+          debugPrint('Note: share doc $docId pre-read skipped or failed: $e');
+        }
         final now = DateTime.now();
 
         final Map<String, dynamic> data = access.toMap();
@@ -306,7 +312,7 @@ class SharedDiaryRepository {
         data['sharedWithEmail'] = safeEmail;
         data['updatedAt'] = Timestamp.fromDate(now);
 
-        if (existingDoc.exists && existingDoc.data() != null) {
+        if (existingDoc != null && existingDoc.exists && existingDoc.data() != null) {
           final existing = existingDoc.data()!;
           if (existing['createdAt'] != null) {
             data['createdAt'] = existing['createdAt'];
@@ -722,31 +728,47 @@ class SharedDiaryRepository {
     required String uid,
     String? email,
   }) async {
-    // 1. Direct UID lookup (check exact UID first, then lowercased UID)
-    final exactUidDocId = '${ownerUid}_${diaryId}_${uid.trim().replaceAll('/', '_')}';
-    final exactDoc = await _sharesRef.doc(exactUidDocId).get();
-    if (exactDoc.exists && exactDoc.data() != null) {
-      final access = SharedDiaryAccess.fromMap(exactDoc.data()!, exactDoc.id);
-      if (!access.isExpired) return access;
-    }
-
-    final lowerUidDocId = '${ownerUid}_${diaryId}_${uid.trim().toLowerCase().replaceAll('/', '_')}';
-    if (lowerUidDocId != exactUidDocId) {
-      final lowerDoc = await _sharesRef.doc(lowerUidDocId).get();
-      if (lowerDoc.exists && lowerDoc.data() != null) {
-        final access = SharedDiaryAccess.fromMap(lowerDoc.data()!, lowerDoc.id);
-        if (!access.isExpired) return access;
+    try {
+      // 1. Direct UID lookup (check exact UID first, then lowercased UID)
+      final exactUidDocId = '${ownerUid}_${diaryId}_${uid.trim().replaceAll('/', '_')}';
+      try {
+        final exactDoc = await _sharesRef.doc(exactUidDocId).get();
+        if (exactDoc.exists && exactDoc.data() != null) {
+          final access = SharedDiaryAccess.fromMap(exactDoc.data()!, exactDoc.id);
+          if (!access.isExpired) return access;
+        }
+      } catch (e) {
+        debugPrint('Note: direct exact UID share lookup: $e');
       }
-    }
 
-    // 2. Email lookup
-    if (email != null && email.isNotEmpty) {
-      final emailDocId = generateShareId(ownerUid: ownerUid, diaryId: diaryId, target: email);
-      final emailDoc = await _sharesRef.doc(emailDocId).get();
-      if (emailDoc.exists && emailDoc.data() != null) {
-        final access = SharedDiaryAccess.fromMap(emailDoc.data()!, emailDoc.id);
-        if (!access.isExpired) return access;
+      final lowerUidDocId = '${ownerUid}_${diaryId}_${uid.trim().toLowerCase().replaceAll('/', '_')}';
+      if (lowerUidDocId != exactUidDocId) {
+        try {
+          final lowerDoc = await _sharesRef.doc(lowerUidDocId).get();
+          if (lowerDoc.exists && lowerDoc.data() != null) {
+            final access = SharedDiaryAccess.fromMap(lowerDoc.data()!, lowerDoc.id);
+            if (!access.isExpired) return access;
+          }
+        } catch (e) {
+          debugPrint('Note: lower UID share lookup: $e');
+        }
       }
+
+      // 2. Email lookup
+      if (email != null && email.isNotEmpty) {
+        final emailDocId = generateShareId(ownerUid: ownerUid, diaryId: diaryId, target: email);
+        try {
+          final emailDoc = await _sharesRef.doc(emailDocId).get();
+          if (emailDoc.exists && emailDoc.data() != null) {
+            final access = SharedDiaryAccess.fromMap(emailDoc.data()!, emailDoc.id);
+            if (!access.isExpired) return access;
+          }
+        } catch (e) {
+          debugPrint('Note: email share lookup: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('Error getting shared diary access: $e');
     }
 
     return null;

@@ -1735,16 +1735,54 @@ class _SharingWizardSheetState extends ConsumerState<SharingWizardSheet> {
         }
         final selectedCircle = circle;
 
+        // 1. Canonical Circle Share Access Record (guarantees circle-level indexing)
+        final circleShareId = SharedDiaryRepository.generateShareId(
+          ownerUid: user.uid,
+          diaryId: diary.id,
+          target: circleId,
+        );
+
+        final circleShare = SharedDiaryAccess(
+          id: circleShareId,
+          diaryId: diary.id,
+          diaryName: diary.name,
+          ownerUid: user.uid,
+          ownerName: ownerName,
+          circleId: circleId,
+          circleName: circleName,
+          recipientType: RecipientType.circle,
+          sharingMode: _sharingMode,
+          futureRecordPolicy: _futurePolicy,
+          snapshotCutoffTime: _futurePolicy == FutureRecordPolicy.existingOnly
+              ? (widget.initialShare?.snapshotCutoffTime ?? DateTime.now())
+              : null,
+          sharedWithUid: circleId,
+          sharedWithEmail: '$circleId@magicdiary.internal',
+          sharedWithName: circleName,
+          permission: _permission,
+          shareEntireDiary: _sharingMode == SharingMode.entire,
+          grantedRecordIds: _sharingMode == SharingMode.selected
+              ? _selectedRecordIds.toList()
+              : const [],
+          allowAttachments: _allowAttachments,
+          allowComments: _allowComments,
+          allowExport: _allowExport,
+          restrictedFields: _restrictedFields,
+          status: ShareStatus.active,
+          expiresAt: _expiresAt,
+          createdAt: widget.initialShare?.createdAt ?? DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
+
+        await repo.createShareAccess(circleShare);
+
+        // 2. Per-member access records so each circle member receives granular permissions
         final recipients = selectedCircle.members
             .where((member) =>
-                member.status == 'active' &&
-                member.uid != user.uid &&
-                member.uid != selectedCircle.ownerId)
+                member.status != 'inactive' &&
+                member.status != 'removed' &&
+                member.uid != user.uid)
             .toList();
-        if (recipients.isEmpty) {
-          throw Exception(
-              'This Circle has no other active members to share with.');
-        }
 
         for (final member in recipients) {
           final cleanEmail = member.email.trim().toLowerCase();
@@ -1759,61 +1797,30 @@ class _SharingWizardSheetState extends ConsumerState<SharingWizardSheet> {
           if (recipientUid.isEmpty) continue;
 
           await repo.createShareAccess(
-            SharedDiaryAccess(
+            circleShare.copyWith(
               id: SharedDiaryRepository.generateShareId(
                 ownerUid: user.uid,
                 diaryId: diary.id,
                 target: email.isNotEmpty ? email : recipientUid,
               ),
-              diaryId: diary.id,
-              diaryName: diary.name,
-              ownerUid: user.uid,
-              ownerName: ownerName,
-              circleId: circleId,
-              circleName: circleName,
-              recipientType: RecipientType.circle,
-              sharingMode: _sharingMode,
-              futureRecordPolicy: _futurePolicy,
-              snapshotCutoffTime: _futurePolicy ==
-                      FutureRecordPolicy.existingOnly
-                  ? (widget.initialShare?.snapshotCutoffTime ?? DateTime.now())
-                  : null,
               sharedWithUid: recipientUid,
               sharedWithEmail: email,
               sharedWithName: member.displayName,
-              permission: _permission,
-              shareEntireDiary: _sharingMode == SharingMode.entire,
-              grantedRecordIds: _sharingMode == SharingMode.selected
-                  ? _selectedRecordIds.toList()
-                  : const [],
-              allowAttachments: _allowAttachments,
-              allowComments: _allowComments,
-              allowExport: _allowExport,
-              restrictedFields: _restrictedFields,
-              status: ShareStatus.active,
-              expiresAt: _expiresAt,
-              createdAt: widget.initialShare?.createdAt ?? DateTime.now(),
-              updatedAt: DateTime.now(),
             ),
           );
         }
 
-        // The Circle tab is backed by sharedDiaryIds. Keep that index in sync
-        // with the per-member access records so the shared diary is discoverable.
-        // Non-admin members may not be allowed to update Circle metadata.
-        if (selectedCircle.ownerId == user.uid ||
-            selectedCircle.getMember(user.uid)?.role.isAdmin == true) {
-          try {
-            await ref.read(magicCircleRepositoryProvider).updateCircle(
-                  selectedCircle.copyWith(
-                    sharedDiaryIds:
-                        {...selectedCircle.sharedDiaryIds, diary.id}.toList(),
-                    updatedAt: DateTime.now(),
-                  ),
-                );
-          } catch (e) {
-            debugPrint('Could not update Circle diary index: $e');
-          }
+        // 3. Keep circle.sharedDiaryIds in sync on the Circle document
+        try {
+          await ref.read(magicCircleRepositoryProvider).updateCircle(
+                selectedCircle.copyWith(
+                  sharedDiaryIds:
+                      {...selectedCircle.sharedDiaryIds, diary.id}.toList(),
+                  updatedAt: DateTime.now(),
+                ),
+              );
+        } catch (e) {
+          debugPrint('Could not update Circle diary index: $e');
         }
       }
 

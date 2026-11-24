@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,7 +13,9 @@ import '../../../core/diary_registry/diary_registry.dart';
 import '../../../core/diary_registry/diary_definition.dart';
 import '../../../core/diary_registry/diary_category.dart';
 import '../../../core/providers/app_providers.dart';
+import '../../shared_diaries/models/shared_diary_models.dart';
 import '../../shared_diaries/repositories/frequent_contacts_repository.dart';
+import '../../shared_diaries/screens/shared_diaries_screen.dart';
 import '../../shared_diaries/widgets/sharing_wizard_sheet.dart';
 
 final circleTasksStreamProvider =
@@ -106,7 +109,9 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen>
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert_rounded),
             onSelected: (val) {
-              if (val == 'share') {
+              if (val == 'share_diary') {
+                _showAddDiaryModal(context, circle);
+              } else if (val == 'share') {
                 CircleShareInviteDialog.show(
                   context,
                   circle: circle,
@@ -118,12 +123,23 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen>
             },
             itemBuilder: (ctx) => [
               const PopupMenuItem(
+                value: 'share_diary',
+                child: Row(
+                  children: [
+                    Icon(Icons.auto_stories_rounded, size: 20, color: Colors.deepPurple),
+                    SizedBox(width: 10),
+                    Text('Share Diary with Circle'),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem(
                 value: 'share',
                 child: Row(
                   children: [
                     Icon(Icons.share_rounded, size: 20),
                     SizedBox(width: 10),
-                    Text('Share & QR Code'),
+                    Text('Circle Code & QR'),
                   ],
                 ),
               ),
@@ -282,7 +298,12 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen>
   // TAB 2: SHARED DIARIES IN CIRCLE
   // -------------------------------------------------------------
   Widget _buildDiariesTab(MagicCircle circle) {
-    final allSharedDiaries = circle.sharedDiaryIds
+    final sharedWithMe = ref.watch(sharedWithMeStreamProvider).value ?? const [];
+    final sharedByMe = ref.watch(sharedByMeStreamProvider).value ?? const [];
+    final circleShares = [...sharedWithMe, ...sharedByMe].where((s) => s.circleId == circle.id);
+    final combinedDiaryIds = {...circle.sharedDiaryIds, ...circleShares.map((s) => s.diaryId)}.toList();
+
+    final allSharedDiaries = combinedDiaryIds
         .map((id) => DiaryRegistry.getDiaryById(id))
         .whereType<DiaryDefinition>()
         .toList();
@@ -297,7 +318,7 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen>
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showAddDiaryModal(context, circle),
         icon: const Icon(Icons.post_add_rounded),
-        label: const Text('Add Diary to Circle'),
+        label: const Text('Share Diary with Circle'),
       ),
       body: Column(
         children: [
@@ -339,29 +360,45 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen>
           Expanded(
             child: filteredDiaries.isEmpty
                 ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.auto_stories_outlined,
-                            size: 64, color: Colors.grey.shade400),
-                        const SizedBox(height: 16),
-                        Text(
-                          _selectedDiaryCategory != null
-                              ? 'No Diaries in this Category'
-                              : 'No Diaries Added Yet',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 16),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          _selectedDiaryCategory != null
-                              ? 'Try selecting "All Categories" or add a new diary.'
-                              : 'Share bills, groceries, vehicle or property diaries with circle members.',
-                          textAlign: TextAlign.center,
-                          style:
-                              const TextStyle(color: Colors.grey, fontSize: 13),
-                        ),
-                      ],
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.auto_stories_outlined,
+                              size: 64, color: Colors.grey.shade400),
+                          const SizedBox(height: 16),
+                          Text(
+                            _selectedDiaryCategory != null
+                                ? 'No Diaries in this Category'
+                                : 'No Diaries Added Yet',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            _selectedDiaryCategory != null
+                                ? 'Try selecting "All Categories" or share a new diary.'
+                                : 'Share bills, groceries, vehicle or property diaries with circle members.',
+                            textAlign: TextAlign.center,
+                            style:
+                                const TextStyle(color: Colors.grey, fontSize: 13),
+                          ),
+                          const SizedBox(height: 20),
+                          ElevatedButton.icon(
+                            onPressed: () => _showAddDiaryModal(context, circle),
+                            icon: const Icon(Icons.add_rounded),
+                            label: const Text('Share Diary with Circle'),
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 20, vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   )
                 : ListView.builder(
@@ -387,8 +424,33 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen>
                               maxLines: 2, overflow: TextOverflow.ellipsis),
                           trailing: const Icon(Icons.chevron_right),
                           onTap: () {
+                            final currentUser = ref.read(userProfileProvider);
+                            final sharedWithMe = ref.read(sharedWithMeStreamProvider).value ?? const [];
+                            final sharedByMe = ref.read(sharedByMeStreamProvider).value ?? const [];
+
+                            // 1. Check if another member shared this diary to this circle
+                            final memberShare = sharedWithMe.where((s) => s.diaryId == diary.id && s.circleId == circle.id).firstOrNull;
+
+                            // 2. Check if current user is the author who shared this diary to this circle
+                            final ownShare = sharedByMe.where((s) => s.diaryId == diary.id && s.circleId == circle.id).firstOrNull;
+
+                            if (ownShare != null || (memberShare == null && circle.ownerId == currentUser?.uid)) {
+                              // Current user is the owner/author of this diary in the circle
+                              context.push(
+                                '/diary-records/${diary.id}?ownerId=${currentUser?.uid}&ownerName=${Uri.encodeComponent("You (${circle.name})")}&circleId=${circle.id}',
+                              );
+                              return;
+                            }
+
+                            // 3. User is viewing a diary shared by another member
+                            final effectiveShare = memberShare ?? sharedWithMe.where((s) => s.diaryId == diary.id).firstOrNull;
+                            final targetOwnerId = effectiveShare?.ownerUid.isNotEmpty == true ? effectiveShare!.ownerUid : circle.ownerId;
+                            final targetOwnerName = effectiveShare?.ownerName.isNotEmpty == true ? effectiveShare!.ownerName : circle.name;
+                            final permission = effectiveShare?.permission.name ?? SharedDiaryPermission.contributor.name;
+
                             context.push(
-                              '/diary-records/${diary.id}?ownerId=${circle.ownerId}&ownerName=${Uri.encodeComponent(circle.name)}',
+                              '/diary-records/${diary.id}?ownerId=$targetOwnerId&ownerName=${Uri.encodeComponent(targetOwnerName)}&permission=$permission&circleId=${circle.id}',
+                              extra: effectiveShare,
                             );
                           },
                         ),
@@ -569,56 +631,13 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen>
                     style: TextStyle(fontSize: 12, color: Colors.amber.shade900),
                   ),
                   const SizedBox(height: 12),
-                  ...circle.pendingMemberIds.map((applicantUid) {
-                    return Card(
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: Colors.amber.shade200),
-                      ),
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: Colors.amber.shade100,
-                          child: Icon(Icons.person_outline, color: Colors.amber.shade900),
-                        ),
-                        title: Text(
-                          'Applicant: ${applicantUid.length > 8 ? applicantUid.substring(0, 8) : applicantUid}...',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                        ),
-                        subtitle: const Text('Requested via general code', style: TextStyle(fontSize: 11, color: Colors.grey)),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.check_circle_rounded, color: Colors.green),
-                              tooltip: 'Approve',
-                              onPressed: () async {
-                                final repo = ref.read(magicCircleRepositoryProvider);
-                                await repo.approveMember(circle.id, applicantUid);
-                                if (!mounted) return;
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Member approved!')),
-                                );
-                              },
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.cancel_rounded, color: Colors.red),
-                              tooltip: 'Reject',
-                              onPressed: () async {
-                                final repo = ref.read(magicCircleRepositoryProvider);
-                                await repo.rejectMember(circle.id, applicantUid);
-                                if (!mounted) return;
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Request rejected')),
-                                );
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }),
+                  ...circle.pendingMemberIds.map(
+                    (applicantUid) => _PendingApplicantCard(
+                      applicantUid: applicantUid,
+                      circle: circle,
+                      ref: ref,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1001,6 +1020,10 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen>
 
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) => Padding(
           padding: const EdgeInsets.all(20),
@@ -1008,18 +1031,48 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Add Diary to Circle',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-              const SizedBox(height: 14),
+              Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: Colors.deepPurple.shade50,
+                    child: const Icon(Icons.auto_stories_rounded,
+                        color: Colors.deepPurple),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Share Diary with Circle',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 18)),
+                        Text('Collaborate on entries with circle members',
+                            style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
               DropdownButtonFormField<DiaryDefinition>(
                 initialValue: selectedDiary,
                 decoration: InputDecoration(
-                  labelText: 'Select Predefined Diary',
+                  labelText: 'Select Diary to Share *',
+                  prefixIcon: Icon(selectedDiary.icon, color: selectedDiary.color),
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12)),
                 ),
                 items: alphabeticalDiaries
-                    .map((d) => DropdownMenuItem(value: d, child: Text(d.name)))
+                    .map((d) => DropdownMenuItem(
+                          value: d,
+                          child: Row(
+                            children: [
+                              Icon(d.icon, color: d.color, size: 20),
+                              const SizedBox(width: 10),
+                              Text(d.name),
+                            ],
+                          ),
+                        ))
                     .toList(),
                 onChanged: (val) {
                   if (val != null) setModalState(() => selectedDiary = val);
@@ -1028,7 +1081,7 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen>
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
-                child: ElevatedButton(
+                child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
@@ -1042,7 +1095,8 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen>
                       circle,
                     );
                   },
-                  child: const Text('Choose how to share',
+                  icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+                  label: const Text('Configure & Share Diary',
                       style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ),
@@ -1297,5 +1351,96 @@ class _CircleDashboardScreenState extends ConsumerState<CircleDashboardScreen>
         ),
       );
     }
+  }
+}
+
+class _PendingApplicantCard extends StatelessWidget {
+  final String applicantUid;
+  final MagicCircle circle;
+  final WidgetRef ref;
+
+  const _PendingApplicantCard({
+    required this.applicantUid,
+    required this.circle,
+    required this.ref,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      future: FirebaseFirestore.instance.collection('users').doc(applicantUid).get(),
+      builder: (context, snapshot) {
+        final data = snapshot.data?.data();
+        final name = data?['displayName'] as String? ??
+            (applicantUid.length > 8 ? '${applicantUid.substring(0, 8)}...' : applicantUid);
+        final email = data?['email'] as String? ?? 'Requested via circle code';
+        final photoUrl = data?['photoUrl'] as String?;
+
+        return Card(
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: Colors.amber.shade200),
+          ),
+          margin: const EdgeInsets.only(bottom: 8),
+          child: ListTile(
+            leading: CircleAvatar(
+              backgroundColor: Colors.amber.shade100,
+              backgroundImage: (photoUrl != null && photoUrl.isNotEmpty)
+                  ? NetworkImage(photoUrl)
+                  : null,
+              child: (photoUrl == null || photoUrl.isEmpty)
+                  ? Text(
+                      name.isNotEmpty ? name[0].toUpperCase() : '?',
+                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.amber.shade900),
+                    )
+                  : null,
+            ),
+            title: Text(
+              name,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            ),
+            subtitle: Text(email, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.check_circle_rounded, color: Colors.green),
+                  tooltip: 'Approve',
+                  onPressed: () async {
+                    final repo = ref.read(magicCircleRepositoryProvider);
+                    await repo.approveMember(
+                      circle.id,
+                      applicantUid,
+                      displayName: data?['displayName'] as String?,
+                      email: data?['email'] as String?,
+                    );
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('$name approved and added to ${circle.name}!'),
+                        backgroundColor: Colors.green.shade700,
+                      ),
+                    );
+                  },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.cancel_rounded, color: Colors.red),
+                  tooltip: 'Reject',
+                  onPressed: () async {
+                    final repo = ref.read(magicCircleRepositoryProvider);
+                    await repo.rejectMember(circle.id, applicantUid);
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Request from $name rejected')),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 }

@@ -51,6 +51,7 @@ class GenericDiaryListScreen extends ConsumerWidget {
   final String diaryId;
   final String? ownerId;
   final String? ownerName;
+  final String? circleId;
   final SharedDiaryAccess? shareAccess;
 
   const GenericDiaryListScreen({
@@ -58,6 +59,7 @@ class GenericDiaryListScreen extends ConsumerWidget {
     required this.diaryId,
     this.ownerId,
     this.ownerName,
+    this.circleId,
     this.shareAccess,
   });
 
@@ -274,13 +276,17 @@ class GenericDiaryListScreen extends ConsumerWidget {
                   Center(child: Text('Error loading records: $err')),
               data: (records) {
                 final isOthers = effectiveUserId != currentUser?.uid;
-                final visibleRecords = isOthers
+                final isCircleContext = (circleId != null && circleId!.isNotEmpty) ||
+                    (ownerName != null && (ownerName!.contains('(') || ownerName!.toLowerCase().contains('circle')));
+                final isSharedOrCircle = isOthers || isCircleContext;
+
+                final visibleRecords = isSharedOrCircle
                     ? DiaryAccessControlService.filterRecordsForUser(
                         allRecords: records,
                         currentUserId: currentUser?.uid ?? '',
                         diaryOwnerId: effectiveUserId,
                         shareAccess: shareAccess,
-                        isCircleShare: isShared && shareAccess == null,
+                        isCircleShare: isCircleContext || (isShared && shareAccess == null),
                       )
                     : records;
 
@@ -294,7 +300,7 @@ class GenericDiaryListScreen extends ConsumerWidget {
                           Icon(icon, size: 64, color: Colors.grey.shade400),
                           const SizedBox(height: 16),
                           Text(
-                            isShared
+                            isSharedOrCircle
                                 ? 'No Accessible Shared Records'
                                 : 'No records yet in $title',
                             style: const TextStyle(
@@ -302,7 +308,7 @@ class GenericDiaryListScreen extends ConsumerWidget {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            isShared
+                            isSharedOrCircle
                                 ? 'The owner has not granted access to records in this diary, or your share has expired.'
                                 : 'Tap "Add Entry" below to create your first record.',
                             textAlign: TextAlign.center,
@@ -328,11 +334,17 @@ class GenericDiaryListScreen extends ConsumerWidget {
                       child: InkWell(
                         borderRadius: BorderRadius.circular(16),
                         onTap: () {
-                          final queryParams = isShared
-                              ? '?ownerId=$effectiveUserId&ownerName=${Uri.encodeComponent(ownerName ?? "")}'
-                              : '';
+                          final queryParams = <String>[];
+                          if (effectiveUserId.isNotEmpty) {
+                            queryParams.add('ownerId=$effectiveUserId');
+                            queryParams.add('ownerName=${Uri.encodeComponent(ownerName ?? "")}');
+                          }
+                          if (circleId != null && circleId!.isNotEmpty) {
+                            queryParams.add('circleId=$circleId');
+                          }
+                          final queryString = queryParams.isNotEmpty ? '?${queryParams.join('&')}' : '';
                           context.push(
-                              '/diary-records/$diaryId/${record.id}$queryParams',
+                              '/diary-records/$diaryId/${record.id}$queryString',
                               extra: record);
                         },
                         child: Padding(
@@ -383,19 +395,19 @@ class GenericDiaryListScreen extends ConsumerWidget {
                                   Builder(
                                     builder: (_) {
                                       final isAnnivOrBday = DateCalculators.isBirthdayOrAnniversaryRecord(record, diaryId: diaryId);
-                                      final isOthers = effectiveUserId != currentUser?.uid;
+                                      final shouldMaskInList = isSharedOrCircle && isAnnivOrBday;
                                       return Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
                                           Text(
-                                            (isOthers && isAnnivOrBday)
+                                            shouldMaskInList
                                                 ? DateFormat('d MMM').format(record.recordDate)
                                                 : DateFormat('d MMM yyyy').format(record.recordDate),
                                             style: TextStyle(
                                                 fontSize: 12,
                                                 color: Colors.grey.shade600),
                                           ),
-                                          if (isOthers && isAnnivOrBday) ...[
+                                          if (shouldMaskInList) ...[
                                             const SizedBox(width: 6),
                                             Container(
                                               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),

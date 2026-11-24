@@ -199,6 +199,10 @@ class CalendarService {
       final isCircleOrShared = rec.circleId != null;
       final isAnnivOrBday = DateCalculators.isBirthdayOrAnniversaryRecord(rec);
       String? cleanSubtitle = rec.subtitle;
+      final startTime = isAnnivOrBday
+          ? DateCalculators.calculateNextOccurrence(rec.recordDate)
+          : rec.recordDate;
+
       if (isCircleOrShared && isAnnivOrBday) {
         cleanSubtitle = 'Annual • ${DateCalculators.formatDateAndMonth(rec.recordDate, pattern: 'd MMMM')}';
       }
@@ -207,7 +211,7 @@ class CalendarService {
         id: 'rec_${rec.id}',
         title: rec.title,
         subtitle: cleanSubtitle,
-        startTime: rec.recordDate,
+        startTime: startTime,
         sourceType: rec.circleId != null ? CalendarSourceType.circleDiary : CalendarSourceType.personalDiary,
         sourceDiaryId: rec.sourceDiaryId,
         circleId: rec.circleId,

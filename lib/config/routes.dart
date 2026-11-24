@@ -185,6 +185,7 @@ final router = GoRouter(
             diaryId: state.pathParameters['diaryId']!,
             ownerId: state.uri.queryParameters['ownerId'],
             ownerName: state.uri.queryParameters['ownerName'],
+            circleId: state.uri.queryParameters['circleId'],
             shareAccess: state.extra is SharedDiaryAccess ? state.extra as SharedDiaryAccess : null,
           ),
         ),
@@ -211,6 +212,7 @@ final router = GoRouter(
             initialRecord: state.extra as DiaryRecord?,
             ownerId: state.uri.queryParameters['ownerId'],
             ownerName: state.uri.queryParameters['ownerName'],
+            circleId: state.uri.queryParameters['circleId'],
           ),
         ),
         GoRoute(
